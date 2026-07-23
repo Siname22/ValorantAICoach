@@ -1,0 +1,75 @@
+# ==============================================================================
+# ValorantAICoach - Project configuration
+# Managed with uv (https://docs.astral.sh/uv/)
+# ==============================================================================
+
+[project]
+name = "valorant-ai-coach"
+version = "0.1.0"
+description = "Open-source AI-powered Valorant analytics and coaching platform."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.12"
+keywords = ["valorant", "ai", "coaching", "analytics", "fastapi"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Framework :: FastAPI",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "fastapi>=0.116.0",
+    "uvicorn[standard]>=0.35.0",
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.16.0",
+    "psycopg[binary]>=3.2.0",
+    "pydantic-settings>=2.10.0",
+]
+
+[dependency-groups]
+dev = [
+    "black>=25.0.0",
+    "pytest>=8.0.0",
+    "ruff>=0.12.0",
+]
+
+# ------------------------------------------------------------------------------
+# uv
+# ------------------------------------------------------------------------------
+[tool.uv]
+# Application project: not built or published as a package.
+package = false
+
+# ------------------------------------------------------------------------------
+# Black
+# ------------------------------------------------------------------------------
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+# ------------------------------------------------------------------------------
+# Ruff
+# ------------------------------------------------------------------------------
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+src = ["backend", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort (import sorting)
+    "UP",  # pyupgrade (modern Python syntax)
+    "B",   # flake8-bugbear (likely bugs)
+    "SIM", # flake8-simplify
+]
+
+# ------------------------------------------------------------------------------
+# pytest
+# ------------------------------------------------------------------------------
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+xfail_strict = true
