@@ -1,10 +1,10 @@
-from pydantic import BaseModel
+from agents.shared.models import AgentModel
 
 
-class OrchestratorInput(BaseModel):
+class OrchestratorInput(AgentModel):
     user_message: str
 
 
-class OrchestratorOutput(BaseModel):
+class OrchestratorOutput(AgentModel):
     requested_agents: list[str]
     reasoning: str
