@@ -98,4 +98,4 @@ class BaseAgent[TInput, TOutput](ABC):  # noqa: B024
         Optional hook executed if an error occurs during the agent's execute method.
         Can be overridden by subclasses for error handling or logging.
         """
-        pass
+        return None
