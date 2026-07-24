@@ -166,3 +166,6 @@ vector_store/
 desktop.ini
 $RECYCLE.BIN/
 *.lnk
+
+
+*.diff

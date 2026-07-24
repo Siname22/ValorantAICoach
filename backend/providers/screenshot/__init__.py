@@ -1,0 +1,1 @@
+# Screenshot Analysis Provider Placeholder
