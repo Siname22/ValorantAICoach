@@ -1,13 +1,12 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
-from pydantic import BaseModel
-
-from backend.providers.base.exceptions import NotFoundError, ProviderError
+from backend.providers.base.exceptions import NotFoundError
 from backend.providers.base.models import ProviderStatus
 from backend.providers.henrik.provider import HenrikProvider
 from backend.providers.riot.provider import RiotProvider
 from backend.providers.tracker.provider import TrackerProvider
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +103,10 @@ class PlayerService:
                 profile.rank_icon_url = rank.rank_icon_url
             except Exception as e:
                 logger.warning(
-                    f"Failed to enrich profile with rank for {game_name}#{tag_line}: {e}"
+                    "Failed to enrich profile with rank for %s#%s: %s",
+                    game_name,
+                    tag_line,
+                    e,
                 )
 
         return profile
@@ -140,7 +142,7 @@ class PlayerService:
         except NotFoundError:
             errors.append("Tracker: Player not found")
         except Exception as e:
-            logger.error(f"Tracker failed for {game_name}#{tag_line}: {e}")
+            logger.error("Tracker failed for %s#%s: %s", game_name, tag_line, e)
             errors.append(f"Tracker: {str(e)}")
 
         # Try Henrik second
@@ -156,7 +158,7 @@ class PlayerService:
         except NotFoundError:
             errors.append("Henrik: Player not found")
         except Exception as e:
-            logger.error(f"Henrik failed for {game_name}#{tag_line}: {e}")
+            logger.error("Henrik failed for %s#%s: %s", game_name, tag_line, e)
             errors.append(f"Henrik: {str(e)}")
 
         # Try Riot last
@@ -175,7 +177,7 @@ class PlayerService:
                 f"Player {game_name}#{tag_line} not found across providers: {errors}"
             ) from e
         except Exception as e:
-            logger.error(f"Riot failed for {game_name}#{tag_line}: {e}")
+            logger.error("Riot failed for %s#%s: %s", game_name, tag_line, e)
             errors.append(f"Riot: {str(e)}")
             raise PlayerServiceError(
                 f"Failed to fetch player {game_name}#{tag_line}: {errors}"
@@ -335,8 +337,10 @@ class PlayerService:
         )
 
         return {
-            "status": "healthy"
-            if all_healthy
-            else ("degraded" if any_healthy else "unhealthy"),
+            "status": (
+                "healthy"
+                if all_healthy
+                else ("degraded" if any_healthy else "unhealthy")
+            ),
             "providers": results,
         }
