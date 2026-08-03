@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Annotated
 
 from backend.app.dependencies.provider_deps import get_player_service
 from backend.app.schemas.player_schemas import (
@@ -12,6 +12,7 @@ from backend.app.services.player_service import (
     PlayerService,
     PlayerServiceError,
 )
+from fastapi import APIRouter, Depends, HTTPException, status
 
 router = APIRouter(prefix="/players", tags=["players"])
 
@@ -20,7 +21,7 @@ router = APIRouter(prefix="/players", tags=["players"])
 async def get_player_profile(
     game_name: str,
     tag_line: str,
-    service: PlayerService = Depends(get_player_service),
+    service: Annotated[PlayerService, Depends(get_player_service)],
 ):
     """
     Get complete player profile including rank and identity.
@@ -28,9 +29,7 @@ async def get_player_profile(
     try:
         return await service.get_complete_player_profile(game_name, tag_line)
     except PlayerNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
-        ) from e
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     except PlayerServiceError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
@@ -41,7 +40,7 @@ async def get_player_profile(
 async def get_player_rank(
     game_name: str,
     tag_line: str,
-    service: PlayerService = Depends(get_player_service),
+    service: Annotated[PlayerService, Depends(get_player_service)],
 ):
     """
     Get player's current competitive rank.
@@ -49,9 +48,7 @@ async def get_player_rank(
     try:
         return await service.get_rank(game_name, tag_line)
     except PlayerNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
-        ) from e
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -63,7 +60,7 @@ async def get_player_rank(
 async def get_player_matches(
     game_name: str,
     tag_line: str,
-    service: PlayerService = Depends(get_player_service),
+    service: Annotated[PlayerService, Depends(get_player_service)],
 ):
     """
     Get player's recent match history.
