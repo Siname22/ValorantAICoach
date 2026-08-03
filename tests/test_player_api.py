@@ -100,3 +100,25 @@ def test_get_player_matches_success(client, mock_player_service):
     assert data["count"] == 1
     assert data["matches"][0]["match_id"] == "m-1"
     assert data["matches"][0]["agent_name"] == "Jett"
+
+
+def test_health_check_success(client, mock_player_service):
+    # Setup
+    mock_player_service.health.return_value = {
+        "status": "healthy",
+        "providers": {
+            "tracker": {"status": "healthy"},
+            "henrik": {"status": "healthy"},
+            "riot": {"status": "healthy"},
+        },
+    }
+
+    # Execute
+    response = client.get("/health")
+
+    # Assert
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert data["version"] == "0.3.0"
+    assert data["providers"]["riot"] == "healthy"
