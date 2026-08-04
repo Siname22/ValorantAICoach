@@ -1,0 +1,14 @@
+# ==============================================================================
+# ValorantAICoach - Streamlit Community Cloud dependencies (frontend only)
+# ------------------------------------------------------------------------------
+# Streamlit Community Cloud installs this file automatically from the repository
+# root. It must contain ONLY the packages required to run:
+#     frontend/streamlit_app/app.py
+# Backend dependencies (FastAPI, SQLAlchemy, Alembic, psycopg) are intentionally
+# excluded and stay declared in pyproject.toml for local/uv development.
+# ==============================================================================
+
+streamlit>=1.39.0
+requests>=2.32.0
+plotly>=5.18.0
+pandas>=2.2.0
