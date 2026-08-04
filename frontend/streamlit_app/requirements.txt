@@ -1,0 +1,22 @@
+# ==============================================================================
+# ValorantAICoach - Streamlit frontend dependencies
+# ------------------------------------------------------------------------------
+# This file MUST live next to the entrypoint (app.py).
+#
+# Streamlit Community Cloud uses the FIRST dependency file it finds, searching
+# the entrypoint directory before the repository root, with this priority:
+#     uv.lock > Pipfile > environment.yml > requirements.txt > pyproject.toml
+#
+# The repository root contains a tracked uv.lock, which would otherwise win and
+# install only the backend dependencies declared in pyproject.toml (no plotly).
+# Keeping this file here makes it take precedence, so the frontend gets exactly
+# the packages it imports.
+#
+# Reference:
+# https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/app-dependencies
+# ==============================================================================
+
+streamlit>=1.39.0
+requests>=2.32.0
+plotly>=5.18.0
+pandas>=2.2.0

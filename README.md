@@ -13,9 +13,11 @@ This project is prepared for deployment on [Streamlit Community Cloud](https://s
 | Branch | `develop` (or your current working branch) |
 | Main file path | `frontend/streamlit_app/app.py` |
 | Python version | `3.12` |
-| Dependencies file | `requirements.txt` (repository root) |
+| Dependencies file | `frontend/streamlit_app/requirements.txt` |
 
-Streamlit Community Cloud installs dependencies from the root `requirements.txt`. It does **not** resolve `pyproject.toml` or `uv.lock`, so the root requirements file deliberately contains frontend-only packages (`streamlit`, `requests`, `plotly`, `pandas`). Backend dependencies remain declared in `pyproject.toml` and are managed locally with `uv`.
+Streamlit Community Cloud installs dependencies from the **first** dependency file it finds, searching the entrypoint directory before the repository root. Within each location the priority is `uv.lock`, `Pipfile`, `environment.yml`, `requirements.txt`, `pyproject.toml`.
+
+Because this repository tracks a `uv.lock` at the root, that lockfile would otherwise win and install only the backend dependencies declared in `pyproject.toml`, leaving `plotly` missing at runtime. For that reason the authoritative deployment requirements file lives **next to the entrypoint**, at `frontend/streamlit_app/requirements.txt`, where it takes precedence over the root lockfile. The root `requirements.txt` is kept only as a convenience for local frontend-only installs and must stay in sync.
 
 ### Installation
 
