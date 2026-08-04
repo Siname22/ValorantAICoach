@@ -46,6 +46,7 @@ REQUIRED_PACKAGES = {
     "requests": "requests",
     "plotly": "plotly",
     "pandas": "pandas",
+    "google.genai": "google-genai",
 }
 
 BACKEND_ONLY = {"fastapi", "uvicorn", "sqlalchemy", "alembic", "psycopg"}

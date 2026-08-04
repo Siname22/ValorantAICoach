@@ -12,7 +12,24 @@ import plotly.graph_objects as go  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from utils.api_client import APIClientError, get_api_client  # noqa: E402
+from utils.coach_persona import (  # noqa: E402
+    COACH_TAGLINE,
+    build_system_prompt,
+    get_starter_prompts,
+    get_welcome_message,
+)
+from utils.gemini_client import (  # noqa: E402
+    ROLE_ASSISTANT,
+    ROLE_USER,
+    ChatMessage,
+    GeminiClientError,
+    GeminiConfigurationError,
+    get_gemini_client,
+    get_model_name,
+    is_configured,
+)
 from utils.ui import (  # noqa: E402
+    apply_chat_styles,
     apply_global_styles,
     render_metric_card,
     render_page_header,
@@ -364,3 +381,142 @@ def render_api_docs_page() -> None:
             f"<br>{description}</div>",
             unsafe_allow_html=True,
         )
+
+
+def _render_coach_setup_notice() -> None:
+    """Explain how to enable the chatbot when no API key is configured."""
+    st.warning(
+        "Configura GEMINI_API_KEY para activar el coach. "
+        "The rest of the application keeps working normally without it.",
+        icon="🔑",
+    )
+    st.markdown(
+        "<div class='metric-card'>"
+        "<strong>Enable the assistant in three steps</strong>"
+        "<ol style='margin:0.5rem 0 0; padding-left:1.2rem; color:#a7b2bf;'>"
+        "<li>Create a free API key in Google AI Studio.</li>"
+        "<li>Add <code>GEMINI_API_KEY</code> to <code>.streamlit/secrets.toml</code> "
+        "locally, or to the app secrets in Streamlit Community Cloud.</li>"
+        "<li>Reload this page.</li></ol></div>",
+        unsafe_allow_html=True,
+    )
+    with st.expander("secrets.toml template"):
+        st.code(
+            'GEMINI_API_KEY = "your_key_here"\n'
+            'GEMINI_MODEL = "gemini-3.5-flash"',
+            language="toml",
+        )
+    st.link_button("Open Google AI Studio", "https://aistudio.google.com/apikey")
+    st.caption(
+        "Full walkthrough: docs/chatbot_installation.md in the repository."
+    )
+
+
+def render_ai_coach_page() -> None:
+    """Render the Gemini-powered coaching assistant."""
+    st.set_page_config(
+        page_title="AI Coach • Valorant AI Coach",
+        page_icon="🤖",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
+    apply_global_styles()
+    apply_chat_styles()
+    render_sidebar()
+
+    render_page_header(
+        "AI Coach assistant",
+        COACH_TAGLINE,
+        eyebrow="AI ASSISTANT",
+    )
+
+    if not is_configured():
+        st.markdown("")
+        _render_coach_setup_notice()
+        return
+
+    if "coach_messages" not in st.session_state:
+        st.session_state.coach_messages = [
+            ChatMessage(role=ROLE_ASSISTANT, content=get_welcome_message())
+        ]
+
+    header_cols = st.columns([2.4, 0.8, 0.8], vertical_alignment="center")
+    with header_cols[0]:
+        st.markdown(
+            f"<div class='pill'>Google AI Studio</div>"
+            f"<div class='pill'>{get_model_name()}</div>"
+            f"<div class='pill'>Silver → Platinum focus</div>",
+            unsafe_allow_html=True,
+        )
+    with header_cols[1]:
+        turns = sum(
+            1
+            for message in st.session_state.coach_messages
+            if message.role == ROLE_USER
+        )
+        st.markdown(
+            f"<div class='metric-card' style='margin:0;'>"
+            f"<div style='font-size:0.72rem; text-transform:uppercase; "
+            f"letter-spacing:.12em; color:#8b949e;'>Questions</div>"
+            f"<div style='font-size:1.25rem; font-weight:700; color:#f4f7fb;'>"
+            f"{turns}</div></div>",
+            unsafe_allow_html=True,
+        )
+    with header_cols[2]:
+        if st.button("Reset chat", use_container_width=True):
+            st.session_state.coach_messages = [
+                ChatMessage(role=ROLE_ASSISTANT, content=get_welcome_message())
+            ]
+            st.session_state.pop("coach_pending_prompt", None)
+            st.rerun()
+
+    st.markdown("")
+
+    if len(st.session_state.coach_messages) == 1:
+        st.caption("Suggested questions")
+        starter_cols = st.columns(2)
+        for index, starter in enumerate(get_starter_prompts()):
+            with starter_cols[index % 2]:
+                if st.button(starter, key=f"starter_{index}", use_container_width=True):
+                    st.session_state.coach_pending_prompt = starter
+                    st.rerun()
+
+    for message in st.session_state.coach_messages:
+        avatar = "🤖" if message.role == ROLE_ASSISTANT else "🎯"
+        with st.chat_message(message.role, avatar=avatar):
+            st.markdown(message.content)
+
+    typed_prompt = st.chat_input("Ask your Valorant coach anything…")
+    prompt = st.session_state.pop("coach_pending_prompt", None) or typed_prompt
+
+    if not prompt:
+        return
+
+    st.session_state.coach_messages.append(
+        ChatMessage(role=ROLE_USER, content=prompt)
+    )
+    with st.chat_message(ROLE_USER, avatar="🎯"):
+        st.markdown(prompt)
+
+    # The history excludes the turn just appended: the SDK receives it as the
+    # message being sent, not as part of the previous conversation.
+    history = st.session_state.coach_messages[:-1]
+
+    with st.chat_message(ROLE_ASSISTANT, avatar="🤖"):
+        with st.spinner("Analysing the situation…"):
+            try:
+                client = get_gemini_client(build_system_prompt())
+                reply = client.send_message(prompt, history=history)
+            except GeminiConfigurationError as exc:
+                st.error(str(exc), icon="🔑")
+                st.session_state.coach_messages.pop()
+                return
+            except GeminiClientError as exc:
+                st.error(str(exc), icon="⚠️")
+                st.session_state.coach_messages.pop()
+                return
+        st.markdown(reply)
+
+    st.session_state.coach_messages.append(
+        ChatMessage(role=ROLE_ASSISTANT, content=reply)
+    )

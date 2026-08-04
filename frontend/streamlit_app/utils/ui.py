@@ -153,6 +153,7 @@ def render_sidebar() -> None:
         st.page_link("pages/3_Architecture.py", label="Architecture", icon="🏗️")
         st.page_link("pages/4_Roadmap.py", label="Roadmap", icon="🗺️")
         st.page_link("pages/5_API_Docs.py", label="API Docs", icon="📚")
+        st.page_link("pages/6_AI_Coach.py", label="AI Coach", icon="🤖")
         st.markdown("---")
         st.markdown(
             "<div class='nav-card'><div style='font-size:0.9rem; font-weight:700;'>"
@@ -160,6 +161,60 @@ def render_sidebar() -> None:
             "The UI consumes FastAPI endpoints only.</div></div>",
             unsafe_allow_html=True,
         )
+
+
+def apply_chat_styles() -> None:
+    """Apply the chat-specific styling used by the AI Coach page.
+
+    Kept separate from :func:`apply_global_styles` so the existing pages render
+    exactly as before and only the assistant page loads these rules.
+    """
+    st.markdown(
+        """
+        <style>
+        [data-testid="stChatMessage"] {
+            border-radius: 18px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: linear-gradient(
+                135deg,
+                rgba(255,255,255,0.055),
+                rgba(255,255,255,0.025)
+            );
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24);
+            padding: 0.9rem 1.05rem;
+            margin-bottom: 0.85rem;
+        }
+        [data-testid="stChatMessage"] p,
+        [data-testid="stChatMessage"] li {
+            color: #d3dae3;
+            line-height: 1.65;
+        }
+        [data-testid="stChatMessage"] strong {
+            color: #f4f7fb;
+        }
+        [data-testid="stChatMessage"] code {
+            background: rgba(120, 194, 255, 0.12);
+            color: #9ed3ff;
+            border-radius: 6px;
+            padding: 0.08rem 0.32rem;
+        }
+        [data-testid="stChatMessageAvatarUser"],
+        [data-testid="stChatMessageAvatarAssistant"] {
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(3, 7, 11, 0.85);
+        }
+        [data-testid="stChatInput"] {
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.035);
+        }
+        [data-testid="stChatInput"] textarea {
+            color: #f4f7fb !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_page_header(

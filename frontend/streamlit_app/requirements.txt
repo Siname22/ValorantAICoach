@@ -20,3 +20,10 @@ streamlit>=1.39.0
 requests>=2.32.0
 plotly>=5.18.0
 pandas>=2.2.0
+
+# Google AI Studio (Gemini) SDK for the AI Coach chatbot.
+# NOTE: this is the official, actively maintained SDK. The older
+# `google-generativeai` package was deprecated on 2025-11-30 and its repository
+# was renamed to `deprecated-generative-ai-python`, so it is not used here.
+# https://ai.google.dev/gemini-api/docs/libraries
+google-genai>=1.0.0
