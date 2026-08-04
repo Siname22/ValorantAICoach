@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 
@@ -19,12 +20,15 @@ from utils.coach_persona import (  # noqa: E402
     get_welcome_message,
 )
 from utils.gemini_client import (  # noqa: E402
+    MSG_MISSING_KEY,
+    MSG_UNEXPECTED,
     ROLE_ASSISTANT,
     ROLE_USER,
     ChatMessage,
     GeminiClientError,
     GeminiConfigurationError,
     get_gemini_client,
+    get_model_chain,
     get_model_name,
     is_configured,
 )
@@ -35,6 +39,8 @@ from utils.ui import (  # noqa: E402
     render_page_header,
     render_sidebar,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def render_home_page() -> None:
@@ -386,8 +392,8 @@ def render_api_docs_page() -> None:
 def _render_coach_setup_notice() -> None:
     """Explain how to enable the chatbot when no API key is configured."""
     st.warning(
-        "Configura GEMINI_API_KEY para activar el coach. "
-        "The rest of the application keeps working normally without it.",
+        f"{MSG_MISSING_KEY} "
+        "El resto de la aplicación sigue funcionando con normalidad sin ella.",
         icon="🔑",
     )
     st.markdown(
@@ -403,7 +409,7 @@ def _render_coach_setup_notice() -> None:
     with st.expander("secrets.toml template"):
         st.code(
             'GEMINI_API_KEY = "your_key_here"\n'
-            'GEMINI_MODEL = "gemini-3.5-flash"',
+            'GEMINI_MODEL = "gemini-2.5-flash"',
             language="toml",
         )
     st.link_button("Open Google AI Studio", "https://aistudio.google.com/apikey")
@@ -442,9 +448,11 @@ def render_ai_coach_page() -> None:
 
     header_cols = st.columns([2.4, 0.8, 0.8], vertical_alignment="center")
     with header_cols[0]:
+        fallback_count = max(len(get_model_chain()) - 1, 0)
         st.markdown(
             f"<div class='pill'>Google AI Studio</div>"
             f"<div class='pill'>{get_model_name()}</div>"
+            f"<div class='pill'>+{fallback_count} modelos de respaldo</div>"
             f"<div class='pill'>Silver → Platinum focus</div>",
             unsafe_allow_html=True,
         )
@@ -515,7 +523,19 @@ def render_ai_coach_page() -> None:
                 st.error(str(exc), icon="⚠️")
                 st.session_state.coach_messages.pop()
                 return
+            except Exception:  # noqa: BLE001 - last line of defence
+                # Nothing should reach this point: the client already classifies
+                # every failure it knows about. It exists so that an unforeseen
+                # bug can never render a traceback in a public deployment.
+                logger.exception("Unhandled failure while contacting the coach")
+                st.error(MSG_UNEXPECTED, icon="⚠️")
+                st.session_state.coach_messages.pop()
+                return
         st.markdown(reply)
+        # Surfaced only when the automatic fallback had to leave the configured
+        # model, so the audience of the demo can see what actually happened.
+        if client.active_model != client.model:
+            st.caption(f"Respondido por el modelo de respaldo: {client.active_model}")
 
     st.session_state.coach_messages.append(
         ChatMessage(role=ROLE_ASSISTANT, content=reply)

@@ -4,7 +4,7 @@ The module mirrors the structure already used by :mod:`utils.api_client`: a
 dedicated error type, a thin wrapper class, and a small factory function. All
 Gemini specifics stay here so the Streamlit page only deals with presentation.
 
-Two design decisions are worth calling out:
+Design decisions worth calling out:
 
 * **The official SDK is** ``google-genai``. The older ``google-generativeai``
   package was deprecated on 30 November 2025 and is no longer maintained, so it
@@ -12,15 +12,26 @@ Two design decisions are worth calling out:
 * **The import is lazy and guarded.** If the dependency is missing, the page
   renders a setup message instead of crashing the whole Streamlit app, which
   keeps the already-deployed pages working no matter what.
+* **Resilience is layered.** A public demo cannot depend on a single model being
+  healthy, so transient failures are absorbed by two mechanisms that compose:
+  bounded retries with incremental backoff for the *same* model, and an
+  automatic switch to the next model in :data:`MODEL_CHAIN` when a model stays
+  unavailable. Only when every option is exhausted does the user see a message,
+  and that message is always human-readable Spanish, never a stack trace or the
+  raw JSON returned by Google.
 """
 
 from __future__ import annotations
 
+import logging
 import os
+import time
 from dataclasses import dataclass
 from typing import Any, Final
 
 import streamlit as st
+
+logger = logging.getLogger(__name__)
 
 API_KEY_SECRET: Final[str] = "GEMINI_API_KEY"
 MODEL_SECRET: Final[str] = "GEMINI_MODEL"
@@ -29,10 +40,31 @@ MODEL_SECRET: Final[str] = "GEMINI_MODEL"
 #: with the Google-branded name keeps working after the rename.
 LEGACY_API_KEY_SECRET: Final[str] = "GOOGLE_API_KEY"
 
-#: Stable model as of August 2026. ``gemini-2.0-flash`` is already shut down and
-#: ``gemini-2.5-flash`` reaches end of life in October 2026, so the default
-#: targets the current stable Gemini 3 Flash generation.
-DEFAULT_MODEL: Final[str] = "gemini-3.5-flash"
+#: Primary model. ``gemini-2.5-flash`` is Google's price-performance workhorse
+#: for low-latency, high-volume chat traffic, which is exactly this workload.
+DEFAULT_MODEL: Final[str] = "gemini-2.5-flash"
+
+#: Ordered fallback chain, tried left to right whenever a model reports itself
+#: as unavailable or rate limited. ``-lite`` sits second because it serves the
+#: same family with a larger capacity headroom, and the Gemini 3 stable release
+#: closes the chain as a last resort from a different serving pool.
+MODEL_CHAIN: Final[tuple[str, ...]] = (
+    DEFAULT_MODEL,
+    "gemini-2.5-flash-lite",
+    "gemini-3.5-flash",
+)
+
+#: Attempts per model before moving on. Three is enough to ride out the short
+#: capacity spikes that cause 503s without keeping the user waiting.
+MAX_ATTEMPTS_PER_MODEL: Final[int] = 3
+
+#: Seconds waited before each retry of the same model (incremental backoff).
+RETRY_BACKOFF_SECONDS: Final[tuple[float, ...]] = (1.0, 2.0)
+
+#: HTTP statuses that mean "try again elsewhere" rather than "the request is
+#: wrong". 503 is the high-demand case reported in production; 429 is quota
+#: pressure; 500 and 504 are transient upstream faults.
+TRANSIENT_STATUS_CODES: Final[frozenset[int]] = frozenset({429, 500, 502, 503, 504})
 
 #: Conversation turns kept when rebuilding the Gemini history. Bounding it keeps
 #: latency and token usage predictable during a live demo.
@@ -41,6 +73,61 @@ MAX_HISTORY_TURNS: Final[int] = 20
 ROLE_USER: Final[str] = "user"
 ROLE_ASSISTANT: Final[str] = "assistant"
 _GEMINI_MODEL_ROLE: Final[str] = "model"
+
+# ---------------------------------------------------------------------------
+# User-facing copy
+# ---------------------------------------------------------------------------
+# Every message the chat can display lives here, in Spanish, written for a
+# non-technical audience. Keeping them as named constants means the UI never
+# interpolates an exception into the page, which is what previously leaked
+# "503 UNAVAILABLE ... high demand" to the user.
+
+#: Transient exhaustion: every model in the chain reported saturation or rate
+#: limiting. Deliberately free of status codes, provider names and emoji, so the
+#: string can be asserted verbatim in the test suite.
+MSG_OVERLOADED: Final[str] = (
+    "El servicio de IA está temporalmente saturado. "
+    "Inténtalo de nuevo en unos segundos."
+)
+
+#: Permanent configuration fault: credential rejected, insufficient permissions,
+#: or no reachable model. The wording avoids naming the secret so a screenshot of
+#: the deployed app never hints at the credential layout.
+MSG_CONFIG_REVIEW: Final[str] = (
+    "La configuración del servicio de IA necesita revisión."
+)
+
+#: Kept as an alias because both an invalid key and an unavailable model are, from
+#: the user's point of view, the same actionable situation: configuration.
+MSG_INVALID_KEY: Final[str] = MSG_CONFIG_REVIEW
+MSG_MODEL_UNAVAILABLE: Final[str] = MSG_CONFIG_REVIEW
+
+#: Shown by the page itself, before any client is built, when no key is present.
+MSG_MISSING_KEY: Final[str] = (
+    f"Configura {API_KEY_SECRET} para activar el coach."
+)
+
+#: Unclassified failure. Anything that is neither transient nor a configuration
+#: problem lands here, so the user always gets an actionable sentence instead of
+#: a traceback.
+MSG_UNEXPECTED: Final[str] = (
+    "El coach tuvo un problema inesperado. Inténtalo de nuevo."
+)
+MSG_GENERIC_FAILURE: Final[str] = MSG_UNEXPECTED
+
+#: Content-level outcomes, distinct from outages: the model answered with nothing
+#: usable, or the user submitted an empty prompt.
+MSG_EMPTY_RESPONSE: Final[str] = (
+    "El coach no ha podido formular una respuesta para esa pregunta. "
+    "Prueba a reformularla de otra manera."
+)
+MSG_EMPTY_MESSAGE: Final[str] = (
+    "Escribe una pregunta para que el coach pueda ayudarte."
+)
+MSG_SDK_MISSING: Final[str] = (
+    "Falta la dependencia 'google-genai'. Añádela a "
+    "frontend/streamlit_app/requirements.txt y reinstala las dependencias."
+)
 
 
 class GeminiClientError(RuntimeError):
@@ -91,8 +178,28 @@ def get_api_key() -> str | None:
 
 
 def get_model_name() -> str:
-    """Return the Gemini model to use, allowing an override via secrets."""
+    """Return the model the chat will try first.
+
+    The ``GEMINI_MODEL`` secret takes precedence, so the deployed app can be
+    pointed at a different model from the Streamlit Cloud settings panel without
+    touching the code.
+    """
     return _read_setting(MODEL_SECRET) or DEFAULT_MODEL
+
+
+def get_model_chain(model: str | None = None) -> tuple[str, ...]:
+    """Return the ordered list of models to try, honouring the override.
+
+    The configured model always comes first; the remaining entries of
+    :data:`MODEL_CHAIN` follow as fallbacks, de-duplicated so an override that
+    already belongs to the chain does not get attempted twice.
+    """
+    preferred = model or get_model_name()
+    chain: list[str] = [preferred]
+    for candidate in MODEL_CHAIN:
+        if candidate not in chain:
+            chain.append(candidate)
+    return tuple(chain)
 
 
 def is_configured() -> bool:
@@ -113,12 +220,72 @@ def _import_sdk() -> tuple[Any, Any, Any]:
         from google.genai import errors as genai_errors  # noqa: PLC0415
         from google.genai import types as genai_types  # noqa: PLC0415
     except ImportError as exc:  # pragma: no cover - depends on environment
-        raise GeminiConfigurationError(
-            "The 'google-genai' package is not installed. Add it to "
-            "frontend/streamlit_app/requirements.txt and reinstall the "
-            "dependencies."
-        ) from exc
+        raise GeminiConfigurationError(MSG_SDK_MISSING) from exc
     return genai, genai_types, genai_errors
+
+
+def _status_code(exc: Exception) -> int | None:
+    """Best-effort extraction of the HTTP status carried by an SDK error.
+
+    ``APIError`` exposes ``.code``, which is far more reliable than matching
+    substrings in the message. The textual check is kept only as a safety net
+    for transport-level failures that never reach the SDK error hierarchy.
+    """
+    code = getattr(exc, "code", None)
+    if isinstance(code, int):
+        return code
+    status = getattr(exc, "status", None)
+    if isinstance(status, int):
+        return status
+    return None
+
+
+def _is_transient(exc: Exception) -> bool:
+    """Return whether the failure justifies a retry or a model switch."""
+    code = _status_code(exc)
+    if code in TRANSIENT_STATUS_CODES:
+        return True
+    # Network-level problems never carry an HTTP status, so they are matched by
+    # exception type before falling back to message inspection.
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return True
+    lowered = str(exc).lower()
+    markers = (
+        "unavailable",
+        "overloaded",
+        "high demand",
+        "resource_exhausted",
+        "rate limit",
+        "deadline",
+        "timeout",
+        "timed out",
+        "try again",
+        "temporarily",
+        "connection reset",
+        "connection aborted",
+    )
+    return any(marker in lowered for marker in markers)
+
+
+def _is_model_missing(exc: Exception) -> bool:
+    """Return whether the model itself was rejected as unknown."""
+    if _status_code(exc) == 404:
+        return True
+    lowered = str(exc).lower()
+    return "not found" in lowered or "does not exist" in lowered
+
+
+def _is_auth_failure(exc: Exception) -> bool:
+    """Return whether the credential was rejected."""
+    if _status_code(exc) in {401, 403}:
+        return True
+    lowered = str(exc).lower()
+    return (
+        "api key" in lowered
+        or "api_key" in lowered
+        or "permission_denied" in lowered
+        or "unauthenticated" in lowered
+    )
 
 
 class GeminiCoachClient:
@@ -131,27 +298,28 @@ class GeminiCoachClient:
         api_key: str | None = None,
         temperature: float = 0.7,
         max_output_tokens: int = 1024,
+        sleep: Any = time.sleep,
     ) -> None:
         self.system_prompt = system_prompt
         self.model = model or get_model_name()
+        self.model_chain = get_model_chain(self.model)
         self.temperature = temperature
         self.max_output_tokens = max_output_tokens
+        #: Model that answered the last successful call, so the UI can show
+        #: which one is actually serving the conversation after a fallback.
+        self.active_model = self.model
+        self._sleep = sleep
 
         resolved_key = api_key or get_api_key()
         if not resolved_key:
-            raise GeminiConfigurationError(
-                f"Configura {API_KEY_SECRET} para activar el coach. "
-                "Add it to .streamlit/secrets.toml locally, or to the app "
-                "secrets in Streamlit Community Cloud."
-            )
+            raise GeminiConfigurationError(MSG_MISSING_KEY)
 
         self._genai, self._types, self._errors = _import_sdk()
         try:
             self._client = self._genai.Client(api_key=resolved_key)
         except Exception as exc:  # noqa: BLE001 - SDK raises broad errors
-            raise GeminiConfigurationError(
-                f"Could not initialise the Gemini client: {exc}"
-            ) from exc
+            logger.error("Gemini client initialisation failed: %s", exc)
+            raise GeminiConfigurationError(MSG_INVALID_KEY) from exc
 
     def _build_config(self) -> Any:
         return self._types.GenerateContentConfig(
@@ -180,6 +348,24 @@ class GeminiCoachClient:
             )
         return contents
 
+    def _call_model(
+        self,
+        model: str,
+        message: str,
+        history: list[ChatMessage],
+    ) -> str:
+        """Send one request to ``model`` and return the extracted reply text."""
+        chat = self._client.chats.create(
+            model=model,
+            config=self._build_config(),
+            history=self._to_sdk_history(history),
+        )
+        response = chat.send_message(message)
+        text = getattr(response, "text", None)
+        if not text or not text.strip():
+            raise GeminiClientError(MSG_EMPTY_RESPONSE)
+        return text.strip()
+
     def send_message(
         self,
         message: str,
@@ -191,61 +377,86 @@ class GeminiCoachClient:
         ``st.session_state``. That is intentional: Streamlit re-runs the script
         on each interaction, and session state is the single source of truth,
         so no live SDK object needs to survive between runs.
+
+        Resilience works in two nested loops. For each model in
+        :data:`MODEL_CHAIN`, up to :data:`MAX_ATTEMPTS_PER_MODEL` attempts are
+        made with incremental backoff; if the model is still unavailable, the
+        next one takes over. Authentication failures break out immediately,
+        because retrying a rejected key only wastes the user's time.
         """
         if not message.strip():
-            raise GeminiClientError("The message cannot be empty.")
+            raise GeminiClientError(MSG_EMPTY_MESSAGE)
 
-        try:
-            chat = self._client.chats.create(
-                model=self.model,
-                config=self._build_config(),
-                history=self._to_sdk_history(history or []),
-            )
-            response = chat.send_message(message)
-        except self._errors.ClientError as exc:
-            raise GeminiClientError(self._explain_client_error(exc)) from exc
-        except self._errors.ServerError as exc:
-            raise GeminiClientError(
-                "Google AI Studio is temporarily unavailable. Please retry in "
-                f"a moment. ({exc})"
-            ) from exc
-        except self._errors.APIError as exc:
-            raise GeminiClientError(f"Gemini API error: {exc}") from exc
-        except Exception as exc:  # noqa: BLE001 - network/SDK safety net
-            raise GeminiClientError(
-                f"Unexpected error while contacting Gemini: {exc}"
-            ) from exc
+        turns = history or []
+        last_transient: Exception | None = None
+        model_rejected = False
 
-        text = getattr(response, "text", None)
-        if not text or not text.strip():
-            raise GeminiClientError(
-                "Gemini returned an empty response. This usually means the "
-                "answer was blocked by a safety filter or the token limit was "
-                "reached. Try rephrasing your question."
-            )
-        return text.strip()
+        for model in self.model_chain:
+            for attempt in range(1, MAX_ATTEMPTS_PER_MODEL + 1):
+                try:
+                    reply = self._call_model(model, message, turns)
+                except GeminiClientError:
+                    # Empty response: a content-level outcome, not an outage.
+                    raise
+                except Exception as exc:  # noqa: BLE001 - classified below
+                    if _is_auth_failure(exc):
+                        logger.error(
+                            "Gemini rejected the credential (model=%s): %s",
+                            model,
+                            exc,
+                        )
+                        raise GeminiConfigurationError(MSG_INVALID_KEY) from exc
 
-    @staticmethod
-    def _explain_client_error(exc: Exception) -> str:
-        """Translate a 4xx SDK error into an actionable message."""
-        detail = str(exc)
-        lowered = detail.lower()
-        if "api key" in lowered or "api_key" in lowered or "401" in lowered:
-            return (
-                "The Google AI Studio API key was rejected. Check the value of "
-                f"'{API_KEY_SECRET}' in your Streamlit secrets."
-            )
-        if "quota" in lowered or "429" in lowered or "resource_exhausted" in lowered:
-            return (
-                "The Gemini free-tier quota has been exhausted. Wait for the "
-                "quota window to reset or use a different API key."
-            )
-        if "not found" in lowered or "404" in lowered:
-            return (
-                f"The model '{get_model_name()}' is not available for this API "
-                f"key. Override it with the '{MODEL_SECRET}' secret."
-            )
-        return f"Gemini rejected the request: {detail}"
+                    if _is_model_missing(exc):
+                        logger.warning(
+                            "Model '%s' is not available for this key: %s",
+                            model,
+                            exc,
+                        )
+                        model_rejected = True
+                        last_transient = exc
+                        break  # No point retrying an unknown model.
+
+                    if _is_transient(exc):
+                        last_transient = exc
+                        logger.warning(
+                            "Transient Gemini failure (model=%s, attempt=%d/%d, "
+                            "status=%s): %s",
+                            model,
+                            attempt,
+                            MAX_ATTEMPTS_PER_MODEL,
+                            _status_code(exc),
+                            exc,
+                        )
+                        if attempt < MAX_ATTEMPTS_PER_MODEL:
+                            index = min(
+                                attempt - 1, len(RETRY_BACKOFF_SECONDS) - 1
+                            )
+                            self._sleep(RETRY_BACKOFF_SECONDS[index])
+                            continue
+                        break  # Exhausted this model; fall through to the next.
+
+                    logger.error(
+                        "Unexpected Gemini failure (model=%s): %s", model, exc
+                    )
+                    raise GeminiClientError(MSG_GENERIC_FAILURE) from exc
+                else:
+                    if model != self.model:
+                        logger.info(
+                            "Gemini fallback succeeded: '%s' answered after "
+                            "'%s' was unavailable.",
+                            model,
+                            self.model,
+                        )
+                    self.active_model = model
+                    return reply
+
+        logger.error(
+            "Every Gemini model in the chain failed: %s", list(self.model_chain)
+        )
+        if model_rejected and not _is_transient(last_transient or Exception()):
+            raise GeminiClientError(MSG_MODEL_UNAVAILABLE) from last_transient
+        raise GeminiClientError(MSG_OVERLOADED) from last_transient
 
 
 def get_gemini_client(

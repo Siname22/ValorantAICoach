@@ -31,10 +31,50 @@
 | **FastAPI** | Backend REST que expone los datos de jugadores |
 | **REST API** | Protocolo de comunicación entre el frontend y el backend |
 
-El modelo empleado es **`gemini-3.5-flash`**, la generación estable de Gemini 3
-disponible en agosto de 2026, seleccionada por su equilibrio entre latencia y
-calidad de razonamiento en conversaciones interactivas. El modelo es
+El modelo empleado es **`gemini-2.5-flash`**, seleccionado por su equilibrio
+entre latencia y calidad de razonamiento en conversaciones interactivas, y por
+ser una generación consolidada con amplia disponibilidad. El modelo es
 configurable mediante el secret opcional `GEMINI_MODEL`.
+
+### Resiliencia frente a la saturación del modelo
+
+Durante las pruebas de integración se comprobó que la API de Gemini puede
+responder con un aviso temporal de alta demanda cuando el modelo solicitado está
+saturado. Un fallo de esta naturaleza durante una demostración en directo sería
+indistinguible de un defecto del sistema, de modo que el cliente no consulta un
+único modelo: recorre una cadena ordenada.
+
+| Orden | Modelo | Papel |
+| --- | --- | --- |
+| 1 | `GEMINI_MODEL`, o `gemini-2.5-flash` por defecto | Modelo primario |
+| 2 | `gemini-2.5-flash-lite` | Variante ligera, habitualmente menos congestionada |
+| 3 | `gemini-3.5-flash` | Generación más reciente, como último recurso |
+
+Cada modelo se intenta hasta tres veces con una espera incremental de uno y dos
+segundos. Si persiste la indisponibilidad, el cliente pasa al siguiente modelo de
+forma transparente para el usuario. La distinción entre un fallo transitorio y
+uno definitivo se realiza mediante el **código numérico de estado** que expone el
+SDK, no por coincidencia de texto, lo que hace la clasificación independiente del
+idioma y de la redacción de los mensajes del proveedor.
+
+Este diseño incorpora un principio de comunicación deliberado: **ningún detalle
+técnico llega al usuario**. Los códigos de estado, los identificadores de error
+del proveedor y las trazas de excepción se registran en el log del servidor para
+diagnóstico, mientras la interfaz muestra únicamente mensajes redactados en
+español y orientados a la acción. El repertorio completo es reducido y
+deliberadamente cerrado:
+
+| Situación | Mensaje mostrado |
+| --- | --- |
+| Saturación, límite de cuota o timeout en toda la cadena | El servicio de IA está temporalmente saturado. Inténtalo de nuevo en unos segundos. |
+| Credencial rechazada o modelo inaccesible | La configuración del servicio de IA necesita revisión. |
+| Fallo no clasificado | El coach tuvo un problema inesperado. Inténtalo de nuevo. |
+| Credencial ausente | Configura GEMINI_API_KEY para activar el coach. |
+
+La interfaz añade además una última barrera: el bloque que invoca al coach captura
+cualquier excepción no prevista, la registra en el log y muestra el mensaje
+genérico. Su propósito no es corregir un fallo conocido, sino garantizar que un
+defecto imprevisto no pueda desplegar una traza en una aplicación pública.
 
 La integración se realiza con el SDK oficial **`google-genai`**. Conviene
 señalar que el paquete `google-generativeai`, habitual en tutoriales anteriores,
@@ -146,7 +186,7 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml
 
 ```toml
 GEMINI_API_KEY = "your_key_here"
-GEMINI_MODEL = "gemini-3.5-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 ```
 
 En Streamlit Community Cloud, pegar el mismo contenido en **Settings → Secrets**.
@@ -239,7 +279,8 @@ Antes de la entrega se ejecutaron pruebas locales sobre el entorno del proyecto
 | Importación del entrypoint y de las 6 páginas | Correcta |
 | Arranque del servidor Streamlit | Sin errores |
 | Respuesta de las rutas, incluida `/6_AI_Coach` | HTTP 200 |
-| Suite funcional del cliente y la personalidad | 45 de 45 comprobaciones superadas |
+| Suite funcional del cliente y la personalidad | 88 de 88 comprobaciones superadas |
+| Suite de resiliencia (`tests/test_gemini_resilience.py`) | 81 de 81 comprobaciones superadas |
 | Carga de la página sin `GEMINI_API_KEY` configurada | Aviso mostrado, aplicación operativa |
 
 La suite funcional validó la resolución de la credencial `GEMINI_API_KEY` y de su
@@ -256,6 +297,23 @@ temporalmente el archivo de secrets y las variables de entorno: la página
 **AI Coach** cargó correctamente con el aviso *"Configura GEMINI_API_KEY para
 activar el coach."*, y el registro del servidor no presentó excepciones.
 
+La suite de resiliencia verificó de forma específica el comportamiento ante la
+saturación del modelo. Se confirmó que un aviso de alta demanda en el modelo
+primario desencadena tres reintentos con espera incremental, que a continuación
+se recurre automáticamente al modelo de respaldo y que **el usuario recibe una
+respuesta válida**. También se comprobó el caso opuesto: cuando la cadena
+completa está indisponible, el mensaje mostrado no contiene el código de estado,
+ni el identificador de error del proveedor, ni traza alguna. Un fallo transitorio
+que se resuelve en el segundo intento no llega a cambiar de modelo, y una
+credencial rechazada no se reintenta en absoluto, evitando consumo innecesario de
+cuota.
+
+Esta suite quedó incorporada al repositorio como
+`frontend/streamlit_app/tests/test_gemini_resilience.py`, de modo que la
+verificación es reproducible por cualquier evaluador sin necesidad de credencial.
+El informe `docs/gemini_resilience_report.md` detalla la estrategia, los cinco
+escenarios cubiertos y los resultados registrados.
+
 ---
 
 ## Archivos entregados
@@ -268,6 +326,8 @@ activar el coach."*, y el registro del servidor no presentó excepciones.
 | `frontend/streamlit_app/components/sections.py` | Renderizado de la interfaz de chat |
 | `frontend/streamlit_app/utils/ui.py` | Estilos del chat y enlace de navegación |
 | `frontend/streamlit_app/requirements.txt` | Dependencia `google-genai` |
+| `frontend/streamlit_app/tests/test_gemini_resilience.py` | Suite de resiliencia sin consumo de cuota |
+| `docs/gemini_resilience_report.md` | Informe de resiliencia y resultados |
 | `.streamlit/secrets.toml.example` | Plantilla de configuración |
 | `docs/chatbot_installation.md` | Guía de instalación |
 | `docs/chatbot_delivery.md` | Este documento |

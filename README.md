@@ -72,9 +72,11 @@ The frontend needs the base URL of the running FastAPI backend and, for the AI C
 | --- | --- | --- | --- |
 | `VALORANT_API_BASE_URL` | No | `http://127.0.0.1:8000` | FastAPI backend consumed by the data pages |
 | `GEMINI_API_KEY` | For AI Coach | — | Google AI Studio credential, created at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
-| `GEMINI_MODEL` | No | `gemini-3.5-flash` | Gemini model used by the assistant |
+| `GEMINI_MODEL` | No | `gemini-2.5-flash` | First Gemini model tried by the assistant |
 
 The legacy name `GOOGLE_API_KEY` is still accepted as a fallback so existing deployments keep working, but `GEMINI_API_KEY` is the documented name.
+
+The assistant does not depend on a single model. When the configured model reports itself as saturated or rate limited, the client retries with incremental backoff and then falls back automatically along the chain `gemini-2.5-flash` → `gemini-2.5-flash-lite` → `gemini-3.5-flash`. Setting `GEMINI_MODEL` replaces the first position while keeping every fallback, so the model can be changed from the secrets panel without a code change. See [docs/chatbot_installation.md](docs/chatbot_installation.md) for details.
 
 Local development: copy the template and fill in your value.
 
@@ -86,7 +88,7 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml
 # .streamlit/secrets.toml
 VALORANT_API_BASE_URL = "http://127.0.0.1:8000"
 GEMINI_API_KEY = "your_key_here"
-GEMINI_MODEL = "gemini-3.5-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 ```
 
 Streamlit Community Cloud: open the app dashboard, go to **Settings → Secrets** and paste:
@@ -94,7 +96,7 @@ Streamlit Community Cloud: open the app dashboard, go to **Settings → Secrets*
 ```toml
 VALORANT_API_BASE_URL = "https://your-backend-domain.example.com"
 GEMINI_API_KEY = "your_key_here"
-GEMINI_MODEL = "gemini-3.5-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 ```
 
 The resolution order implemented in `frontend/streamlit_app/utils/config.py` is Streamlit secrets, then the corresponding environment variable, then the local default. The same order applies to the Gemini credential in `frontend/streamlit_app/utils/gemini_client.py`, which never hardcodes the key. The file `.streamlit/secrets.toml` is git-ignored; only the `.example` template is versioned.
