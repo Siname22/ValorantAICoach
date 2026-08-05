@@ -50,6 +50,8 @@ dmypy.json
 .envrc
 secrets/
 secrets.*
+!secrets.toml.example
+.streamlit/secrets.toml
 *.pem
 *.key
 *.crt

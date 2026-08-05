@@ -1,0 +1,24 @@
+# ==============================================================================
+# ValorantAICoach - Streamlit frontend dependencies (convenience copy)
+# ------------------------------------------------------------------------------
+# Convenience file for a local frontend-only install from the repository root:
+#     pip install -r requirements.txt
+#
+# NOTE: this is NOT the file Streamlit Community Cloud installs. The root of the
+# repository also contains a tracked uv.lock, which has higher priority than
+# requirements.txt in Community Cloud's resolution order. The authoritative file
+# for deployment lives next to the entrypoint:
+#     frontend/streamlit_app/requirements.txt
+# Keep both files in sync.
+#
+# Backend dependencies (FastAPI, SQLAlchemy, Alembic, psycopg) are intentionally
+# excluded and stay declared in pyproject.toml for local/uv development.
+# ==============================================================================
+
+streamlit>=1.39.0
+requests>=2.32.0
+plotly>=5.18.0
+pandas>=2.2.0
+
+# Google AI Studio (Gemini) SDK for the AI Coach chatbot.
+google-genai>=1.0.0
