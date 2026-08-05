@@ -1,76 +1,95 @@
-import logging
-from typing import Any
+"""
+Player service layer for Valorant AI Coach.
 
-from backend.providers.base.exceptions import NotFoundError
-from backend.providers.base.models import ProviderStatus
-from backend.providers.henrik.provider import HenrikProvider
+This service orchestrates data from multiple providers (Riot, Henrik, Tracker)
+to provide a unified, high-level API for the application. It follows Clean
+Architecture principles by defining its own domain models and using Dependency
+Injection to interact with providers.
+"""
+
+import logging
+from typing import Any, List, Optional, TypeVar, Callable, Awaitable
+
+from pydantic import BaseModel, Field
+
 from backend.providers.riot.provider import RiotProvider
+from backend.providers.henrik.provider import HenrikProvider
 from backend.providers.tracker.provider import TrackerProvider
-from pydantic import BaseModel
+from backend.providers.base.exceptions import NotFoundError, RateLimitError, AuthenticationError
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
 
-# --- Unified Domain Models ---
+# --- Domain Models (Provider-Agnostic) ---
 
-
-class PlayerProfile(BaseModel):
-    """Unified domain model for a player profile."""
-
-    puuid: str | None = None
+class PlayerIdentity(BaseModel):
+    """Unified player identity across all providers."""
+    puuid: Optional[str] = None
     game_name: str
     tag_line: str
-    region: str | None = None
-    account_level: int | None = None
-    avatar_url: str | None = None
-    rank_name: str | None = None
-    rank_tier: str | None = None
-    rank_icon_url: str | None = None
-
+    region: Optional[str] = None
+    account_level: Optional[int] = None
+    avatar_url: Optional[str] = None
+    source: str = Field(..., description="Provider that supplied the data")
 
 class PlayerRank(BaseModel):
-    """Unified domain model for a player's rank."""
-
+    """Unified rank information."""
     tier_name: str
-    rank_name: str | None = None
-    rank_icon_url: str | None = None
-    points: int | None = None
+    rank_name: Optional[str] = None
+    rank_icon_url: Optional[str] = None
+    points: Optional[int] = None
+    source: str
 
+class PlayerStatsOverview(BaseModel):
+    """Unified lifetime stats overview."""
+    kills: int
+    deaths: int
+    assists: int
+    kd_ratio: float
+    win_pct: float
+    headshot_pct: float
+    matches_played: Optional[int] = None
+    damage_per_round: Optional[float] = None
+    source: str
 
-class PlayerMatch(BaseModel):
-    """Unified domain model for a player's match."""
-
+class UnifiedMatch(BaseModel):
+    """Unified match summary."""
     match_id: str
     map_name: str
     mode: str
-    timestamp: Any  # Can be int or str depending on provider
+    timestamp: Any
     result: str
     kills: int
     deaths: int
     assists: int
     score: int
     agent_name: str
+    source: str
 
+class CompletePlayerProfile(BaseModel):
+    """Fully aggregated player profile."""
+    identity: PlayerIdentity
+    rank: Optional[PlayerRank] = None
+    stats: Optional[PlayerStatsOverview] = None
+    recent_matches: List[UnifiedMatch] = Field(default_factory=list)
+
+# --- Service Exceptions ---
 
 class PlayerServiceError(Exception):
     """Base exception for PlayerService."""
-
     pass
-
 
 class PlayerNotFoundError(PlayerServiceError):
     """Raised when a player is not found across all providers."""
-
     pass
-
 
 # --- Service Implementation ---
 
-
 class PlayerService:
     """
-    Service layer to coordinate data from different providers (Tracker, Henrik, Riot).
-    Implements a fallback strategy: Tracker -> Henrik -> Riot.
+    Orchestrates player data retrieval with fallback logic.
+    Priority: Tracker (Rich Data) -> Henrik -> Riot (Source of Truth).
     """
 
     def __init__(
@@ -82,265 +101,227 @@ class PlayerService:
         self.riot = riot_provider
         self.henrik = henrik_provider
         self.tracker = tracker_provider
-        # Order of priority for fallback
-        self._providers = [self.tracker, self.henrik, self.riot]
 
-    async def get_complete_player_profile(
-        self, game_name: str, tag_line: str
-    ) -> PlayerProfile:
+    async def get_complete_player_profile(self, game_name: str, tag_line: str) -> CompletePlayerProfile:
         """
-        Aggregates player profile data with full enrichment.
-        Attempts to get basic info from any provider and then enrich it.
+        Builds a complete profile by aggregating data from all providers.
+        Fails if identity cannot be resolved, but other parts degrade gracefully.
         """
-        # 1. Get basic identity and profile
-        profile = await self.get_player(game_name, tag_line)
-
-        # 2. Try to enrich with rank info if not already present
-        if not profile.rank_name:
-            try:
-                rank = await self.get_rank(game_name, tag_line, puuid=profile.puuid)
-                profile.rank_name = rank.tier_name
-                profile.rank_icon_url = rank.rank_icon_url
-            except Exception as e:
-                logger.warning(
-                    "Failed to enrich profile with rank for %s#%s: %s",
-                    game_name,
-                    tag_line,
-                    e,
-                )
-
-        return profile
-
-    async def get_player(self, game_name: str, tag_line: str) -> PlayerProfile:
-        """
-        Fetches basic player information using fallback strategy.
-        """
-        errors = []
-
-        # Try Tracker first (most data)
+        identity = await self.get_player_identity(game_name, tag_line)
+        
+        rank = None
         try:
-            tracker_data = await self.tracker.get_player_profile(
-                "riot", f"{game_name}#{tag_line}"
-            )
-            # Try to get stats for rank enrichment
-            try:
-                stats = await self.tracker.get_lifetime_stats(
-                    "riot", f"{game_name}#{tag_line}"
-                )
-                rank_name = stats.rank.tier_name if stats.rank else None
-                rank_icon = stats.rank.icon_url if stats.rank else None
-            except Exception:
-                rank_name, rank_icon = None, None
-
-            return PlayerProfile(
-                game_name=game_name,
-                tag_line=tag_line,
-                avatar_url=tracker_data.identity.avatar_url,
-                rank_name=rank_name,
-                rank_icon_url=rank_icon,
-            )
-        except NotFoundError:
-            errors.append("Tracker: Player not found")
+            rank = await self.get_rank(game_name, tag_line, puuid=identity.puuid)
         except Exception as e:
-            logger.error("Tracker failed for %s#%s: %s", game_name, tag_line, e)
-            errors.append(f"Tracker: {str(e)}")
+            logger.warning(f"Failed to fetch rank for {game_name}#{tag_line}: {e}")
 
-        # Try Henrik second
+        stats = None
         try:
-            henrik_data = await self.henrik.get_account(game_name, tag_line)
-            return PlayerProfile(
-                puuid=henrik_data.puuid,
-                game_name=henrik_data.name,
-                tag_line=henrik_data.tag,
-                region=henrik_data.region,
-                account_level=henrik_data.account_level,
-            )
-        except NotFoundError:
-            errors.append("Henrik: Player not found")
+            stats = await self.get_stats_overview(game_name, tag_line)
         except Exception as e:
-            logger.error("Henrik failed for %s#%s: %s", game_name, tag_line, e)
-            errors.append(f"Henrik: {str(e)}")
+            logger.warning(f"Failed to fetch stats for {game_name}#{tag_line}: {e}")
 
-        # Try Riot last
+        matches = []
         try:
-            riot_data = await self.riot.get_player_by_riot_id(game_name, tag_line)
-            return PlayerProfile(
-                puuid=riot_data.puuid,
-                game_name=riot_data.game_name,
-                tag_line=riot_data.tag_line,
-                region=riot_data.region,
-                account_level=riot_data.account_level,
-            )
-        except NotFoundError as e:
-            errors.append("Riot: Player not found")
-            raise PlayerNotFoundError(
-                f"Player {game_name}#{tag_line} not found across providers: {errors}"
-            ) from e
+            matches = await self.get_recent_matches(game_name, tag_line, puuid=identity.puuid)
         except Exception as e:
-            logger.error("Riot failed for %s#%s: %s", game_name, tag_line, e)
-            errors.append(f"Riot: {str(e)}")
-            raise PlayerServiceError(
-                f"Failed to fetch player {game_name}#{tag_line}: {errors}"
-            ) from e
+            logger.warning(f"Failed to fetch matches for {game_name}#{tag_line}: {e}")
 
-    async def get_rank(
-        self, game_name: str, tag_line: str, puuid: str | None = None
-    ) -> PlayerRank:
-        """
-        Fetches player rank using fallback strategy.
-        """
-        # 1. Try Tracker
-        try:
-            stats = await self.tracker.get_lifetime_stats(
-                "riot", f"{game_name}#{tag_line}"
-            )
-            if stats.rank:
-                return PlayerRank(
-                    tier_name=stats.rank.tier_name,
-                    rank_icon_url=stats.rank.icon_url,
-                    points=stats.rank.points,
-                )
-        except Exception as e:
-            logger.debug(f"Tracker rank failed for {game_name}#{tag_line}: {e}")
-
-        # 2. Try Riot (needs PUUID)
-        if not puuid:
-            try:
-                player = await self.riot.get_player_by_riot_id(game_name, tag_line)
-                puuid = player.puuid
-            except Exception:
-                pass
-
-        if puuid:
-            try:
-                riot_rank = await self.riot.get_player_rank(puuid)
-                return PlayerRank(
-                    tier_name=riot_rank.tier,
-                    rank_name=riot_rank.rank,
-                    points=riot_rank.ranked_rating,
-                )
-            except Exception as e:
-                logger.debug(f"Riot rank failed for {puuid}: {e}")
-
-        raise PlayerNotFoundError(f"Rank not found for {game_name}#{tag_line}")
-
-    async def get_recent_matches(
-        self, game_name: str, tag_line: str, puuid: str | None = None
-    ) -> list[PlayerMatch]:
-        """
-        Fetches recent matches using fallback strategy.
-        """
-        # 1. Try Tracker
-        try:
-            tracker_matches = await self.tracker.get_recent_matches(
-                "riot", f"{game_name}#{tag_line}"
-            )
-            return [
-                PlayerMatch(
-                    match_id=m.match_id,
-                    map_name=m.map_name,
-                    mode=m.mode_name or "Unknown",
-                    timestamp=m.timestamp,
-                    result=m.result,
-                    kills=m.kills,
-                    deaths=m.deaths,
-                    assists=m.assists,
-                    score=m.score,
-                    agent_name=m.agent_name,
-                )
-                for m in tracker_matches
-            ]
-        except Exception as e:
-            logger.debug(f"Tracker matches failed for {game_name}#{tag_line}: {e}")
-
-        # 2. Try Henrik
-        try:
-            # We need region for Henrik, try to guess or use a default if not known
-            region = "na"  # Defaulting to na if unknown
-            henrik_matches = await self.henrik.get_matches(region, game_name, tag_line)
-            return [
-                PlayerMatch(
-                    match_id="unknown",
-                    map_name=m.metadata.map,
-                    mode=m.metadata.mode,
-                    timestamp=m.metadata.game_start,
-                    result="Unknown",
-                    kills=0,
-                    deaths=0,
-                    assists=0,
-                    score=0,
-                    agent_name="Unknown",
-                )
-                for m in henrik_matches
-            ]
-        except Exception as e:
-            logger.debug(f"Henrik matches failed for {game_name}#{tag_line}: {e}")
-
-        # 3. Try Riot
-        if not puuid:
-            try:
-                player = await self.riot.get_player_by_riot_id(game_name, tag_line)
-                puuid = player.puuid
-            except Exception:
-                pass
-
-        if puuid:
-            try:
-                riot_matches = await self.riot.get_player_match_history(puuid)
-                return [
-                    PlayerMatch(
-                        match_id=m.match_id,
-                        map_name=m.map_id,
-                        mode=m.game_mode,
-                        timestamp=m.game_start_time,
-                        result=m.result,
-                        kills=m.player_stats.kills,
-                        deaths=m.player_stats.deaths,
-                        assists=m.player_stats.assists,
-                        score=m.player_stats.score,
-                        agent_name=m.player_stats.agent_name,
-                    )
-                    for m in riot_matches
-                ]
-            except Exception as e:
-                logger.debug(f"Riot matches failed for {puuid}: {e}")
-
-        return []
-
-    async def get_match(self, match_id: str) -> Any:
-        """
-        Fetches specific match details.
-        Note: Currently providers have limited direct match fetch by ID.
-        """
-        # Placeholder for future implementation
-        raise NotImplementedError("get_match is not yet implemented in providers")
-
-    async def health(self) -> dict:
-        """
-        Checks the health of all providers.
-        """
-        results = {}
-        for provider in self._providers:
-            health = await provider.health_check()
-            results[provider.name] = {
-                "status": health.status,
-                "message": health.message,
-                "latency_ms": health.latency_ms,
-            }
-
-        # Overall status
-        all_healthy = all(
-            r["status"] == ProviderStatus.HEALTHY for r in results.values()
-        )
-        any_healthy = any(
-            r["status"] == ProviderStatus.HEALTHY for r in results.values()
+        return CompletePlayerProfile(
+            identity=identity,
+            rank=rank,
+            stats=stats,
+            recent_matches=matches
         )
 
-        return {
-            "status": (
-                "healthy"
-                if all_healthy
-                else ("degraded" if any_healthy else "unhealthy")
-            ),
-            "providers": results,
-        }
+    async def get_player_identity(self, game_name: str, tag_line: str) -> PlayerIdentity:
+        """Resolves player identity with fallback: Tracker -> Henrik -> Riot."""
+        return await self._execute_with_fallback(
+            "get_player_identity",
+            [
+                lambda: self._get_identity_from_tracker(game_name, tag_line),
+                lambda: self._get_identity_from_henrik(game_name, tag_line),
+                lambda: self._get_identity_from_riot(game_name, tag_line)
+            ]
+        )
+
+    async def get_rank(self, game_name: str, tag_line: str, puuid: Optional[str] = None) -> PlayerRank:
+        """Resolves rank with fallback: Tracker -> Riot."""
+        return await self._execute_with_fallback(
+            "get_rank",
+            [
+                lambda: self._get_rank_from_tracker(game_name, tag_line),
+                lambda: self._get_rank_from_riot(game_name, tag_line, puuid)
+            ]
+        )
+
+    async def get_stats_overview(self, game_name: str, tag_line: str) -> PlayerStatsOverview:
+        """Resolves stats: Tracker is currently the only provider for this."""
+        return await self._execute_with_fallback(
+            "get_stats_overview",
+            [lambda: self._get_stats_from_tracker(game_name, tag_line)]
+        )
+
+    async def get_recent_matches(self, game_name: str, tag_line: str, puuid: Optional[str] = None) -> List[UnifiedMatch]:
+        """Resolves recent matches with fallback: Tracker -> Riot -> Henrik."""
+        return await self._execute_with_fallback(
+            "get_recent_matches",
+            [
+                lambda: self._get_matches_from_tracker(game_name, tag_line),
+                lambda: self._get_matches_from_riot(game_name, tag_line, puuid),
+                lambda: self._get_matches_from_henrik(game_name, tag_line)
+            ]
+        )
+
+    # --- Fallback Engine ---
+
+    async def _execute_with_fallback(self, operation: str, actions: List[Callable[[], Awaitable[T]]]) -> T:
+        """Executes a list of async actions until one succeeds."""
+        last_error = None
+        for action in actions:
+            try:
+                return await action()
+            except (NotFoundError, PlayerNotFoundError):
+                continue
+            except Exception as e:
+                logger.error(f"Provider failed during {operation}: {e}")
+                last_error = e
+                continue
+        
+        if last_error:
+            raise PlayerServiceError(f"All providers failed for {operation}: {last_error}")
+        raise PlayerNotFoundError(f"Data not found for {operation}")
+
+    # --- Provider Adapters ---
+
+    async def _get_identity_from_tracker(self, game_name: str, tag_line: str) -> PlayerIdentity:
+        profile = await self.tracker.get_player_profile("riot", f"{game_name}#{tag_line}")
+        return PlayerIdentity(
+            game_name=game_name,
+            tag_line=tag_line,
+            avatar_url=profile.identity.avatar_url,
+            source="tracker"
+        )
+
+    async def _get_identity_from_henrik(self, game_name: str, tag_line: str) -> PlayerIdentity:
+        account = await self.henrik.get_account(game_name, tag_line)
+        return PlayerIdentity(
+            puuid=account.puuid,
+            game_name=account.name,
+            tag_line=account.tag,
+            region=account.region,
+            account_level=account.account_level,
+            source="henrik"
+        )
+
+    async def _get_identity_from_riot(self, game_name: str, tag_line: str) -> PlayerIdentity:
+        player = await self.riot.get_player_by_riot_id(game_name, tag_line)
+        return PlayerIdentity(
+            puuid=player.puuid,
+            game_name=player.game_name,
+            tag_line=player.tag_line,
+            region=player.region,
+            account_level=player.account_level,
+            source="riot"
+        )
+
+    async def _get_rank_from_tracker(self, game_name: str, tag_line: str) -> PlayerRank:
+        stats = await self.tracker.get_lifetime_stats("riot", f"{game_name}#{tag_line}")
+        if not stats.rank:
+            raise PlayerNotFoundError("Rank not available in Tracker")
+        return PlayerRank(
+            tier_name=stats.rank.tier_name,
+            rank_icon_url=stats.rank.icon_url,
+            points=stats.rank.points,
+            source="tracker"
+        )
+
+    async def _get_rank_from_riot(self, game_name: str, tag_line: str, puuid: Optional[str]) -> PlayerRank:
+        if not puuid:
+            player = await self.riot.get_player_by_riot_id(game_name, tag_line)
+            puuid = player.puuid
+        rank = await self.riot.get_player_rank(puuid)
+        return PlayerRank(
+            tier_name=rank.tier,
+            rank_name=rank.rank,
+            points=rank.ranked_rating,
+            source="riot"
+        )
+
+    async def _get_stats_from_tracker(self, game_name: str, tag_line: str) -> PlayerStatsOverview:
+        stats = await self.tracker.get_lifetime_stats("riot", f"{game_name}#{tag_line}")
+        return PlayerStatsOverview(
+            kills=int(stats.kills.value),
+            deaths=int(stats.deaths.value),
+            assists=int(stats.assists.value),
+            kd_ratio=stats.kd_ratio.value,
+            win_pct=stats.win_pct.value,
+            headshot_pct=stats.headshot_pct.value,
+            matches_played=int(stats.matches_played.value) if stats.matches_played else None,
+            damage_per_round=stats.damage_per_round.value if stats.damage_per_round else None,
+            source="tracker"
+        )
+
+    async def _get_matches_from_tracker(self, game_name: str, tag_line: str) -> List[UnifiedMatch]:
+        matches = await self.tracker.get_recent_matches("riot", f"{game_name}#{tag_line}")
+        return [
+            UnifiedMatch(
+                match_id=m.match_id,
+                map_name=m.map_name,
+                mode=m.mode_name or "Unknown",
+                timestamp=m.timestamp,
+                result=m.result,
+                kills=m.kills,
+                deaths=m.deaths,
+                assists=m.assists,
+                score=m.score,
+                agent_name=m.agent_name,
+                source="tracker"
+            ) for m in matches
+        ]
+
+    async def _get_matches_from_riot(self, game_name: str, tag_line: str, puuid: Optional[str]) -> List[UnifiedMatch]:
+        if not puuid:
+            player = await self.riot.get_player_by_riot_id(game_name, tag_line)
+            puuid = player.puuid
+        matches = await self.riot.get_player_match_history(puuid)
+        return [
+            UnifiedMatch(
+                match_id=m.match_id,
+                map_name=m.map_id,
+                mode=m.game_mode,
+                timestamp=m.game_start_time,
+                result=m.result,
+                kills=m.player_stats.kills,
+                deaths=m.player_stats.deaths,
+                assists=m.player_stats.assists,
+                score=m.player_stats.score,
+                agent_name=m.player_stats.agent_name,
+                source="riot"
+            ) for m in matches
+        ]
+
+    async def _get_matches_from_henrik(self, game_name: str, tag_line: str) -> List[UnifiedMatch]:
+        # Henrik needs region, defaulting to 'na' for lookup
+        matches = await self.henrik.get_matches("na", game_name, tag_line)
+        return [
+            UnifiedMatch(
+                match_id="unknown",
+                map_name=m.metadata.map,
+                mode=m.metadata.mode,
+                timestamp=m.metadata.game_start,
+                result="Unknown",
+                kills=0,
+                deaths=0,
+                assists=0,
+                score=0,
+                agent_name="Unknown",
+                source="henrik"
+            ) for m in matches
+        ]
+
+    async def close(self) -> None:
+        """Closes all underlying provider clients."""
+        await self.riot.close()
+        await self.henrik.close()
+        await self.tracker.close()
