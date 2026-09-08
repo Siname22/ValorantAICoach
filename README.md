@@ -7,13 +7,13 @@
 ![Python](https://img.shields.io/badge/Python-3.12+-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688)
 ![Tests](https://img.shields.io/badge/Tests-78%20Passing-success)
-![License](https://img.shields.io/badge/License-MIT-green)
+![License](https://img.shields.io/badge/License-Proprietary-red)
 
 ---
 
 ## 🚀 Overview
 
-Valorant AI Coach is an open-source platform that aims to become an intelligent assistant capable of analysing VALORANT matches and helping players improve using Artificial Intelligence.
+Valorant AI Coach is a source-available project that aims to become an intelligent assistant capable of analysing VALORANT matches and helping players improve using Artificial Intelligence.
 
 Unlike traditional stat trackers, this project combines multiple technologies into a single architecture:
 
@@ -214,13 +214,20 @@ Future AI
 
 # 🤝 Contributing
 
-Contributions, ideas and feedback are always welcome.
+This repository is not an open-source project.
 
-If you'd like to contribute:
+If you are collaborating on the project, **do not commit directly to `main`**.
 
-1. Fork the repository
-2. Create a feature branch
-3. Open a Pull Request
+All project work should be performed on a dedicated branch and submitted through a Pull Request. The repository owner reviews changes before they are merged into `main`.
+
+Suggested workflow:
+
+1. Create or use an assigned feature branch.
+2. Make commits only on that branch.
+3. Push the branch to GitHub.
+4. Open a Pull Request against `main`.
+5. Wait for review and approval.
+6. Only approved changes are merged into `main`.
 
 ---
 
