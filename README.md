@@ -1,304 +1,162 @@
-# 🎯 Valorant AI Coach
+# Valorant AI Coach
 
 ![Valorant AI Coach](assets/banner.png)
 
-> AI-powered coaching platform for VALORANT players built with Clean Architecture, FastAPI and multiple data providers.
+AI-powered VALORANT player analytics and coaching, with FastAPI, real data
+providers and a Streamlit frontend with a Gemini assistant.
 
-![Python](https://img.shields.io/badge/Python-3.12+-blue)
-![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688)
-![Tests](https://img.shields.io/badge/Tests-pytest-success)
-![License](https://img.shields.io/badge/License-MIT-green)
+## Development Status
 
----
+Current branch: `codex/system-integration`.
+Backend version: 0.4.0.
 
-## 🚀 Overview
+The backend foundation was verified before the current integration: player
+identity, rank/history fallback, Riot match detail, explicit provider failures,
+and application-scoped HTTP client cleanup. The current branch also incorporates
+the Streamlit/Gemini work from `develop`.
 
-Valorant AI Coach is an open-source platform that aims to become an intelligent assistant capable of analysing VALORANT matches and helping players improve using Artificial Intelligence.
+**Development integration, not a production release.** Backend and frontend
+verification: 362 pytest tests passed, with one upstream Starlette deprecation
+warning; the separate Gemini resilience script passed 81 checks. Ruff and
+Black passed across 101 Python files. Live provider credentials and public
+deployment have not been verified. See [roadmap](docs/ROADMAP.md) and
+[delivery plan](docs/DELIVERY_PLAN.md) for the complete remaining scope.
 
-Unlike traditional stat trackers, this project combines multiple technologies into a single architecture:
+## Local Setup
 
-- 🎮 Match statistics
-- 🤖 Generative AI
-- 👁️ Computer Vision
-- 📷 OCR
-- 📊 Tactical analysis
-- 🧠 Personalized coaching
-
-The current focus is building a scalable architecture before implementing advanced AI features.
-
-## Local Setup (0.4.0)
-
-Python 3.12+ and `uv` are required. From the repository root:
+Python 3.12+ and [uv](https://docs.astral.sh/uv/) are required. From the repository root:
 
 ```powershell
-uv sync --frozen
+uv sync --frozen --extra frontend
 Copy-Item .env.example .env
-uv run uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+uv run --frozen --extra frontend uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Open [API documentation](http://127.0.0.1:8000/docs). The backend also starts
-without `.env` or API keys: `/health/live` returns `ok`, `/health` reports
-disabled providers, and player queries return `503` until a supported provider
-is configured. PostgreSQL is not required for the current player endpoints.
-
-Set one or more keys in `.env`: `HENRIK_API_KEY`, `TRACKER_API_KEY`, or
-`RIOT_API_KEY`. Restart the backend after changing provider configuration.
-An empty key or `<PROVIDER>_ENABLED=false` disables that provider; malformed
-configuration is reported as `misconfigured`. Keys are not included in API errors.
-
-- Henrik supplies account identity, current rank/RR and stored match summaries.
-  Match queries resolve the account region, or accept `?region=eu` explicitly.
-  Stored history may be incomplete; it is not a complete live match archive.
-- Tracker supplies profiles, rank and recent matches, subject to API access.
-- Riot uses real account-v1 and val-match-v1 requests. Match access depends on
-  the permissions of the supplied key. It does not expose a player's current
-  rank/RR. `RIOT_REGION` selects the match shard; `RIOT_BASE_URL` must be a shard
-  host without an API path. Set `RIOT_ACCOUNT_BASE_URL` independently to the
-  appropriate continental account host (`europe`, `americas` or `asia`).
-
-The example configuration targets Europe. Riot summaries preserve official map
-and character identifiers; their conversion to display names is still pending.
-Timestamps retain each provider's format: Riot milliseconds, Henrik/Tracker
-date strings. Match summaries include `provider` provenance. Henrik's stored
-`score` has no documented total/average meaning, so its `score` is `null` and the
-original value is preserved in `provider_score`; do not compare that value with
-total scores. See the [stored-match guide](https://docs.henrikdev.xyz/valorant/guides/stored-matches.md)
-and [OpenAPI contract](https://api.henrikdev.xyz/openapi.json).
-Tests simulate provider HTTP responses; live credentials are
-required to verify access against the external APIs.
-
-For Docker:
+For the frontend, use a second terminal:
 
 ```powershell
-docker compose up --build
+uv run --frozen --extra frontend streamlit run frontend/streamlit_app/app.py
 ```
 
-Compose passes provider credentials/configuration to the backend and uses
-`/health/live` for its health check. `httpx` is a runtime dependency, so the
-production image does not require development packages.
+Open [Streamlit](http://localhost:8501) or [API documentation](http://127.0.0.1:8000/docs).
+Frontend dependencies are an optional extra; backend-only installs remain small.
 
----
+The backend reads `.env`; Streamlit reads process environment or
+`.streamlit/secrets.toml`, not the backend's dotenv file. Copy
+`.streamlit/secrets.toml.example` for frontend settings.
+Do not commit secrets or share API keys in issues, PRs or chat.
 
-# ✨ Current Features
+## Providers and Data Semantics
 
-## Multi Provider SDK
+Set one or more backend keys: `HENRIK_API_KEY`,
+`TRACKER_API_KEY`, `RIOT_API_KEY`.
+A blank key or `<PROVIDER>_ENABLED=false` disables that provider.
+Restart the backend after configuration changes.
 
-Supports multiple providers through a common abstraction layer.
+- Henrik: account identity, current rank/RR and stored match summaries. Account
+  region is resolved automatically, or history accepts `?region=eu`.
+  Stored history may be incomplete.
+- Tracker: profiles, lifetime stats, rank and recent matches, subject to API access.
+- Riot: real account-v1 and VAL match API calls. The official API does not expose
+  current player rank/RR. Key permissions and the selected shard matter.
 
-Current providers:
+The example targets Europe. `RIOT_REGION` derives the shard host only when
+`RIOT_BASE_URL` is unset. If using the explicit URL in the example/Compose,
+change that URL as well when selecting another shard. Continental account routing
+uses the independent `RIOT_ACCOUNT_BASE_URL`.
 
-- Riot API
-- HenrikDev API
-- Tracker.gg
+Match summaries include provider provenance. Riot map/character IDs are not yet
+resolved to display names. Timestamps retain provider formats. Henrik's raw
+`stats.score` has no documented total/average meaning: the normalized
+`score` is null and the original is retained in `provider_score`.
+See the [stored-match contract](https://docs.henrikdev.xyz/valorant/guides/stored-matches.md)
+and [OpenAPI schema](https://api.henrikdev.xyz/openapi.json).
 
-Future providers can be added without changing business logic.
+## API
 
----
-
-## Player Service
-
-Unified service responsible for obtaining player information.
-
-Features:
-
-- Automatic provider fallback
-- Dependency Injection
-- Provider abstraction
-- Unified domain models
-
-```
-Tracker
-   ↓
-Henrik
-   ↓
- Riot
-```
-
-If one provider fails, the next one is automatically used.
-
----
-
-## REST API
-
-FastAPI endpoints already implemented.
-
-Examples:
-
-```
-GET /players/{gameName}/{tagLine}
-
-GET /players/{gameName}/{tagLine}/rank
-
-GET /players/{gameName}/{tagLine}/matches
-
-GET /players/{gameName}/{tagLine}/matches?region=eu&limit=5
-
+```text
+GET /players/{game}/{tag}
+GET /players/{game}/{tag}/rank
+GET /players/{game}/{tag}/matches?region=eu&limit=5
+GET /players/{game}/{tag}/stats
+GET /players/{game}/{tag}/overview?limit=5
 GET /matches/{matchId}
-
 GET /health
-
 GET /health/live
 ```
 
-The match limit is 1-20 (default 10). `/matches/{matchId}` returns the full Riot
-match payload and requires the Riot provider on the appropriate shard.
-`404` means every applicable provider confirmed absence. Provider outages,
-missing credentials and unsupported data capabilities return `503`; malformed
-upstream responses return `502`; a confirmed
-empty match history returns `200` with `matches: []`. Invalid input returns `422`.
+History limits are 1-20, default 10. Full match detail requires Riot.
+`404` means all applicable providers confirmed absence; `503` means
+unavailable/disabled capability; `502` means malformed upstream data.
+A valid empty history returns 200 with an empty list. Invalid input returns 422.
 
----
+Lifetime statistics require Tracker and reject invalid counters/non-finite
+values rather than truncating or fabricating data. The overview preserves identity when
+optional sections fail and distinguishes unavailable history from confirmed
+empty history.
 
-## Architecture
+Streamlit opens on player lookup. Search results survive reruns without repeated
+requests; rank/history outages preserve available data. Displayed provider text
+is escaped and RR zero remains visible. Roadmap screens use explicit milestones,
+not invented completion percentages.
 
-```
-                FastAPI
-                   │
-           REST Controllers
-                   │
-            Player Service
-                   │
-      ┌────────────┼────────────┐
-      │            │            │
-   Tracker      Henrik        Riot
-      │            │            │
-      └──────── Providers ──────┘
-```
+## Gemini Coach
 
-The project follows:
+The existing assistant uses the official `google-genai` SDK.
+Configure `GEMINI_API_KEY` in Streamlit secrets or environment;
+`GEMINI_MODEL` selects the preferred model. No key means the coach is disabled.
+The current chat is general coaching: automatic live-player context, persistent
+memory and grounded match reports remain separate delivery milestones.
+SDK transport phases have 10-second timeouts. The wrapper controls retries
+without multiplying the SDK's own attempts, handles actual HTTPX transport
+failures, closes the client after each turn, and sanitizes logs and errors.
+This is not a total wall-clock deadline. See the
+[SDK documentation](https://github.com/googleapis/python-genai) and
+[HTTPX exception hierarchy](https://www.python-httpx.org/exceptions/).
 
-- Clean Architecture
-- SOLID principles
-- Dependency Injection
-- Provider Pattern
-- Repository-like abstraction
-- Service Layer
+For frontend-only Streamlit Cloud installs, the entrypoint is
+`frontend/streamlit_app/app.py` and its adjacent
+`requirements.txt` supplies the frontend dependencies. Host FastAPI separately
+and set `VALORANT_API_BASE_URL` to that backend.
+See [chat setup](docs/chatbot_installation.md).
 
----
+## Quality and Deployment
 
-# 🧪 Quality
-
-Current automated tests:
-
-- Provider SDK
-- Riot Provider
-- Henrik Provider
-- Tracker Provider
-- PlayerService
-- Agent Framework
-- REST endpoints
-
-```
-uv run pytest
-uv run ruff check .
+```powershell
+uv run --frozen --extra frontend pytest -q tests frontend/streamlit_app/tests
+uv run --frozen --extra frontend python frontend/streamlit_app/tests/test_gemini_resilience.py
+uv run --frozen --extra frontend ruff check .
+uv run --frozen --extra frontend black --workers 1 --check backend tests agents frontend
+docker compose up --build
 ```
 
-Code quality:
+GitHub CI runs locked Python 3.12/3.13 tests, page imports, Gemini resilience,
+lint/format checks, and a production container build/liveness smoke test.
+Its configuration follows the [official uv Actions guide](https://docs.astral.sh/uv/guides/integration/github/).
+Provider tests simulate HTTP responses and do not prove real key access.
+Docker build/runtime has not run locally; remote CI and real upstream smoke
+tests remain integration/deployment gates. Local browser checks covered player
+lookup and the missing-provider error at 375, 768 and 1280 pixel widths; real
+player success and partial results are covered by simulated Streamlit AppTest.
+Compose is development configuration with reload, exposed ports and local
+database defaults, not a hardened public deployment. Authentication, quota limits
+and production readiness must be completed before public access.
 
-- Ruff
-- Black
-- Pytest
+## Architecture and Roadmap
 
----
+[Architecture](docs/Architecture.md) separates implemented components from plans.
+The delivery plan retains persistence, measurable analysis, grounded AI reports,
+dashboard/history, authentication/linking, background jobs, OCR/screenshots,
+evidenced timeline/tactics, persistent agent memory and production deployment.
+No milestone is complete solely because scaffolding or a percentage chart exists.
 
-# 📂 Project Structure
+## License and Contributions
 
-```
-backend/
-    app/
-        api/
-        services/
-        dependencies/
+Source available for viewing, study and evaluation under the owner's
+[proprietary license](LICENSE). This is not an open-source project.
 
-    providers/
-        riot/
-        tracker/
-        henrik/
+Work on a dedicated branch, maintain this README when creating branches or
+pushing changes, and submit a pull request against `main`.
+The owner reviews and approves merges; do not commit directly to `main`.
 
-agents/
-
-tests/
-
-docs/
-```
-
----
-
-# 🔮 Roadmap
-
-Current progress
-
-- ✅ Provider SDK
-- ✅ Tracker Provider
-- ✅ Riot Provider
-- ✅ Henrik Provider
-- ✅ Player Service
-- ✅ FastAPI REST API
-
-Next milestones
-
-- OCR integration
-- Screenshot analysis
-- Computer Vision
-- Match timeline analysis
-- AI tactical reports
-- LLM coaching
-- Agent memory
-- Web frontend
-- Authentication
-
----
-
-# 🛠️ Tech Stack
-
-Backend
-
-- Python
-- FastAPI
-- Pydantic
-- Pytest
-
-Architecture
-
-- Clean Architecture
-- SOLID
-- Dependency Injection
-
-External APIs
-
-- Riot Games API
-- HenrikDev API
-- Tracker.gg
-
-Future AI
-
-- OpenAI
-- Gemini
-- Claude
-- Local LLMs
-
----
-
-# 🤝 Contributing
-
-Contributions, ideas and feedback are always welcome.
-
-If you'd like to contribute:
-
-1. Fork the repository
-2. Create a feature branch
-3. Open a Pull Request
-
----
-
-# ⭐ Why this project?
-
-This project is not intended to become "another VALORANT stats tracker".
-
-Its goal is to explore how modern backend architecture can be combined with Artificial Intelligence to build an intelligent coaching platform capable of understanding gameplay and helping players improve.
-
----
-
-## 📌 Repository
-
-https://github.com/Siname22/ValorantAICoach
+[Repository](https://github.com/Siname22/ValorantAICoach)

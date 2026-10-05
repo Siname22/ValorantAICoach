@@ -7,13 +7,13 @@ from backend.providers.base.models import ProviderStatus
 from backend.providers.henrik.provider import HenrikProvider
 from backend.providers.riot.provider import RiotProvider
 from backend.providers.tracker.provider import TrackerProvider
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, ValidationError
 
 logger = logging.getLogger(__name__)
 
 
-class PlayerProfile(BaseModel):
-    """Unified domain model for a player profile."""
+class PlayerIdentity(BaseModel):
+    """Provider-backed identity, shared by flat and aggregated profiles."""
 
     puuid: str | None = None
     game_name: str
@@ -21,6 +21,12 @@ class PlayerProfile(BaseModel):
     region: str | None = None
     account_level: int | None = None
     avatar_url: str | None = None
+    source: Literal["tracker", "henrik", "riot"] | None = None
+
+
+class PlayerProfile(PlayerIdentity):
+    """Flat player profile used by the existing REST endpoint."""
+
     rank_name: str | None = None
     rank_tier: str | None = None
     rank_icon_url: str | None = None
@@ -33,6 +39,21 @@ class PlayerRank(BaseModel):
     rank_name: str | None = None
     rank_icon_url: str | None = None
     points: int | None = None
+    source: Literal["tracker", "henrik"] | None = None
+
+
+class PlayerStatsOverview(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    kills: NonNegativeInt
+    deaths: NonNegativeInt
+    assists: NonNegativeInt
+    kd_ratio: float = Field(ge=0)
+    win_pct: float = Field(ge=0, le=100)
+    headshot_pct: float = Field(ge=0, le=100)
+    matches_played: NonNegativeInt | None = None
+    damage_per_round: float | None = Field(default=None, ge=0)
+    source: Literal["tracker"] = "tracker"
 
 
 class PlayerMatch(BaseModel):
@@ -54,6 +75,14 @@ class PlayerMatch(BaseModel):
 
 class PlayerServiceError(Exception):
     """Base exception for player data retrieval."""
+
+
+class CompletePlayerProfile(BaseModel):
+    identity: PlayerIdentity
+    rank: PlayerRank | None = None
+    stats: PlayerStatsOverview | None = None
+    recent_matches: list[PlayerMatch] | None = None
+    unavailable_sections: list[str] = Field(default_factory=list)
 
 
 class PlayerNotFoundError(PlayerServiceError):
@@ -150,6 +179,7 @@ class PlayerService:
                     avatar_url=data.identity.avatar_url,
                     rank_name=rank_name,
                     rank_icon_url=rank_icon,
+                    source="tracker",
                 )
             except Exception as error:
                 self._record_failure("tracker", error, errors)
@@ -163,6 +193,7 @@ class PlayerService:
                     tag_line=data.tag,
                     region=data.region,
                     account_level=data.account_level,
+                    source="henrik",
                 )
             except Exception as error:
                 self._record_failure("henrik", error, errors)
@@ -176,11 +207,80 @@ class PlayerService:
                     tag_line=data.tag_line,
                     region=data.region,
                     account_level=data.account_level,
+                    source="riot",
                 )
             except Exception as error:
                 self._record_failure("riot", error, errors)
 
         self._raise_failure(errors, "Player")
+
+    async def get_player_identity(
+        self, game_name: str, tag_line: str
+    ) -> PlayerIdentity:
+        profile = await self.get_player(game_name, tag_line)
+        return PlayerIdentity.model_validate(profile.model_dump())
+
+    async def get_stats_overview(
+        self, game_name: str, tag_line: str
+    ) -> PlayerStatsOverview:
+        errors: list[Exception] = []
+        if self.tracker is not None:
+            try:
+                stats = await self.tracker.get_lifetime_stats(
+                    "riot", f"{game_name}#{tag_line}"
+                )
+                return PlayerStatsOverview(
+                    kills=stats.kills.value,
+                    deaths=stats.deaths.value,
+                    assists=stats.assists.value,
+                    kd_ratio=stats.kd_ratio.value,
+                    win_pct=stats.win_pct.value,
+                    headshot_pct=stats.headshot_pct.value,
+                    matches_played=(
+                        stats.matches_played.value
+                        if stats.matches_played is not None
+                        else None
+                    ),
+                    damage_per_round=(
+                        stats.damage_per_round.value
+                        if stats.damage_per_round is not None
+                        else None
+                    ),
+                )
+            except Exception as error:
+                self._record_failure("tracker", error, errors)
+        self._raise_failure(errors, "Lifetime statistics")
+
+    async def get_player_overview(
+        self, game_name: str, tag_line: str, *, limit: int = 10
+    ) -> CompletePlayerProfile:
+        identity = await self.get_player_identity(game_name, tag_line)
+        results = await asyncio.gather(
+            self.get_rank(game_name, tag_line, region=identity.region),
+            self.get_stats_overview(game_name, tag_line),
+            self.get_recent_matches(
+                game_name,
+                tag_line,
+                puuid=identity.puuid,
+                region=identity.region,
+                limit=limit,
+            ),
+            return_exceptions=True,
+        )
+        sections = {}
+        unavailable = []
+        for name, result in zip(
+            ("rank", "stats", "recent_matches"), results, strict=True
+        ):
+            if isinstance(result, PlayerServiceError):
+                unavailable.append(name)
+            elif isinstance(result, BaseException):
+                raise result
+            else:
+                sections[name] = result
+        return CompletePlayerProfile(
+            identity=identity, unavailable_sections=unavailable, **sections
+        )
 
     async def _henrik_region(
         self, game_name: str, tag_line: str, region: str | None
@@ -209,6 +309,7 @@ class PlayerService:
                         tier_name=stats.rank.tier_name,
                         rank_icon_url=stats.rank.icon_url,
                         points=stats.rank.points,
+                        source="tracker",
                     )
                 errors.append(NotFoundError("Rank not present"))
             except Exception as error:
@@ -224,6 +325,7 @@ class PlayerService:
                     rank_name=rank.tier_name,
                     rank_icon_url=rank.rank_icon_url,
                     points=rank.points,
+                    source="henrik",
                 )
             except Exception as error:
                 self._record_failure("henrik", error, errors)

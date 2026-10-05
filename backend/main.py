@@ -63,7 +63,7 @@ app = FastAPI(
         "url": "https://github.com/Siname22/ValorantAICoach",
     },
     license_info={
-        "name": "MIT",
+        "name": "Proprietary",
     },
     openapi_tags=tags_metadata,
 )

@@ -7,7 +7,11 @@ from backend.app.schemas.player_schemas import (
     PlayerProfileResponse,
     PlayerRankResponse,
 )
-from backend.app.services.player_service import PlayerService
+from backend.app.services.player_service import (
+    CompletePlayerProfile,
+    PlayerService,
+    PlayerStatsOverview,
+)
 from fastapi import APIRouter, Depends, Path, Query
 
 router = APIRouter(prefix="/players", tags=["players"])
@@ -79,3 +83,28 @@ async def get_player_matches(
         matches=[PlayerMatchResponse(**match.model_dump()) for match in matches],
         count=len(matches),
     )
+
+
+@router.get(
+    "/{game_name}/{tag_line}/stats",
+    response_model=PlayerStatsOverview,
+    responses=ERROR_RESPONSES,
+)
+async def get_player_stats(
+    game_name: GameName, tag_line: TagLine, service: Service
+) -> PlayerStatsOverview:
+    return await service.get_stats_overview(game_name, tag_line)
+
+
+@router.get(
+    "/{game_name}/{tag_line}/overview",
+    response_model=CompletePlayerProfile,
+    responses=ERROR_RESPONSES,
+)
+async def get_player_overview(
+    game_name: GameName,
+    tag_line: TagLine,
+    service: Service,
+    limit: Annotated[int, Query(ge=1, le=20)] = 10,
+) -> CompletePlayerProfile:
+    return await service.get_player_overview(game_name, tag_line, limit=limit)

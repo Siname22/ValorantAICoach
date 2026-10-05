@@ -14,6 +14,7 @@ class PlayerProfileResponse(BaseModel):
     region: str | None = Field(None, description="Account region (e.g., na, eu, latam)")
     account_level: int | None = Field(None, description="Player's account level")
     avatar_url: str | None = Field(None, description="URL to the player's avatar image")
+    source: Literal["tracker", "henrik", "riot"] | None = None
     rank_name: str | None = Field(None, description="Current rank tier name")
     rank_tier: str | None = Field(None, description="Internal rank tier value")
     rank_icon_url: str | None = Field(None, description="URL to the rank icon image")
@@ -28,6 +29,7 @@ class PlayerRankResponse(BaseModel):
     rank_name: str | None = Field(None, description="Detailed rank name")
     rank_icon_url: str | None = Field(None, description="URL to the rank icon image")
     points: int | None = Field(None, description="Ranked rating points")
+    source: Literal["tracker", "henrik"] | None = None
 
 
 class PlayerMatchResponse(BaseModel):

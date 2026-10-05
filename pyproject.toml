@@ -6,7 +6,7 @@
 [project]
 name = "valorant-ai-coach"
 version = "0.4.0"
-description = "Open-source AI-powered Valorant analytics and coaching platform."
+description = "AI-powered Valorant analytics and coaching platform."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
@@ -24,6 +24,16 @@ dependencies = [
     "psycopg[binary]>=3.2.0",
     "pydantic-settings>=2.10.0",
     "httpx>=0.28.0",
+]
+
+[project.optional-dependencies]
+frontend = [
+    "streamlit>=1.39.0",
+    "requests>=2.32.0",
+    "plotly>=5.18.0",
+    "pandas>=2.2.0",
+    "google-genai>=2.28.0,<3.0.0",
+    "httpx>=0.28.1",
 ]
 
 [dependency-groups]
@@ -55,7 +65,7 @@ target-version = ["py312"]
 [tool.ruff]
 line-length = 88
 target-version = "py312"
-src = ["backend", "tests", "agents"]
+src = ["backend", "tests", "agents", "frontend/streamlit_app"]
 
 [tool.ruff.lint]
 select = [
@@ -67,6 +77,10 @@ select = [
     "B",   # flake8-bugbear (likely bugs)
     "SIM", # flake8-simplify
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Preserve the reviewed multiline coaching instruction text verbatim.
+"frontend/streamlit_app/utils/coach_persona.py" = ["E501"]
 
 # ------------------------------------------------------------------------------
 # pytest
