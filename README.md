@@ -14,10 +14,11 @@ The integration is published in draft [PR #8](https://github.com/Siname22/Valora
 The authenticated GitHub connector preserved the exact local Git tree and
 original history; local Git push still requires renewed authentication.
 `main` is unchanged and merging requires the owner's approval.
-Initial remote Python 3.12/3.13 checks passed. The container built successfully,
-but its first liveness request failed on a startup connection reset. A bounded
-retry fix and real-curl regression tests are verified locally; remote checks
-for that follow-up are pending. This is not an all-green CI or release claim.
+Remote Python 3.12/3.13 and container checks passed for commit `2a3f937`.
+CI reproduced the startup connection reset and recovered with bounded retries,
+then verified liveness 200 and the no-provider 503. The real-curl regression
+tests also passed on Linux with no skips. The PR shows checks for later
+documentation revisions. Passing CI is not a production-release claim.
 
 The backend foundation was verified before the current integration: player
 identity, rank/history fallback, Riot match detail, explicit provider failures,
@@ -157,9 +158,9 @@ GitHub CI is configured for locked Python 3.12/3.13 tests, page imports, Gemini
 resilience, lint/format checks, and a production container build/liveness smoke test.
 Its configuration follows the [official uv Actions guide](https://docs.astral.sh/uv/guides/integration/github/).
 Provider tests simulate HTTP responses and do not prove real key access.
-Docker build/runtime has not run locally. Initial remote CI verified the image
-build and production imports, not a successful liveness smoke test. Passing
-follow-up container checks and real upstream smoke tests remain gates. The
+Docker build/runtime has not run locally. Remote CI at `2a3f937` verified the
+image build, non-root execution, production imports, startup liveness and the
+no-provider 503. Real upstream and hosted deployment smoke tests remain gates. The
 liveness command retries startup transport failures while retaining HTTP
 failure detection and bounded connect/request/retry waits; a final in-flight
 attempt can outlast the retry budget. Local browser checks covered player
