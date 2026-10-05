@@ -60,6 +60,14 @@ their conclusions; a generic chatbot is not a personalized match analyst.
   correction; focused independent re-review closed all five findings and
   verified client cleanup on success/failure. Production certification remains
   outside that review's scope.
+- Persistence preflight found no application ORM models or Alembic revisions.
+  Existing offline SQL generation fails with a synthetic percent-encoded
+  credential URL at env.py's Config.set_main_option call. This configuration bug
+  is reproduced, not fixed; add regression coverage before real migrations.
+  PostgreSQL production/SQLite test storage and explicit activation are proposed
+  and awaiting design approval. No database was connected to or modified during
+  preflight; restart retention, migration round trips and PostgreSQL behavior
+  remain unverified.
 
 ## Publication Gate
 

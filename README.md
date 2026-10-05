@@ -105,6 +105,20 @@ requests; rank/history outages preserve available data. Displayed provider text
 is escaped and RR zero remains visible. Roadmap screens use explicit milestones,
 not invented completion percentages.
 
+## Persistence Status
+
+PostgreSQL, SQLAlchemy and Alembic are declared dependencies, not working player
+or match storage. No application tables or migration revisions exist yet;
+Alembic's metadata is not connected to application models.
+
+Persistence preflight also reproduced a configuration failure: percent-encoded
+database credentials cause Alembic URL interpolation to fail before SQL
+generation. This remains unfixed and must be covered by a regression test in
+the persistence milestone. No production database migration has been verified.
+
+The proposed next step is PostgreSQL production storage with SQLite tests,
+explicit activation and provider/timestamp provenance, pending design approval.
+
 ## Gemini Coach
 
 The existing assistant uses the official `google-genai` SDK.
