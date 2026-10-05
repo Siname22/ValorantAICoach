@@ -29,8 +29,10 @@ their conclusions; a generic chatbot is not a personalized match analyst.
 
 ## Current Integration
 
-- Branch: codex/system-integration; local integration verified, GitHub publication
-  is being prepared as a pull request against main for owner approval.
+- Branch: codex/system-integration; local integration verified and independently
+  reviewed. The October 5 branch push was rejected with "Invalid username or
+  token". Publication, the integration PR against main and remote CI are pending
+  renewed local Git authentication. No change was pushed to main.
 - Backend foundation commit: 354dcaf; pre-integration verification: 282 tests
   passed with one Starlette deprecation warning; Ruff and Black passed.
 - Codex Security diff scan b4fffd08-3b8d-4554-bfdb-6a9c343bd9cd completed with
@@ -39,7 +41,7 @@ their conclusions; a generic chatbot is not a personalized match analyst.
 - develop's Streamlit/Gemini files are incorporated in integration commit
   41b6d6e. main's owner license/contribution policy is preserved; its README
   conflict is resolved with current setup, evidence and full planned scope.
-- Lifetime-stat and aggregated-profile routes are being recovered without
+- Lifetime-stat and aggregated-profile routes are implemented without
   breaking the existing flat profile API. Regression tests now cover valid and
   invalid statistics, optional-section failures, empty history and identity 404.
 - Frontend HTTP/partial-data fixes and tests are integrated. The app opens on
@@ -74,8 +76,11 @@ their conclusions; a generic chatbot is not a personalized match analyst.
 
 ## Access Needed
 
-GitHub access already works. No matching Valorant app was found in Base44;
-no Base44 migration or remote build was initiated. GH Review Loop requires an
+GitHub's connector was accessible during discovery, but local Git push now
+fails authentication. Git Credential Manager recognizes the Siname22 account;
+its sign-in must be renewed before publishing local commits. No matching
+Valorant app was found in Base44; no Base44 migration or remote build was
+initiated. GH Review Loop requires an
 authenticated gh CLI and selected reviewer; Agent Parley requires its missing
 CLI/session setup. Neither workflow has been reported as completed.
 

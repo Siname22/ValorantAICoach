@@ -10,6 +10,11 @@ providers and a Streamlit frontend with a Gemini assistant.
 Current branch: `codex/system-integration`.
 Backend version: 0.4.0.
 
+Local integration and independent review are complete. GitHub publication is
+pending: the branch push was rejected by local Git authentication on October 5,
+2026. Renew Git Credential Manager authentication before retrying. No integration
+pull request or remote CI result exists yet, and `main` has not been changed.
+
 The backend foundation was verified before the current integration: player
 identity, rank/history fallback, Riot match detail, explicit provider failures,
 and application-scoped HTTP client cleanup. The current branch also incorporates
@@ -130,8 +135,8 @@ uv run --frozen --extra frontend black --workers 1 --check backend tests agents 
 docker compose up --build
 ```
 
-GitHub CI runs locked Python 3.12/3.13 tests, page imports, Gemini resilience,
-lint/format checks, and a production container build/liveness smoke test.
+GitHub CI is configured for locked Python 3.12/3.13 tests, page imports, Gemini
+resilience, lint/format checks, and a production container build/liveness smoke test.
 Its configuration follows the [official uv Actions guide](https://docs.astral.sh/uv/guides/integration/github/).
 Provider tests simulate HTTP responses and do not prove real key access.
 Docker build/runtime has not run locally; remote CI and real upstream smoke
