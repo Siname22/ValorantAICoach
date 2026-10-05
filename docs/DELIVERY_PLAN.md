@@ -49,9 +49,9 @@ their conclusions; a generic chatbot is not a personalized match analyst.
 - Frontend HTTP/partial-data fixes and tests are integrated. The app opens on
   search, uses configured API documentation links and explicit roadmap states.
   Gemini logs no longer expose raw upstream exception bodies.
-- Integrated local verification: 365 pytest tests passed with one upstream
+- Integrated local verification: 373 pytest tests passed with one upstream
   Starlette warning; 81 standalone Gemini checks passed; Ruff and Black passed
-  across 102 Python files. Production-only backend imports passed without
+  across 104 Python files, including Alembic. Production-only backend imports passed without
   pytest/Streamlit. Browser checks at 375/768/1280px verified bounded form layout
   and the actual missing-provider error; no live credential access is implied.
   Initial push CI passed Python 3.12/3.13 checks and the Docker build/imports.
@@ -73,13 +73,16 @@ their conclusions; a generic chatbot is not a personalized match analyst.
   verified client cleanup on success/failure. Production certification remains
   outside that review's scope.
 - Persistence preflight found no application ORM models or Alembic revisions.
-  Existing offline SQL generation fails with a synthetic percent-encoded
-  credential URL at env.py's Config.set_main_option call. This configuration bug
-  is reproduced, not fixed; add regression coverage before real migrations.
+  The encoded-credential URL failure at Config.set_main_option is now fixed
+  without changing storage design. Eight real Alembic-command regressions
+  reproduced six encoded-case failures before the fix and passed afterwards;
+  URL round trips and decoded engine credentials are checked. Offline CLI SQL
+  generation passed with a synthetic URL; online connections are intercepted.
   PostgreSQL production/SQLite test storage and explicit activation are proposed
   and awaiting design approval. No database was connected to or modified during
-  preflight; restart retention, migration round trips and PostgreSQL behavior
-  remain unverified.
+  preflight or this configuration fix; restart retention, actual schema migration
+  round trips and PostgreSQL behavior remain unverified. Remote checks and
+  focused review of this follow-up are recorded on PR #8.
 
 ## Publication Gate
 
