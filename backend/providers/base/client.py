@@ -63,7 +63,7 @@ class BaseHTTPClient:
         normalized_endpoint = self._normalize_endpoint(endpoint)
 
         # Prepare headers with auth
-        request_headers = headers or {}
+        request_headers = dict(headers or {})
         if auth_type == "api_key" and self.config.api_key:
             request_headers["X-API-Key"] = self.config.api_key
         elif auth_type == "bearer" and self.config.api_key:
@@ -113,9 +113,12 @@ class BaseHTTPClient:
                 # For 4xx/5xx errors, we might not want to retry unless it's a
                 # 5xx or 429.
                 if attempt < self.config.retries and (
-                    e.status_code >= 500 or e.status_code == 429
+                    (e.status_code is not None and e.status_code >= 500)
+                    or e.status_code == 429
                 ):
-                    wait_time = self.config.backoff_factor * (2**attempt)
+                    wait_time = getattr(e, "retry_after", None)
+                    if wait_time is None:
+                        wait_time = self.config.backoff_factor * (2**attempt)
                     await asyncio.sleep(wait_time)
                     continue
                 raise e
@@ -143,7 +146,7 @@ class BaseHTTPClient:
             if part.startswith(":"):
                 normalized_parts.append(part)
             else:
-                normalized_parts.append(quote(part, safe="-_.~"))
+                normalized_parts.append(quote(part, safe="-_.~%"))
 
         return "/" + "/".join(normalized_parts)
 
@@ -152,8 +155,7 @@ class BaseHTTPClient:
     ) -> None:
         """Logs the request metadata to the observability system."""
         logger.info(
-            "Provider: %s | Method: %s | Endpoint: %s | Status: %s | "
-            "Duration: %.2fms",
+            "Provider: %s | Method: %s | Endpoint: %s | Status: %s | Duration: %.2fms",
             self.provider_name,
             method,
             endpoint,

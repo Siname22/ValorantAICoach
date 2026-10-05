@@ -1,6 +1,7 @@
 import logging
 import time
 from typing import Any
+from urllib.parse import quote
 
 from backend.providers.base.exceptions import (
     AuthenticationError,
@@ -18,6 +19,7 @@ from .exceptions import (
     TrackerError,
     TrackerNotFound,
     TrackerRateLimitError,
+    TrackerResponseError,
     TrackerServerError,
 )
 from .models import (
@@ -145,7 +147,8 @@ class TrackerProvider(BaseProvider):
         """
         try:
             payload = await self.client.get_json(
-                f"/profile/{platform}/{identifier}/segments/season",
+                f"/profile/{quote(platform, safe='')}/"
+                f"{quote(identifier, safe='')}/segments/season",
                 params={"seasonId": season_id},
             )
         except Exception as error:
@@ -175,12 +178,16 @@ class TrackerProvider(BaseProvider):
         """
         try:
             payload = await self.client.get_json(
-                f"/profile/{platform}/{identifier}/matches"
+                f"/profile/{quote(platform, safe='')}/"
+                f"{quote(identifier, safe='')}/matches"
             )
         except Exception as error:
             self._raise_tracker_error(error)
             raise
-        raw_matches = payload.get("data", {}).get("matches", [])
+        data = payload.get("data")
+        if not isinstance(data, dict) or not isinstance(data.get("matches"), list):
+            raise TrackerResponseError("Tracker.gg returned an invalid match history")
+        raw_matches = data["matches"]
         matches = [self._parse_match(raw) for raw in raw_matches]
         return MatchHistory(matches=matches, total=len(matches))
 
@@ -208,7 +215,12 @@ class TrackerProvider(BaseProvider):
     async def _get_profile(self, platform: str, identifier: str) -> dict[str, Any]:
         """Fetches the raw profile payload, translating errors."""
         try:
-            return await self.client.get_json(f"/profile/{platform}/{identifier}")
+            payload = await self.client.get_json(
+                f"/profile/{quote(platform, safe='')}/{quote(identifier, safe='')}"
+            )
+            if not isinstance(payload.get("data"), dict):
+                raise TrackerResponseError("Tracker.gg returned an invalid profile")
+            return payload
         except Exception as error:
             self._raise_tracker_error(error)
             raise
@@ -239,7 +251,9 @@ class TrackerProvider(BaseProvider):
         for key in _LIFETIME_STAT_KEYS:
             raw = stats.get(key)
             if raw is None:
-                raise TrackerError(f"Tracker.gg response is missing the '{key}' stat")
+                raise TrackerResponseError(
+                    f"Tracker.gg response is missing the '{key}' stat"
+                )
             parsed[key] = StatValue.model_validate(raw)
 
         optional: dict[str, StatValue | None] = {}
@@ -275,12 +289,21 @@ class TrackerProvider(BaseProvider):
 
     def _parse_match(self, raw: dict[str, Any]) -> MatchSummary:
         """Builds a MatchSummary model from a raw match payload."""
+        if not isinstance(raw, dict):
+            raise TrackerResponseError("Tracker.gg returned an invalid match")
         attributes = raw.get("attributes", {})
         metadata = raw.get("metadata", {})
         stats = raw.get("stats", {})
+        if not all(isinstance(part, dict) for part in (attributes, metadata, stats)):
+            raise TrackerResponseError("Tracker.gg returned invalid match fields")
 
         def stat_value(key: str) -> int:
-            return int(stats.get(key, {}).get("value", 0))
+            try:
+                return int(stats[key]["value"])
+            except (KeyError, TypeError, ValueError) as error:
+                raise TrackerResponseError(
+                    f"Tracker.gg match is missing a valid {key}"
+                ) from error
 
         return MatchSummary(
             match_id=attributes.get("matchId") or attributes.get("id", "unknown"),
@@ -324,6 +347,8 @@ class TrackerProvider(BaseProvider):
 
     def _raise_tracker_error(self, error: Exception) -> None:
         """Translates base provider errors into Tracker-specific exceptions."""
+        if isinstance(error, TrackerResponseError):
+            raise error
         if isinstance(
             error,
             TrackerAuthenticationError

@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock
+
 import httpx
 import pytest
 import respx
@@ -13,6 +15,9 @@ from backend.providers.base.exceptions import (
 )
 from backend.providers.base.models import ProviderHealth, ProviderStatus
 from backend.providers.base.provider import BaseProvider
+from backend.providers.tracker.client import TrackerHTTPClient
+from backend.providers.tracker.config import TrackerConfig
+from pydantic import ValidationError
 
 # --- Mock Provider Implementation ---
 
@@ -159,3 +164,70 @@ def test_dependency_injection_resolve_by_type():
     # Test resolving by base class
     resolved_base = container.resolve(BaseProvider)
     assert resolved_base == provider
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_preencoded_path_segments_are_not_double_encoded():
+    client = BaseHTTPClient(MockProviderConfig(retries=0), "test_provider")
+    route = respx.get(url__regex=r"https://api.mockprovider.com/.*").mock(
+        return_value=httpx.Response(200)
+    )
+    try:
+        response = await client.get("/account/Name%2FSpace%20Here/EU1")
+        assert response.status_code == 200
+        assert (
+            route.calls.last.request.url.raw_path == b"/account/Name%2FSpace%20Here/EU1"
+        )
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_auth_headers_do_not_modify_caller_headers():
+    client = BaseHTTPClient(MockProviderConfig(retries=0), "test_provider")
+    route = respx.get("https://api.mockprovider.com/test").mock(
+        return_value=httpx.Response(200)
+    )
+    headers = {"Accept": "application/json"}
+    try:
+        await client.get("/test", headers=headers, auth_type="api_key")
+        assert route.calls.last.request.headers["X-API-Key"] == "test-api-key"
+        assert headers == {"Accept": "application/json"}
+    finally:
+        await client.close()
+
+
+@pytest.mark.parametrize(
+    "invalid", [{"timeout": 0}, {"retries": -1}, {"backoff_factor": -0.1}]
+)
+def test_invalid_retry_and_timeout_configuration_is_rejected(invalid):
+    with pytest.raises(ValidationError):
+        MockProviderConfig(**invalid)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_retry_after_is_honored(monkeypatch):
+    sleep = AsyncMock()
+    monkeypatch.setattr("backend.providers.base.client.asyncio.sleep", sleep)
+    client = TrackerHTTPClient(
+        TrackerConfig(
+            api_key="test-key",
+            base_url="https://tracker.test",
+            retries=1,
+        )
+    )
+    route = respx.get("https://tracker.test/history").mock(
+        side_effect=[
+            httpx.Response(429, headers={"Retry-After": "2"}),
+            httpx.Response(200, json={"data": []}),
+        ]
+    )
+    try:
+        assert await client.get_json("/history") == {"data": []}
+        assert route.call_count == 2
+        sleep.assert_awaited_once_with(2.0)
+    finally:
+        await client.close()

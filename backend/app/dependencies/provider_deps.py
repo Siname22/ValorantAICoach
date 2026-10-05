@@ -1,4 +1,5 @@
-from agents.shared.container import container
+import logging
+
 from backend.app.services.player_service import PlayerService
 from backend.providers.henrik.config import HenrikConfig
 from backend.providers.henrik.provider import HenrikProvider
@@ -6,36 +7,35 @@ from backend.providers.riot.config import RiotConfig
 from backend.providers.riot.provider import RiotProvider
 from backend.providers.tracker.config import TrackerConfig
 from backend.providers.tracker.provider import TrackerProvider
+from fastapi import Request
+from pydantic import ValidationError
+from pydantic_settings import SettingsError
+
+logger = logging.getLogger(__name__)
 
 
-def get_player_service() -> PlayerService:
-    """
-    Dependency provider for FastAPI to get the PlayerService instance.
-    Ensures all providers are registered in the container before resolution.
-    """
-    try:
-        return container.resolve(PlayerService)
-    except KeyError:
-        # Register providers if not already present
+def create_player_service() -> PlayerService:
+    """Build the application service using only configured, enabled providers."""
+    providers = {}
+    disabled = {}
+    for name, config_type, provider_type in (
+        ("riot", RiotConfig, RiotProvider),
+        ("henrik", HenrikConfig, HenrikProvider),
+        ("tracker", TrackerConfig, TrackerProvider),
+    ):
         try:
-            riot = container.resolve(RiotProvider)
-        except KeyError:
-            riot = RiotProvider(RiotConfig())
-            container.register_provider("riot", riot)
+            config = config_type()
+        except (ValidationError, SettingsError):
+            disabled[name] = "misconfigured"
+            logger.warning("Invalid %s provider configuration", name)
+            continue
+        if not config.enabled or not config.api_key or not config.api_key.strip():
+            disabled[name] = "disabled"
+            continue
+        providers[f"{name}_provider"] = provider_type(config)
+    return PlayerService(**providers, disabled_providers=disabled)
 
-        try:
-            henrik = container.resolve(HenrikProvider)
-        except KeyError:
-            henrik = HenrikProvider(HenrikConfig())
-            container.register_provider("henrik", henrik)
 
-        try:
-            tracker = container.resolve(TrackerProvider)
-        except KeyError:
-            tracker = TrackerProvider(TrackerConfig())
-            container.register_provider("tracker", tracker)
-
-        # Register and return PlayerService
-        service = PlayerService(riot, henrik, tracker)
-        container.register_instance(PlayerService, service)
-        return service
+async def get_player_service(request: Request) -> PlayerService:
+    """Resolve the shared service created by the application's lifespan."""
+    return request.app.state.player_service

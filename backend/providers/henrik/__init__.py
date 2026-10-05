@@ -5,7 +5,7 @@ from .exceptions import (
     HenrikNotFoundError,
     HenrikRateLimitError,
 )
-from .models import HenrikMatch, HenrikPlayer, HenrikResponse
+from .models import HenrikMatch, HenrikPlayer, HenrikRank, HenrikResponse
 from .provider import HenrikProvider
 
 __all__ = [
@@ -13,6 +13,7 @@ __all__ = [
     "HenrikConfig",
     "HenrikPlayer",
     "HenrikMatch",
+    "HenrikRank",
     "HenrikResponse",
     "HenrikError",
     "HenrikAuthenticationError",

@@ -1,9 +1,11 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from backend.app.services.player_service import (
     PlayerNotFoundError,
     PlayerService,
+    PlayerServiceError,
 )
 from backend.providers.base.exceptions import NotFoundError, ServerError
 from backend.providers.base.models import ProviderHealth, ProviderStatus
@@ -11,7 +13,6 @@ from backend.providers.henrik.models import (
     HenrikPlayer,
 )
 from backend.providers.riot.models import Player as RiotPlayer
-from backend.providers.riot.models import Rank as RiotRank
 from backend.providers.tracker.models import LifetimeStats as TrackerStats
 from backend.providers.tracker.models import MatchSummary as TrackerMatch
 from backend.providers.tracker.models import Player as TrackerPlayerModel
@@ -134,20 +135,20 @@ async def test_get_player_not_found_anywhere(
 
 
 @pytest.mark.asyncio
-async def test_get_rank_fallback(player_service, mock_tracker, mock_riot):
+async def test_get_rank_fallback(player_service, mock_tracker, mock_henrik):
     # Tracker rank fails
     mock_tracker.get_lifetime_stats.side_effect = Exception("No stats")
-    # Riot rank succeeds
-    mock_riot.get_player_by_riot_id.return_value = RiotPlayer(
-        puuid="r-123", gameName="T", tagLine="T", region="na"
+    # Rank comes from Henrik; Riot does not expose per-player current RR.
+    mock_henrik.get_account.return_value = HenrikPlayer(
+        puuid="h-123", name="Test", tag="NA1", region="na", account_level=20
     )
-    mock_riot.get_player_rank.return_value = RiotRank(
-        tier="Gold", rank="Gold 2", rankedRating=50
+    mock_henrik.get_rank = AsyncMock(
+        return_value=SimpleNamespace(tier_name="Gold 2", rank_icon_url=None, points=50)
     )
 
     rank = await player_service.get_rank("Test", "NA1")
 
-    assert rank.tier_name == "Gold"
+    assert rank.tier_name == "Gold 2"
     assert rank.points == 50
 
 
@@ -193,3 +194,100 @@ async def test_health_check_aggregation(
     assert health["status"] == "degraded"
     assert health["providers"]["tracker"]["status"] == ProviderStatus.HEALTHY
     assert health["providers"]["riot"]["status"] == ProviderStatus.UNHEALTHY
+
+
+@pytest.mark.asyncio
+async def test_outage_is_not_reported_as_player_not_found(
+    player_service, mock_tracker, mock_henrik, mock_riot
+):
+    mock_tracker.get_player_profile.side_effect = ServerError("upstream-private-body")
+    mock_henrik.get_account.side_effect = NotFoundError("missing")
+    mock_riot.get_player_by_riot_id.side_effect = NotFoundError("missing")
+    with pytest.raises(PlayerServiceError) as error:
+        await player_service.get_player("Test", "EU1")
+    assert not isinstance(error.value, PlayerNotFoundError)
+    assert "upstream-private-body" not in str(error.value)
+
+
+@pytest.mark.asyncio
+async def test_match_outage_does_not_return_empty_history(
+    player_service, mock_tracker, mock_henrik, mock_riot
+):
+    mock_tracker.get_recent_matches.side_effect = ServerError("offline")
+    mock_henrik.get_account.side_effect = ServerError("offline")
+    mock_henrik.get_matches.side_effect = ServerError("offline")
+    mock_riot.get_player_by_riot_id.side_effect = ServerError("offline")
+    with pytest.raises(PlayerServiceError):
+        await player_service.get_recent_matches("Test", "EU1")
+
+
+@pytest.mark.asyncio
+async def test_henrik_history_uses_account_region_and_real_stats(
+    player_service, mock_tracker, mock_henrik
+):
+    mock_tracker.get_recent_matches.side_effect = ServerError("offline")
+    mock_henrik.get_account.return_value = HenrikPlayer(
+        puuid="h-123", name="Test", tag="EU1", region="eu", account_level=20
+    )
+    mock_henrik.get_matches.return_value = [
+        SimpleNamespace(
+            metadata=SimpleNamespace(
+                id="eu-match",
+                map=SimpleNamespace(name="Ascent"),
+                mode="Competitive",
+                time="2026-10-04T12:00:00Z",
+            ),
+            stats=SimpleNamespace(
+                kills=24,
+                deaths=12,
+                assists=7,
+                score=6000,
+                team="Red",
+                character=SimpleNamespace(name="Jett"),
+            ),
+            teams=SimpleNamespace(red=13, blue=7),
+        )
+    ]
+    matches = await player_service.get_recent_matches("Test", "EU1")
+    mock_henrik.get_matches.assert_awaited_once_with("eu", "Test", "EU1")
+    assert matches[0].match_id == "eu-match"
+    assert matches[0].kills == 24
+    assert matches[0].deaths == 12
+    assert matches[0].assists == 7
+    assert matches[0].score is None
+    assert getattr(matches[0], "provider_score", None) == 6000
+    assert getattr(matches[0], "provider", None) == "henrik"
+    assert matches[0].agent_name == "Jett"
+    assert matches[0].result == "Victory"
+
+
+@pytest.mark.asyncio
+async def test_rank_can_use_henrik_without_riot_or_tracker(mock_henrik):
+    mock_henrik.get_account.return_value = HenrikPlayer(
+        puuid="h-123", name="Test", tag="EU1", region="eu", account_level=20
+    )
+    mock_henrik.get_rank = AsyncMock(
+        return_value=SimpleNamespace(
+            tier_name="Diamond 2", rank_icon_url=None, points=42
+        )
+    )
+    service = PlayerService(None, mock_henrik, None)
+    rank = await service.get_rank("Test", "EU1")
+    assert rank.tier_name == "Diamond 2"
+    assert rank.points == 42
+    mock_henrik.get_rank.assert_awaited_once_with("eu", "Test", "EU1")
+
+
+@pytest.mark.asyncio
+async def test_health_isolates_provider_exception(
+    player_service, mock_tracker, mock_henrik, mock_riot
+):
+    mock_tracker.health_check.side_effect = RuntimeError("private-response")
+    mock_henrik.health_check.return_value = ProviderHealth(
+        status=ProviderStatus.HEALTHY
+    )
+    mock_riot.health_check.return_value = ProviderHealth(status=ProviderStatus.HEALTHY)
+    health = await player_service.health()
+    assert health["status"] == "degraded"
+    assert health["providers"]["tracker"]["status"] == "unhealthy"
+    assert "private-response" not in health["providers"]["tracker"]["message"]

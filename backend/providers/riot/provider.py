@@ -1,15 +1,18 @@
+import logging
+from typing import Any
+from urllib.parse import quote
+
+from pydantic import ValidationError
+
 from backend.providers.base.models import ProviderHealth, ProviderStatus
 from backend.providers.base.provider import BaseProvider
 
 from .client import RiotHTTPClient
 from .config import RiotConfig
-from .exceptions import (
-    RiotAuthenticationError,
-    RiotError,
-    RiotNotFoundError,
-    RiotRateLimitError,
-)
-from .models import Match, Player, Rank
+from .exceptions import RiotError, RiotResponseError
+from .models import Match, MatchPlayerStats, Player, Rank
+
+logger = logging.getLogger(__name__)
 
 
 class RiotProvider(BaseProvider):
@@ -34,19 +37,11 @@ class RiotProvider(BaseProvider):
         return self._client
 
     async def health_check(self) -> ProviderHealth:
-        """
-        Performs a health check on the Riot API.
-        This typically involves hitting a simple, unauthenticated endpoint.
-        For Valorant API, a common approach is to check status or a public endpoint.
-        """
+        """Check the official VALORANT status endpoint on the configured shard."""
         try:
-            # Riot API status endpoint
-            # (example, actual endpoint might vary or require region)
-            # For simplicity, we'll hit the base URL,
-            # assuming it returns 200 for healthy
             response = await self.client.get(
-                "/", auth_type="api_key"
-            )  # API Key is often required even for status
+                "/val/status/v1/platform-data", auth_type="api_key"
+            )
             if response.status_code == 200:
                 return ProviderHealth(
                     status=ProviderStatus.HEALTHY, message="Riot API is reachable"
@@ -55,100 +50,174 @@ class RiotProvider(BaseProvider):
                 status=ProviderStatus.DEGRADED,
                 message=f"Unexpected status: {response.status_code}",
             )
-        except Exception as e:
-            return ProviderHealth(status=ProviderStatus.UNHEALTHY, message=str(e))
+        except Exception as error:
+            message = "Riot API is unavailable"
+            if isinstance(error, RiotError) and error.status_code is not None:
+                message = f"Riot API returned HTTP {error.status_code}"
+            return ProviderHealth(status=ProviderStatus.UNHEALTHY, message=message)
 
     async def get_player_by_riot_id(self, game_name: str, tag_line: str) -> Player:
-        """
-        Fetches player information by Riot ID (gameName and tagLine).
-
-        NOTE: The Riot API typically requires using the Account-V1 API
-        to get PUUID from Riot ID,
-        and then using the PUUID with the Valorant Match-V1 API.
-        This method will simulate that
-        by returning a dummy Player object for now,
-        as per "No implementar llamadas reales todavía".
-        """
-        # TODO: Implement actual call to Riot Account-V1 API to get PUUID,
-        # then Valorant Match-V1 API
-        # For now, return a mocked player object.
-        return Player(
-            puuid="mock-puuid-123",
-            gameName=game_name,
-            tagLine=tag_line,
-            region=self.config.region,
-            accountLevel=100,
+        """Resolve a Riot ID on the continental account-v1 cluster."""
+        account = await self._get_json(
+            f"{self.config.account_base_url.rstrip('/')}"
+            f"/riot/account/v1/accounts/by-riot-id/"
+            f"{quote(game_name, safe='')}/{quote(tag_line, safe='')}",
         )
+        if not isinstance(account.get("puuid"), str) or not account["puuid"]:
+            raise RiotResponseError("Incomplete Riot account response: missing PUUID")
+        try:
+            return Player(
+                puuid=account["puuid"],
+                gameName=account.get("gameName") or game_name,
+                tagLine=account.get("tagLine") or tag_line,
+                region=self.config.region,
+            )
+        except ValidationError as error:
+            raise RiotResponseError("Invalid Riot account identity") from error
 
-    async def get_player_match_history(self, puuid: str) -> list[Match]:
-        """
-        Fetches a list of recent matches for a player using their PUUID.
+    async def _get_json(self, endpoint: str) -> dict[str, Any]:
+        response = await self.client.get(endpoint, auth_type="api_key")
+        try:
+            data = response.json()
+        except ValueError as error:
+            raise RiotResponseError("Invalid JSON response from Riot API") from error
+        if not isinstance(data, dict):
+            raise RiotResponseError(
+                f"Invalid Riot response for {endpoint}: expected an object"
+            )
+        return data
 
-        NOTE: This method will simulate API response by returning dummy Match objects.
-        """
-        # TODO: Implement actual call to Valorant Match-V1 API
-        # For now, return mocked match data.
-        return [
-            Match(
-                matchId="mock-match-1",
-                mapId="Ascent",
-                gameMode="Competitive",
-                gameStartTimeMillis=1672531200000,  # Jan 1, 2023 00:00:00 GMT
-                result="Victory",
-                player_stats={
-                    "kills": 20,
-                    "deaths": 10,
-                    "assists": 5,
-                    "score": 5000,
-                    "averageCombatScore": 250.5,
-                    "character": "Jett",
-                },
-            ),
-            Match(
-                matchId="mock-match-2",
-                mapId="Bind",
-                gameMode="Competitive",
-                gameStartTimeMillis=1672617600000,  # Jan 2, 2023 00:00:00 GMT
-                result="Defeat",
-                player_stats={
-                    "kills": 15,
-                    "deaths": 18,
-                    "assists": 3,
-                    "score": 3500,
-                    "averageCombatScore": 180.0,
-                    "character": "Raze",
-                },
-            ),
-        ]
+    async def get_player_match_history(
+        self, puuid: str, *, limit: int | None = None
+    ) -> list[Match]:
+        """Fetch a bounded matchlist and summarize official details for this PUUID."""
+        history_limit = self.config.match_history_limit if limit is None else limit
+        if not 1 <= history_limit <= 20:
+            raise ValueError("Riot match history limit must be between 1 and 20")
+        matchlist = await self._get_json(
+            f"/val/match/v1/matchlists/by-puuid/{quote(puuid, safe='')}"
+        )
+        history = matchlist.get("history")
+        if not isinstance(history, list):
+            raise RiotResponseError("Invalid Riot match history: expected a list")
+        matches: list[Match] = []
+        for entry in history[:history_limit]:
+            if not isinstance(entry, dict):
+                continue
+            match_id = entry.get("matchId")
+            if not isinstance(match_id, str) or not match_id:
+                continue
+            try:
+                detail = await self.get_match(match_id)
+            except RiotError as error:
+                if error.status_code is not None:
+                    raise
+                logger.warning("Skipping invalid Riot match detail")
+                continue
+            match = self._summarize_match(detail, puuid)
+            if match is not None:
+                matches.append(match)
+        if history and not matches:
+            raise RiotResponseError(
+                "Riot match history contained no usable player match details"
+            )
+        return matches
+
+    @staticmethod
+    def _summarize_match(detail: dict[str, Any], puuid: str) -> Match | None:
+        try:
+            info = detail["matchInfo"]
+            if not isinstance(info, dict):
+                return None
+            player = next(
+                (
+                    p
+                    for p in detail.get("players") or []
+                    if isinstance(p, dict) and p.get("puuid") == puuid
+                ),
+                None,
+            )
+            if player is None or not isinstance(player.get("stats"), dict):
+                logger.warning("Skipping Riot match without player stats")
+                return None
+            if (
+                not isinstance(player.get("characterId"), str)
+                or not player["characterId"]
+            ):
+                logger.warning("Skipping Riot match without a character ID")
+                return None
+            stats = player["stats"]
+            rounds = stats.get("roundsPlayed", 0)
+            if not all(
+                field in stats for field in ("kills", "deaths", "assists", "score")
+            ) and (not isinstance(rounds, int) or rounds <= 0):
+                logger.warning("Skipping Riot match with incomplete numeric stats")
+                return None
+            # Riot may omit zero-valued numeric fields from otherwise valid stats.
+            player_stats = MatchPlayerStats(
+                kills=stats.get("kills", 0),
+                deaths=stats.get("deaths", 0),
+                assists=stats.get("assists", 0),
+                score=stats.get("score", 0),
+                character=player["characterId"],
+            )
+            if isinstance(rounds, int) and rounds > 0:
+                player_stats.acs = player_stats.score / rounds
+
+            teams = [t for t in detail.get("teams") or [] if isinstance(t, dict)]
+            team_id = player.get("teamId")
+            team = next(
+                (
+                    t
+                    for t in teams
+                    if isinstance(team_id, str)
+                    and team_id
+                    and t.get("teamId") == team_id
+                ),
+                {},
+            )
+            result = "Unknown"
+            if team.get("won") is True:
+                result = "Victory"
+            elif team.get("won") is False:
+                if any(t.get("won") is True for t in teams):
+                    result = "Defeat"
+                elif (
+                    info.get("isCompleted") is True
+                    and len(teams) > 1
+                    and all(t.get("won") is False for t in teams)
+                ):
+                    result = "Draw"
+            return Match(
+                matchId=info["matchId"],
+                mapId=info["mapId"],
+                gameMode=info["gameMode"],
+                gameStartTimeMillis=info["gameStartMillis"],
+                result=result,
+                player_stats=player_stats,
+            )
+        except (KeyError, TypeError, ValueError):
+            logger.warning("Skipping incomplete Riot match detail")
+            return None
+
+    async def get_match(self, match_id: str) -> dict[str, Any]:
+        """Return an official match detail from the configured VALORANT shard."""
+        detail = await self._get_json(
+            f"/val/match/v1/matches/{quote(match_id, safe='')}"
+        )
+        info = detail.get("matchInfo")
+        if (
+            not isinstance(info, dict)
+            or not isinstance(info.get("matchId"), str)
+            or not info["matchId"]
+        ):
+            raise RiotResponseError(
+                "Invalid Riot match detail: missing matchInfo.matchId"
+            )
+        return detail
 
     async def get_player_rank(self, puuid: str) -> Rank:
-        """
-        Fetches a player's current competitive rank.
-
-        NOTE: This method will simulate API response by returning a dummy Rank object.
-        """
-        # TODO: Implement actual call to Valorant Match-V1 API
-        # or a dedicated endpoint if available
-        # For now, return a mocked rank object.
-        return Rank(tier="Immortal", rank="Immortal 3", rankedRating=800)
-
-    def _handle_riot_error(self, error: Exception) -> None:
-        """
-        Maps generic provider errors to Riot-specific exceptions.
-        """
-        from backend.providers.base.exceptions import (
-            AuthenticationError,
-            NotFoundError,
-            RateLimitError,
+        """The official API exposes leaderboards, but no current rank by PUUID."""
+        raise NotImplementedError(
+            "The official Riot API does not support current player rank or RR by PUUID"
         )
-
-        if isinstance(error, AuthenticationError):
-            raise RiotAuthenticationError(str(error)) from error
-        elif isinstance(error, NotFoundError):
-            raise RiotNotFoundError(str(error)) from error
-        elif isinstance(error, RateLimitError):
-            raise RiotRateLimitError(str(error)) from error
-        elif not isinstance(error, RiotError):
-            raise RiotError(
-                f"An unexpected error occurred in RiotProvider: {error}"
-            ) from error

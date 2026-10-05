@@ -10,6 +10,7 @@ from backend.providers.tracker.client import (
 from backend.providers.tracker.config import TrackerConfig
 from backend.providers.tracker.exceptions import (
     TrackerAuthenticationError,
+    TrackerError,
     TrackerNotFound,
     TrackerRateLimit,
     TrackerRateLimitError,
@@ -109,11 +110,69 @@ def test_config_reads_api_key_from_environment(monkeypatch):
     assert config.base_url == "https://public-api.tracker.gg/v2/valorant/standard"
 
 
-def test_config_requires_api_key(monkeypatch, tmp_path):
+def test_config_allows_missing_key_for_disabled_provider(monkeypatch):
     monkeypatch.delenv("TRACKER_API_KEY", raising=False)
-    monkeypatch.chdir(tmp_path)
-    with pytest.raises(ValidationError):
-        TrackerConfig()
+    assert TrackerConfig(_env_file=None).api_key is None
+
+
+@pytest.mark.asyncio
+@respx.mock
+@pytest.mark.parametrize("method", ["get_player_profile", "get_recent_matches"])
+async def test_tracker_literal_percent_is_not_decoded_to_a_space(
+    tracker_provider, method
+):
+    route = respx.get(url__regex=r"https://.*").respond(
+        200,
+        json=(
+            _profile_payload()
+            if method == "get_player_profile"
+            else {"data": {"matches": []}}
+        ),
+    )
+    try:
+        await getattr(tracker_provider, method)("riot", "Name%20Here#EU1")
+        assert b"Name%2520Here%23EU1" in route.calls.last.request.url.raw_path
+    finally:
+        await tracker_provider.close()
+
+
+@pytest.mark.asyncio
+@respx.mock
+@pytest.mark.parametrize("payload", [{}, {"data": {}}, {"data": {"matches": None}}])
+async def test_invalid_match_history_is_not_an_empty_history(tracker_provider, payload):
+    respx.get(f"{PROFILE_URL}/matches").respond(200, json=payload)
+    try:
+        with pytest.raises(TrackerError):
+            await tracker_provider.get_recent_matches("riot", "Player#123")
+    finally:
+        await tracker_provider.close()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_missing_match_stats_are_not_fabricated_as_zero(tracker_provider):
+    payload = {
+        "data": {
+            "matches": [
+                {
+                    "attributes": {"matchId": "real-match"},
+                    "metadata": {
+                        "mapName": "Ascent",
+                        "agentName": "Jett",
+                        "timestamp": "2026-10-04T12:00:00Z",
+                        "result": "Victory",
+                    },
+                    "stats": {"kills": {"value": 10}, "deaths": {"value": 5}},
+                }
+            ]
+        }
+    }
+    respx.get(f"{PROFILE_URL}/matches").respond(200, json=payload)
+    try:
+        with pytest.raises(TrackerError):
+            await tracker_provider.get_recent_matches("riot", "Player#123")
+    finally:
+        await tracker_provider.close()
 
 
 @pytest.mark.asyncio
