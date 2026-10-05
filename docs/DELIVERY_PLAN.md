@@ -59,7 +59,12 @@ their conclusions; a generic chatbot is not a personalized match analyst.
   startup: curl's previous retry policy did not cover that error. Real-curl
   regression tests reproduced the reset and unbounded wait (2 failed/1 passed)
   before the bounded retry fix (3 passed). Persistent HTTP errors still fail.
-  The follow-up awaits exact-head remote CI; no all-green claim is made.
+  Follow-up remote head 2a3f937 (same tree as local cf2b139) passed all six
+  push/PR checks. Container logs show startup resets retried, liveness 200 and
+  provider-free profile 503; Python 3.12 logs confirm 365 tests with no skips,
+  Gemini 81/81, Ruff and Black 102 files. Independent CI-only review found no
+  actionable defects. Later documentation revisions have their own PR checks.
+  This proves the CI runtime, not real-provider access or public deployment.
 - The usage limit reset and the normal approval workflow resumed successfully.
   No approval check was bypassed. Independent review found malformed history,
   impossible metric values, private final-handler logs, missing SDK transport
