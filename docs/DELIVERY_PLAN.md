@@ -29,15 +29,16 @@ their conclusions; a generic chatbot is not a personalized match analyst.
 
 ## Current Integration
 
-- Branch: codex/system-integration; publication is not yet complete.
+- Branch: codex/system-integration; local integration verified, GitHub publication
+  is being prepared as a pull request against main for owner approval.
 - Backend foundation commit: 354dcaf; pre-integration verification: 282 tests
   passed with one Starlette deprecation warning; Ruff and Black passed.
 - Codex Security diff scan b4fffd08-3b8d-4554-bfdb-6a9c343bd9cd completed with
   no reportable findings for the frozen backend patch. Later integration edits
   are not covered by that result.
-- develop's Streamlit/Gemini files are present locally. Four merge conflicts
-  have staged resolutions with no remaining unmerged index entries; merge
-  commits and GitHub publication are pending.
+- develop's Streamlit/Gemini files are incorporated in integration commit
+  41b6d6e. main's owner license/contribution policy is preserved; its README
+  conflict is resolved with current setup, evidence and full planned scope.
 - Lifetime-stat and aggregated-profile routes are being recovered without
   breaking the existing flat profile API. Regression tests now cover valid and
   invalid statistics, optional-section failures, empty history and identity 404.
@@ -54,7 +55,9 @@ their conclusions; a generic chatbot is not a personalized match analyst.
   No approval check was bypassed. Independent review found malformed history,
   impossible metric values, private final-handler logs, missing SDK transport
   timeout and real HTTPX errors not retried. Tests reproduced these before
-  correction; the five fixes and client cleanup are undergoing focused re-review.
+  correction; focused independent re-review closed all five findings and
+  verified client cleanup on success/failure. Production certification remains
+  outside that review's scope.
 
 ## Publication Gate
 
