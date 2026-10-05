@@ -17,8 +17,8 @@ original history; local Git push still requires renewed authentication.
 Remote Python 3.12/3.13 and container checks passed for commit `2a3f937`.
 CI reproduced the startup connection reset and recovered with bounded retries,
 then verified liveness 200 and the no-provider 503. The real-curl regression
-tests also passed on Linux with no skips. The PR shows checks for later
-documentation revisions. Passing CI is not a production-release claim.
+tests also passed on Linux with no skips. The PR shows checks for subsequent
+updates. Passing CI is not a production-release claim.
 
 The backend foundation was verified before the current integration: player
 identity, rank/history fallback, Riot match detail, explicit provider failures,
@@ -26,9 +26,10 @@ and application-scoped HTTP client cleanup. The current branch also incorporates
 the Streamlit/Gemini work from `develop`.
 
 **Development integration, not a production release.** Backend and frontend
-verification: 365 pytest tests passed, with one upstream Starlette deprecation
+verification: 373 pytest tests passed, with one upstream Starlette deprecation
 warning; the separate Gemini resilience script passed 81 checks. Ruff and
-Black passed across 102 Python files. Live provider credentials and public
+Black passed across 104 Python files, including the Alembic environment.
+Live provider credentials and public
 deployment have not been verified. See [roadmap](docs/ROADMAP.md) and
 [delivery plan](docs/DELIVERY_PLAN.md) for the complete remaining scope.
 
@@ -116,10 +117,13 @@ PostgreSQL, SQLAlchemy and Alembic are declared dependencies, not working player
 or match storage. No application tables or migration revisions exist yet;
 Alembic's metadata is not connected to application models.
 
-Persistence preflight also reproduced a configuration failure: percent-encoded
-database credentials cause Alembic URL interpolation to fail before SQL
-generation. This remains unfixed and must be covered by a regression test in
-the persistence milestone. No production database migration has been verified.
+The preflight URL interpolation failure is fixed: percent-encoded credentials
+now survive Alembic configuration without altering the URL supplied to
+SQLAlchemy. Eight regressions cover plain URLs, encoded credentials, separators
+and repeated percent signs in offline/online configuration. Online tests
+intercept the connection before database access; offline SQL is generated,
+not executed. This does not prove working storage or a production migration.
+See the [version-matched configuration contract](https://github.com/sqlalchemy/alembic/blob/rel_1_18_5/alembic/config.py).
 
 The proposed next step is PostgreSQL production storage with SQLite tests,
 explicit activation and provider/timestamp provenance, pending design approval.
@@ -150,7 +154,7 @@ See [chat setup](docs/chatbot_installation.md).
 uv run --frozen --extra frontend pytest -q tests frontend/streamlit_app/tests
 uv run --frozen --extra frontend python frontend/streamlit_app/tests/test_gemini_resilience.py
 uv run --frozen --extra frontend ruff check .
-uv run --frozen --extra frontend black --workers 1 --check backend tests agents frontend
+uv run --frozen --extra frontend black --workers 1 --check backend tests agents frontend database
 docker compose up --build
 ```
 
