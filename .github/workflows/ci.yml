@@ -66,5 +66,5 @@ jobs:
         run: |
           docker run -d --name coach-smoke -p 127.0.0.1:8000:8000 valorant-coach:test
           trap 'docker logs coach-smoke; docker rm -f coach-smoke' EXIT
-          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:8000/health/live
+          curl --fail --retry 20 --retry-delay 1 --retry-all-errors --connect-timeout 1 --max-time 3 --retry-max-time 30 http://127.0.0.1:8000/health/live
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/players/Test/EU1)" = 503
