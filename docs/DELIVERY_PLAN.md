@@ -31,8 +31,10 @@ their conclusions; a generic chatbot is not a personalized match analyst.
 
 - Branch: codex/system-integration; local integration verified and independently
   reviewed. The October 5 branch push was rejected with "Invalid username or
-  token". Publication, the integration PR against main and remote CI are pending
-  renewed local Git authentication. No change was pushed to main.
+  token". The authenticated GitHub connector is now being used to prepare a
+  same-tree publication with a new remote commit and preserved local history.
+  Publication, the integration PR against main and remote CI are not verified
+  yet. No change was pushed to main.
 - Backend foundation commit: 354dcaf; pre-integration verification: 282 tests
   passed with one Starlette deprecation warning; Ruff and Black passed.
 - Codex Security diff scan b4fffd08-3b8d-4554-bfdb-6a9c343bd9cd completed with
@@ -84,9 +86,11 @@ their conclusions; a generic chatbot is not a personalized match analyst.
 
 ## Access Needed
 
-GitHub's connector was accessible during discovery, but local Git push now
-fails authentication. Git Credential Manager recognizes the Siname22 account;
-its sign-in must be renewed before publishing local commits. No matching
+GitHub's connector remains accessible and reports repository write permissions;
+local Git push still fails authentication. Tree/commit publication through that
+authorized connector is being checked independently of local Git sign-in.
+Git Credential Manager renewal is still needed for normal future Git pushes.
+No matching
 Valorant app was found in Base44; no Base44 migration or remote build was
 initiated. GH Review Loop requires an
 authenticated gh CLI and selected reviewer; Agent Parley requires its missing

@@ -10,10 +10,11 @@ providers and a Streamlit frontend with a Gemini assistant.
 Current branch: `codex/system-integration`.
 Backend version: 0.4.0.
 
-Local integration and independent review are complete. GitHub publication is
-pending: the branch push was rejected by local Git authentication on October 5,
-2026. Renew Git Credential Manager authentication before retrying. No integration
-pull request or remote CI result exists yet, and `main` has not been changed.
+Local integration and independent review are complete. Local Git push was
+rejected by authentication on October 5, 2026. Publication is being prepared
+through the authenticated GitHub connector, with exact Git tree equality as a
+gate. That publication creates a new commit while preserving the original local
+commits. No integration PR or remote CI result exists yet; `main` is unchanged.
 
 The backend foundation was verified before the current integration: player
 identity, rank/history fallback, Riot match detail, explicit provider failures,
