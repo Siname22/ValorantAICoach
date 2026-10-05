@@ -10,6 +10,10 @@ class ConfigurationError(ProviderError):
     pass
 
 
+class InvalidResponseError(ProviderError):
+    """A provider returned data that does not satisfy its response contract."""
+
+
 class HTTPProviderError(ProviderError):
     """Base exception for HTTP-related provider errors."""
 

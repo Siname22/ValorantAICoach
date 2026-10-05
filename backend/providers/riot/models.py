@@ -29,18 +29,19 @@ class MatchPlayerStats(BaseModel):
     assists: int
     score: int
     acs: float | None = Field(None, alias="averageCombatScore")
-    agent_name: str = Field(..., alias="character")
+    agent_name: str = Field(
+        ..., alias="character", description="Riot character ID, without name resolution"
+    )
 
 
 class Match(BaseModel):
     """Model for a Valorant match summary."""
 
     match_id: str = Field(..., alias="matchId")
-    map_id: str = Field(..., alias="mapId")
+    map_id: str = Field(..., alias="mapId", description="Unmodified Riot map ID")
     game_mode: str = Field(..., alias="gameMode")
     game_start_time: int = Field(..., alias="gameStartTimeMillis")
-    # Simplified result for now, could be more detailed later
-    result: str  # e.g., "Victory", "Defeat"
+    result: str  # Victory, Defeat, Draw or Unknown, based on the player's team.
     player_stats: MatchPlayerStats  # Stats for the specific player in this match
 
 

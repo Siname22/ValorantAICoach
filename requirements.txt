@@ -1,0 +1,18 @@
+# ==============================================================================
+# ValorantAICoach - Streamlit frontend dependencies (convenience copy)
+# ------------------------------------------------------------------------------
+# Convenience file for a local frontend-only install from the repository root:
+#     pip install -r requirements.txt
+#
+# NOTE: this is NOT the file Streamlit Community Cloud installs. The root of the
+# repository also contains a tracked uv.lock, which has higher priority than
+# requirements.txt in Community Cloud's resolution order. The authoritative file
+# for deployment lives next to the entrypoint:
+#     frontend/streamlit_app/requirements.txt
+# Include the deployment file so frontend dependency declarations cannot drift.
+#
+# Backend dependencies (FastAPI, SQLAlchemy, Alembic, psycopg) are intentionally
+# excluded and stay declared in pyproject.toml for local/uv development.
+# ==============================================================================
+
+-r frontend/streamlit_app/requirements.txt

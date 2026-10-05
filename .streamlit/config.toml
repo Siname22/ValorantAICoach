@@ -1,0 +1,19 @@
+# ==============================================================================
+# ValorantAICoach - Streamlit runtime configuration
+# ------------------------------------------------------------------------------
+# Shared theme for the operational player lookup and coaching pages.
+# ==============================================================================
+
+[theme]
+base = "dark"
+primaryColor = "#f04f5f"
+backgroundColor = "#111214"
+secondaryBackgroundColor = "#1d1f20"
+textColor = "#f4f7fb"
+
+[browser]
+gatherUsageStats = false
+
+[client]
+showErrorDetails = false
+showSidebarNavigation = false

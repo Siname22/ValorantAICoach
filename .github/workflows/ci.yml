@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop, 'codex/**', 'feature/**']
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.12', '3.13']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.11.32'
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+      - name: Install locked dependencies
+        run: uv sync --locked --extra frontend
+      - name: Backend and frontend regression tests
+        run: uv run --no-sync pytest -q tests frontend/streamlit_app/tests
+      - name: Gemini resilience (no live API)
+        run: uv run --no-sync python frontend/streamlit_app/tests/test_gemini_resilience.py
+      - name: Frontend dependency and page import checks
+        run: uv run --no-sync python frontend/streamlit_app/verify_deployment.py
+      - name: Lint
+        run: uv run --no-sync ruff check .
+      - name: Format
+        run: uv run --no-sync black --workers 1 --check backend tests agents frontend
+      - name: Diff whitespace
+        run: git diff --check
+
+  backend-image:
+    name: Backend container
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build production image
+        run: docker build -f docker/backend.Dockerfile -t valorant-coach:test .
+      - name: Verify unprivileged runtime and production imports
+        run: |
+          docker run --rm valorant-coach:test sh -c 'test "$(id -u)" -ne 0'
+          docker run --rm valorant-coach:test uv run --no-sync python -c 'import backend.main, httpx; import importlib.util; assert importlib.util.find_spec("pytest") is None'
+      - name: Check liveness without provider credentials
+        shell: bash
+        run: |
+          docker run -d --name coach-smoke -p 127.0.0.1:8000:8000 valorant-coach:test
+          trap 'docker logs coach-smoke; docker rm -f coach-smoke' EXIT
+          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:8000/health/live
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/players/Test/EU1)" = 503

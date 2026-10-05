@@ -1,12 +1,13 @@
 from backend.providers.base.exceptions import (
     AuthenticationError,
+    HTTPProviderError,
+    InvalidResponseError,
     NotFoundError,
-    ProviderError,
     RateLimitError,
 )
 
 
-class RiotError(ProviderError):
+class RiotError(HTTPProviderError):
     """Base exception for Riot API provider errors."""
 
     pass
@@ -18,10 +19,14 @@ class RiotAuthenticationError(RiotError, AuthenticationError):
     pass
 
 
+class RiotResponseError(RiotError, InvalidResponseError):
+    """Riot returned malformed data rather than an availability error."""
+
+
 class RiotRateLimitError(RiotError, RateLimitError):
     """Raised when Riot API rate limit is exceeded."""
 
-    pass
+    retry_after: float | None = None
 
 
 class RiotNotFoundError(RiotError, NotFoundError):

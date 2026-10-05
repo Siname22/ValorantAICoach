@@ -1,244 +1,182 @@
-# 🎯 Valorant AI Coach
+# Valorant AI Coach
 
 ![Valorant AI Coach](assets/banner.png)
 
-> AI-powered coaching platform for VALORANT players built with Clean Architecture, FastAPI and multiple data providers.
+AI-powered VALORANT player analytics and coaching, with FastAPI, real data
+providers and a Streamlit frontend with a Gemini assistant.
 
-![Python](https://img.shields.io/badge/Python-3.12+-blue)
-![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688)
-![Tests](https://img.shields.io/badge/Tests-78%20Passing-success)
-![License](https://img.shields.io/badge/License-Proprietary-red)
+## Development Status
 
----
+Current branch: `codex/system-integration`.
+Backend version: 0.4.0.
 
-## 🚀 Overview
+Local integration and independent review are complete. Local Git push was
+rejected by authentication on October 5, 2026. Publication is being prepared
+through the authenticated GitHub connector, with exact Git tree equality as a
+gate. That publication creates a new commit while preserving the original local
+commits. No integration PR or remote CI result exists yet; `main` is unchanged.
 
-Valorant AI Coach is a source-available project that aims to become an intelligent assistant capable of analysing VALORANT matches and helping players improve using Artificial Intelligence.
+The backend foundation was verified before the current integration: player
+identity, rank/history fallback, Riot match detail, explicit provider failures,
+and application-scoped HTTP client cleanup. The current branch also incorporates
+the Streamlit/Gemini work from `develop`.
 
-Unlike traditional stat trackers, this project combines multiple technologies into a single architecture:
+**Development integration, not a production release.** Backend and frontend
+verification: 362 pytest tests passed, with one upstream Starlette deprecation
+warning; the separate Gemini resilience script passed 81 checks. Ruff and
+Black passed across 101 Python files. Live provider credentials and public
+deployment have not been verified. See [roadmap](docs/ROADMAP.md) and
+[delivery plan](docs/DELIVERY_PLAN.md) for the complete remaining scope.
 
-- 🎮 Match statistics
-- 🤖 Generative AI
-- 👁️ Computer Vision
-- 📷 OCR
-- 📊 Tactical analysis
-- 🧠 Personalized coaching
+## Local Setup
 
-The current focus is building a scalable architecture before implementing advanced AI features.
+Python 3.12+ and [uv](https://docs.astral.sh/uv/) are required. From the repository root:
 
----
-
-# ✨ Current Features
-
-## Multi Provider SDK
-
-Supports multiple providers through a common abstraction layer.
-
-Current providers:
-
-- Riot API
-- HenrikDev API
-- Tracker.gg
-
-Future providers can be added without changing business logic.
-
----
-
-## Player Service
-
-Unified service responsible for obtaining player information.
-
-Features:
-
-- Automatic provider fallback
-- Dependency Injection
-- Provider abstraction
-- Unified domain models
-
-```
-Tracker
-   ↓
-Henrik
-   ↓
- Riot
+```powershell
+uv sync --frozen --extra frontend
+Copy-Item .env.example .env
+uv run --frozen --extra frontend uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-If one provider fails, the next one is automatically used.
+For the frontend, use a second terminal:
 
----
-
-## REST API
-
-FastAPI endpoints already implemented.
-
-Examples:
-
-```
-GET /players/{gameName}/{tagLine}
-
-GET /players/{gameName}/{tagLine}/rank
-
-GET /players/{gameName}/{tagLine}/matches
+```powershell
+uv run --frozen --extra frontend streamlit run frontend/streamlit_app/app.py
 ```
 
----
+Open [Streamlit](http://localhost:8501) or [API documentation](http://127.0.0.1:8000/docs).
+Frontend dependencies are an optional extra; backend-only installs remain small.
 
-## Architecture
+The backend reads `.env`; Streamlit reads process environment or
+`.streamlit/secrets.toml`, not the backend's dotenv file. Copy
+`.streamlit/secrets.toml.example` for frontend settings.
+Do not commit secrets or share API keys in issues, PRs or chat.
 
-```
-                FastAPI
-                   │
-           REST Controllers
-                   │
-            Player Service
-                   │
-      ┌────────────┼────────────┐
-      │            │            │
-   Tracker      Henrik        Riot
-      │            │            │
-      └──────── Providers ──────┘
-```
+## Providers and Data Semantics
 
-The project follows:
+Set one or more backend keys: `HENRIK_API_KEY`,
+`TRACKER_API_KEY`, `RIOT_API_KEY`.
+A blank key or `<PROVIDER>_ENABLED=false` disables that provider.
+Restart the backend after configuration changes.
 
-- Clean Architecture
-- SOLID principles
-- Dependency Injection
-- Provider Pattern
-- Repository-like abstraction
-- Service Layer
+- Henrik: account identity, current rank/RR and stored match summaries. Account
+  region is resolved automatically, or history accepts `?region=eu`.
+  Stored history may be incomplete.
+- Tracker: profiles, lifetime stats, rank and recent matches, subject to API access.
+- Riot: real account-v1 and VAL match API calls. The official API does not expose
+  current player rank/RR. Key permissions and the selected shard matter.
 
----
+The example targets Europe. `RIOT_REGION` derives the shard host only when
+`RIOT_BASE_URL` is unset. If using the explicit URL in the example/Compose,
+change that URL as well when selecting another shard. Continental account routing
+uses the independent `RIOT_ACCOUNT_BASE_URL`.
 
-# 🧪 Quality
+Match summaries include provider provenance. Riot map/character IDs are not yet
+resolved to display names. Timestamps retain provider formats. Henrik's raw
+`stats.score` has no documented total/average meaning: the normalized
+`score` is null and the original is retained in `provider_score`.
+See the [stored-match contract](https://docs.henrikdev.xyz/valorant/guides/stored-matches.md)
+and [OpenAPI schema](https://api.henrikdev.xyz/openapi.json).
 
-Current automated tests:
+## API
 
-- Provider SDK
-- Riot Provider
-- Henrik Provider
-- Tracker Provider
-- PlayerService
-- Agent Framework
-- REST endpoints
-
-```
-78 tests passing
-```
-
-Code quality:
-
-- Ruff
-- Black
-- Pytest
-
----
-
-# 📂 Project Structure
-
-```
-backend/
-    app/
-        routers/
-        services/
-        dependencies/
-
-    providers/
-        riot/
-        tracker/
-        henrik/
-
-agents/
-
-tests/
-
-docs/
+```text
+GET /players/{game}/{tag}
+GET /players/{game}/{tag}/rank
+GET /players/{game}/{tag}/matches?region=eu&limit=5
+GET /players/{game}/{tag}/stats
+GET /players/{game}/{tag}/overview?limit=5
+GET /matches/{matchId}
+GET /health
+GET /health/live
 ```
 
----
+History limits are 1-20, default 10. Full match detail requires Riot.
+`404` means all applicable providers confirmed absence; `503` means
+unavailable/disabled capability; `502` means malformed upstream data.
+A valid empty history returns 200 with an empty list. Invalid input returns 422.
 
-# 🔮 Roadmap
+Lifetime statistics require Tracker and reject invalid counters/non-finite
+values rather than truncating or fabricating data. The overview preserves identity when
+optional sections fail and distinguishes unavailable history from confirmed
+empty history.
 
-Current progress
+Streamlit opens on player lookup. Search results survive reruns without repeated
+requests; rank/history outages preserve available data. Displayed provider text
+is escaped and RR zero remains visible. Roadmap screens use explicit milestones,
+not invented completion percentages.
 
-- ✅ Provider SDK
-- ✅ Tracker Provider
-- ✅ Riot Provider
-- ✅ Henrik Provider
-- ✅ Player Service
-- ✅ FastAPI REST API
+## Persistence Status
 
-Next milestones
+PostgreSQL, SQLAlchemy and Alembic are declared dependencies, not working player
+or match storage. No application tables or migration revisions exist yet;
+Alembic's metadata is not connected to application models.
 
-- OCR integration
-- Screenshot analysis
-- Computer Vision
-- Match timeline analysis
-- AI tactical reports
-- LLM coaching
-- Agent memory
-- Web frontend
-- Authentication
+Persistence preflight also reproduced a configuration failure: percent-encoded
+database credentials cause Alembic URL interpolation to fail before SQL
+generation. This remains unfixed and must be covered by a regression test in
+the persistence milestone. No production database migration has been verified.
 
----
+The proposed next step is PostgreSQL production storage with SQLite tests,
+explicit activation and provider/timestamp provenance, pending design approval.
 
-# 🛠️ Tech Stack
+## Gemini Coach
 
-Backend
+The existing assistant uses the official `google-genai` SDK.
+Configure `GEMINI_API_KEY` in Streamlit secrets or environment;
+`GEMINI_MODEL` selects the preferred model. No key means the coach is disabled.
+The current chat is general coaching: automatic live-player context, persistent
+memory and grounded match reports remain separate delivery milestones.
+SDK transport phases have 10-second timeouts. The wrapper controls retries
+without multiplying the SDK's own attempts, handles actual HTTPX transport
+failures, closes the client after each turn, and sanitizes logs and errors.
+This is not a total wall-clock deadline. See the
+[SDK documentation](https://github.com/googleapis/python-genai) and
+[HTTPX exception hierarchy](https://www.python-httpx.org/exceptions/).
 
-- Python
-- FastAPI
-- Pydantic
-- Pytest
+For frontend-only Streamlit Cloud installs, the entrypoint is
+`frontend/streamlit_app/app.py` and its adjacent
+`requirements.txt` supplies the frontend dependencies. Host FastAPI separately
+and set `VALORANT_API_BASE_URL` to that backend.
+See [chat setup](docs/chatbot_installation.md).
 
-Architecture
+## Quality and Deployment
 
-- Clean Architecture
-- SOLID
-- Dependency Injection
+```powershell
+uv run --frozen --extra frontend pytest -q tests frontend/streamlit_app/tests
+uv run --frozen --extra frontend python frontend/streamlit_app/tests/test_gemini_resilience.py
+uv run --frozen --extra frontend ruff check .
+uv run --frozen --extra frontend black --workers 1 --check backend tests agents frontend
+docker compose up --build
+```
 
-External APIs
+GitHub CI is configured for locked Python 3.12/3.13 tests, page imports, Gemini
+resilience, lint/format checks, and a production container build/liveness smoke test.
+Its configuration follows the [official uv Actions guide](https://docs.astral.sh/uv/guides/integration/github/).
+Provider tests simulate HTTP responses and do not prove real key access.
+Docker build/runtime has not run locally; remote CI and real upstream smoke
+tests remain integration/deployment gates. Local browser checks covered player
+lookup and the missing-provider error at 375, 768 and 1280 pixel widths; real
+player success and partial results are covered by simulated Streamlit AppTest.
+Compose is development configuration with reload, exposed ports and local
+database defaults, not a hardened public deployment. Authentication, quota limits
+and production readiness must be completed before public access.
 
-- Riot Games API
-- HenrikDev API
-- Tracker.gg
+## Architecture and Roadmap
 
-Future AI
+[Architecture](docs/Architecture.md) separates implemented components from plans.
+The delivery plan retains persistence, measurable analysis, grounded AI reports,
+dashboard/history, authentication/linking, background jobs, OCR/screenshots,
+evidenced timeline/tactics, persistent agent memory and production deployment.
+No milestone is complete solely because scaffolding or a percentage chart exists.
 
-- OpenAI
-- Gemini
-- Claude
-- Local LLMs
+## License and Contributions
 
----
+Source available for viewing, study and evaluation under the owner's
+[proprietary license](LICENSE). This is not an open-source project.
 
-# 🤝 Contributing
+Work on a dedicated branch, maintain this README when creating branches or
+pushing changes, and submit a pull request against `main`.
+The owner reviews and approves merges; do not commit directly to `main`.
 
-This repository is not an open-source project.
-
-If you are collaborating on the project, **do not commit directly to `main`**.
-
-All project work should be performed on a dedicated branch and submitted through a Pull Request. The repository owner reviews changes before they are merged into `main`.
-
-Suggested workflow:
-
-1. Create or use an assigned feature branch.
-2. Make commits only on that branch.
-3. Push the branch to GitHub.
-4. Open a Pull Request against `main`.
-5. Wait for review and approval.
-6. Only approved changes are merged into `main`.
-
----
-
-# ⭐ Why this project?
-
-This project is not intended to become "another VALORANT stats tracker".
-
-Its goal is to explore how modern backend architecture can be combined with Artificial Intelligence to build an intelligent coaching platform capable of understanding gameplay and helping players improve.
-
----
-
-## 📌 Repository
-
-https://github.com/Siname22/ValorantAICoach
+[Repository](https://github.com/Siname22/ValorantAICoach)
