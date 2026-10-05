@@ -31,10 +31,10 @@ their conclusions; a generic chatbot is not a personalized match analyst.
 
 - Branch: codex/system-integration; local integration verified and independently
   reviewed. The October 5 branch push was rejected with "Invalid username or
-  token". The authenticated GitHub connector is now being used to prepare a
-  same-tree publication with a new remote commit and preserved local history.
-  Publication, the integration PR against main and remote CI are not verified
-  yet. No change was pushed to main.
+  token". The authenticated GitHub connector published the exact local tree
+  with preserved history in draft [PR #8](https://github.com/Siname22/ValorantAICoach/pull/8).
+  Remote head 695a443 matched local commit 8eded07's tree. No change was pushed
+  to main; the owner must approve any merge.
 - Backend foundation commit: 354dcaf; pre-integration verification: 282 tests
   passed with one Starlette deprecation warning; Ruff and Black passed.
 - Codex Security diff scan b4fffd08-3b8d-4554-bfdb-6a9c343bd9cd completed with
@@ -49,12 +49,17 @@ their conclusions; a generic chatbot is not a personalized match analyst.
 - Frontend HTTP/partial-data fixes and tests are integrated. The app opens on
   search, uses configured API documentation links and explicit roadmap states.
   Gemini logs no longer expose raw upstream exception bodies.
-- Integrated local verification: 362 pytest tests passed with one upstream
+- Integrated local verification: 365 pytest tests passed with one upstream
   Starlette warning; 81 standalone Gemini checks passed; Ruff and Black passed
-  across 101 Python files. Production-only backend imports passed without
+  across 102 Python files. Production-only backend imports passed without
   pytest/Streamlit. Browser checks at 375/768/1280px verified bounded form layout
   and the actual missing-provider error; no live credential access is implied.
-  CI configuration is present, but remote jobs/publication remain pending.
+  Initial push CI passed Python 3.12/3.13 checks and the Docker build/imports.
+  Container smoke job 111909122098 failed on a first-request TCP reset during
+  startup: curl's previous retry policy did not cover that error. Real-curl
+  regression tests reproduced the reset and unbounded wait (2 failed/1 passed)
+  before the bounded retry fix (3 passed). Persistent HTTP errors still fail.
+  The follow-up awaits exact-head remote CI; no all-green claim is made.
 - The usage limit reset and the normal approval workflow resumed successfully.
   No approval check was bypassed. Independent review found malformed history,
   impossible metric values, private final-handler logs, missing SDK transport
@@ -86,9 +91,9 @@ their conclusions; a generic chatbot is not a personalized match analyst.
 
 ## Access Needed
 
-GitHub's connector remains accessible and reports repository write permissions;
-local Git push still fails authentication. Tree/commit publication through that
-authorized connector is being checked independently of local Git sign-in.
+GitHub's authenticated connector published PR #8 with exact Git tree equality;
+local Git push still fails authentication. Connector publication does not renew
+local Git sign-in or execute the GH Review Loop CLI workflow.
 Git Credential Manager renewal is still needed for normal future Git pushes.
 No matching
 Valorant app was found in Base44; no Base44 migration or remote build was

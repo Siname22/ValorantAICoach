@@ -10,11 +10,14 @@ providers and a Streamlit frontend with a Gemini assistant.
 Current branch: `codex/system-integration`.
 Backend version: 0.4.0.
 
-Local integration and independent review are complete. Local Git push was
-rejected by authentication on October 5, 2026. Publication is being prepared
-through the authenticated GitHub connector, with exact Git tree equality as a
-gate. That publication creates a new commit while preserving the original local
-commits. No integration PR or remote CI result exists yet; `main` is unchanged.
+The integration is published in draft [PR #8](https://github.com/Siname22/ValorantAICoach/pull/8).
+The authenticated GitHub connector preserved the exact local Git tree and
+original history; local Git push still requires renewed authentication.
+`main` is unchanged and merging requires the owner's approval.
+Initial remote Python 3.12/3.13 checks passed. The container built successfully,
+but its first liveness request failed on a startup connection reset. A bounded
+retry fix and real-curl regression tests are verified locally; remote checks
+for that follow-up are pending. This is not an all-green CI or release claim.
 
 The backend foundation was verified before the current integration: player
 identity, rank/history fallback, Riot match detail, explicit provider failures,
@@ -22,9 +25,9 @@ and application-scoped HTTP client cleanup. The current branch also incorporates
 the Streamlit/Gemini work from `develop`.
 
 **Development integration, not a production release.** Backend and frontend
-verification: 362 pytest tests passed, with one upstream Starlette deprecation
+verification: 365 pytest tests passed, with one upstream Starlette deprecation
 warning; the separate Gemini resilience script passed 81 checks. Ruff and
-Black passed across 101 Python files. Live provider credentials and public
+Black passed across 102 Python files. Live provider credentials and public
 deployment have not been verified. See [roadmap](docs/ROADMAP.md) and
 [delivery plan](docs/DELIVERY_PLAN.md) for the complete remaining scope.
 
@@ -154,8 +157,12 @@ GitHub CI is configured for locked Python 3.12/3.13 tests, page imports, Gemini
 resilience, lint/format checks, and a production container build/liveness smoke test.
 Its configuration follows the [official uv Actions guide](https://docs.astral.sh/uv/guides/integration/github/).
 Provider tests simulate HTTP responses and do not prove real key access.
-Docker build/runtime has not run locally; remote CI and real upstream smoke
-tests remain integration/deployment gates. Local browser checks covered player
+Docker build/runtime has not run locally. Initial remote CI verified the image
+build and production imports, not a successful liveness smoke test. Passing
+follow-up container checks and real upstream smoke tests remain gates. The
+liveness command retries startup transport failures while retaining HTTP
+failure detection and bounded connect/request/retry waits; a final in-flight
+attempt can outlast the retry budget. Local browser checks covered player
 lookup and the missing-provider error at 375, 768 and 1280 pixel widths; real
 player success and partial results are covered by simulated Streamlit AppTest.
 Compose is development configuration with reload, exposed ports and local
