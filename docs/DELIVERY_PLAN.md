@@ -78,11 +78,59 @@ their conclusions; a generic chatbot is not a personalized match analyst.
   reproduced six encoded-case failures before the fix and passed afterwards;
   URL round trips and decoded engine credentials are checked. Offline CLI SQL
   generation passed with a synthetic URL; online connections are intercepted.
-  PostgreSQL production/SQLite test storage and explicit activation are proposed
-  and awaiting design approval. No database was connected to or modified during
-  preflight or this configuration fix; restart retention, actual schema migration
-  round trips and PostgreSQL behavior remain unverified. Remote checks and
-  focused review of this follow-up are recorded on PR #8.
+  No database was connected to or modified during that preflight/configuration
+  fix. The owner subsequently approved PostgreSQL production/SQLite isolated
+  tests with explicit activation on October 6; see the implementation below.
+  Remote checks and focused review of the URL follow-up are recorded on PR #8.
+
+## Approved October 6 Update
+
+- Implemented revision `20261006_01` and five ORM tables: players, provider
+  snapshots, matches, player match history and future report records. Reports
+  remain schema only; no report generation or ownership workflow is implied.
+- Storage defaults off. Explicitly migrate PostgreSQL before enabling it;
+  startup never creates tables and rejects incomplete schema. SQLite is accepted
+  only with `APP_ENV=test`. API shapes and 404/502/503 semantics are retained.
+- Successful reads use a typed TTL cache, provider provenance and UTC
+  observation/expiry dates. Keys isolate operation/identity/PUUID/region/limit.
+  Expired or corrupt rows refresh, successful empty history retains its provider,
+  provider failures are not cached and failed writes roll back. Per-player match
+  stats and provider-specific match IDs remain separate. Raw dates are retained.
+- Chat is bounded to 4000 input characters, 20 completed exchanges and 128 KiB
+  UTF-8 history, preserving pairs and failed-turn cleanup. Avatars reject local
+  paths, non-HTTPS, credentials, controls and alternate numeric local hosts.
+  Devcontainer enables CORS/XSRF and Python 3.12; Riot header waits cap at 30s.
+- Independent review identified synchronous database startup, inconsistent shared
+  match lock order and hexadecimal IPv4 avatar bypass. Real tests reproduced
+  these: thread/order RED 2 failed -> GREEN 2 passed, avatar RED 5 failed -> GREEN
+  5 passed. Startup is offloaded and shared writes are sorted without altering
+  response/history order. This is not a demonstrated PostgreSQL deadlock exploit.
+- Combined tests found Alembic logging disabled existing Gemini loggers: RED
+  4 failed/23 passed -> GREEN 27 passed after retaining existing loggers. The final
+  whole suite passed **493 tests**, no skips, 25 dependency warnings (Starlette
+  and Alembic path-separator deprecations). Gemini passed 81 checks; page imports,
+  Ruff and Black (115 files) passed. Additional risk tests characterize existing
+  behavior; they are not all claimed as red/green implementation cycles.
+- SQLite migration upgrade/repeat/downgrade/re-upgrade, schema/model parity,
+  restart, TTL/corruption, concurrent misses, isolation and transactional failures
+  use new temporary databases. Eight encoded-URL tests and offline PostgreSQL
+  DDL generation pass. No operator or production database has been modified.
+- Added separate PostgreSQL 16 CI proof: real migration round trips, REST restart
+  retention, UTC provenance and player/provider upserts. Sixteen target-guard
+  tests pass locally; real PostgreSQL execution remains pending exact-head CI.
+  The job fails rather than skips without its explicit test-only URL and only
+  creates/drops its own UUID databases. Docker has not run locally.
+- Sealed integration security scan `8315a654-6422-4fc4-a23e-1b2a4812458f`
+  covers base `74b3664` -> old head `9654bef`: 76 files, zero confirmed reportable
+  findings, four deferred proof gaps and partial security coverage. Later source
+  changes are outside its frozen result. Those proof gaps are not an all-clear
+  or a completed exploit-remediation certification. Measured scan usage:
+  23,285,069 total tokens; 23,132,802 input; 21,702,144 cached input.
+
+Retention pruning, configuration-change invalidation, cross-process rate limits,
+content-ID resolution, reports/auth/jobs/OCR/tactics/memory and hosted production
+gates remain open. This update does not complete the October 23 milestone or the
+full December delivery. See `plans/2026-10-06-storage-and-robustness.md`.
 
 ## Publication Gate
 

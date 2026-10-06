@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
@@ -26,7 +27,7 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-    service = create_player_service()
+    service = await asyncio.to_thread(create_player_service)
     application.state.player_service = service
     try:
         yield

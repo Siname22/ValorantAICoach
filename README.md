@@ -14,7 +14,7 @@ The integration is published in draft [PR #8](https://github.com/Siname22/Valora
 The authenticated GitHub connector preserved the exact local Git tree and
 original history; local Git push still requires renewed authentication.
 `main` is unchanged and merging requires the owner's approval.
-Remote Python 3.12/3.13 and container checks passed for commit `2a3f937`.
+Remote Python 3.12/3.13 and container checks passed on pre-update head `9654bef`.
 CI reproduced the startup connection reset and recovered with bounded retries,
 then verified liveness 200 and the no-provider 503. The real-curl regression
 tests also passed on Linux with no skips. The PR shows checks for subsequent
@@ -26,9 +26,12 @@ and application-scoped HTTP client cleanup. The current branch also incorporates
 the Streamlit/Gemini work from `develop`.
 
 **Development integration, not a production release.** Backend and frontend
-verification: 373 pytest tests passed, with one upstream Starlette deprecation
-warning; the separate Gemini resilience script passed 81 checks. Ruff and
-Black passed across 104 Python files, including the Alembic environment.
+verification on October 6 after the approved update: 493 pytest tests passed,
+no skips. There were 25 dependency warnings (Starlette and Alembic's legacy
+path-separator configuration). The separate Gemini resilience script passed
+81 checks; imports, Ruff and Black passed across 115 Python files. Sixteen
+PostgreSQL target-guard tests passed locally without connecting to a database.
+The three real PostgreSQL tests are separate CI evidence, not part of that count.
 Live provider credentials and public
 deployment have not been verified. See [roadmap](docs/ROADMAP.md) and
 [delivery plan](docs/DELIVERY_PLAN.md) for the complete remaining scope.
@@ -111,22 +114,50 @@ requests; rank/history outages preserve available data. Displayed provider text
 is escaped and RR zero remains visible. Roadmap screens use explicit milestones,
 not invented completion percentages.
 
-## Persistence Status
+## Persistence
 
-PostgreSQL, SQLAlchemy and Alembic are declared dependencies, not working player
-or match storage. No application tables or migration revisions exist yet;
-Alembic's metadata is not connected to application models.
+The owner approved PostgreSQL production storage and isolated SQLite tests on
+October 6, 2026. SQLAlchemy models and revision `20261006_01` now cover players,
+provider snapshots, matches, per-player history and a future report schema.
+The report table is not a report generator, ownership policy or history UI.
 
-The preflight URL interpolation failure is fixed: percent-encoded credentials
-now survive Alembic configuration without altering the URL supplied to
-SQLAlchemy. Eight regressions cover plain URLs, encoded credentials, separators
-and repeated percent signs in offline/online configuration. Online tests
-intercept the connection before database access; offline SQL is generated,
-not executed. This does not prove working storage or a production migration.
-See the [version-matched configuration contract](https://github.com/sqlalchemy/alembic/blob/rel_1_18_5/alembic/config.py).
+Storage is opt-in: `DATABASE_ENABLED=false` preserves provider-only operation
+without opening a database connection. For a new development database, set the
+backend's private `DATABASE_URL` to PostgreSQL, then migrate explicitly:
 
-The proposed next step is PostgreSQL production storage with SQLite tests,
-explicit activation and provider/timestamp provenance, pending design approval.
+```powershell
+uv run --frozen alembic upgrade head
+```
+
+Only after that succeeds, set `DATABASE_ENABLED=true` and restart FastAPI.
+For Compose, run `docker compose up -d postgres`, then
+`docker compose run --rm --no-deps backend uv run --no-sync alembic upgrade head`
+before enabling storage and starting the backend. Back up existing databases and
+review generated SQL before production migrations. Startup never creates tables
+or applies migrations; missing/incompatible tables fail startup with a generic
+storage error. SQLite activation requires `APP_ENV=test` and is not supported
+for production.
+
+Successful profile/rank/stat/history/detail reads persist for
+`DATABASE_CACHE_TTL_SECONDS` (default 300, allowed 1-86400). Cache keys distinguish
+operation, Riot ID, PUUID, region and history limit. Expired or structurally invalid
+data is refreshed; upstream errors are not cached. A confirmed-empty history
+retains its actual provider. Database failures return sanitized 503 errors.
+Observation/expiry times are UTC; stored match start times normalize only known
+timezone-aware dates or millisecond timestamps, retaining the original value.
+Public REST schemas and provider timestamp formats remain unchanged.
+
+Real temporary SQLite migrations, schema/model parity, restart retention,
+TTL/corruption refresh, concurrent misses, isolation and transactional failures
+are tested. A separate PostgreSQL CI job tests real migration round trips,
+restart retention and player/provider upserts against disposable test databases;
+its result must be checked on the exact published revision. No production
+database has been migrated. Percent-encoded URLs retain their eight Alembic
+configuration regressions.
+
+Expired rows are not yet pruned automatically. TTL limits freshness, not database
+retention or cross-process request rates; retention, authentication, quotas and
+provider-configuration cache invalidation remain release work.
 
 ## Gemini Coach
 
@@ -142,6 +173,15 @@ This is not a total wall-clock deadline. See the
 [SDK documentation](https://github.com/googleapis/python-genai) and
 [HTTPX exception hierarchy](https://www.python-httpx.org/exceptions/).
 
+Input is capped at 4000 characters in both the widget and client. Retained chat
+content is bounded to 20 complete exchanges and 128 KiB of UTF-8 text, including
+the greeting/pending turn; old pairs are removed together. These bounds do not
+enforce per-user billing quotas. Profile avatars accept validated external HTTPS
+URLs, not local paths, data URLs, credentials or control characters; this does
+not resolve DNS or certify redirect targets. Devcontainer startup explicitly
+enables CORS/XSRF and uses Python 3.12. Riot `Retry-After` waits are capped at
+30 seconds per retry, not a total request deadline.
+
 For frontend-only Streamlit Cloud installs, the entrypoint is
 `frontend/streamlit_app/app.py` and its adjacent
 `requirements.txt` supplies the frontend dependencies. Host FastAPI separately
@@ -154,13 +194,18 @@ See [chat setup](docs/chatbot_installation.md).
 uv run --frozen --extra frontend pytest -q tests frontend/streamlit_app/tests
 uv run --frozen --extra frontend python frontend/streamlit_app/tests/test_gemini_resilience.py
 uv run --frozen --extra frontend ruff check .
-uv run --frozen --extra frontend black --workers 1 --check backend tests agents frontend database
+uv run --frozen --extra frontend black --workers 1 --check backend tests agents frontend database integration_tests
 docker compose up --build
 ```
 
 GitHub CI is configured for locked Python 3.12/3.13 tests, page imports, Gemini
 resilience, lint/format checks, and a production container build/liveness smoke test.
-Its configuration follows the [official uv Actions guide](https://docs.astral.sh/uv/guides/integration/github/).
+An independent PostgreSQL service job runs the explicitly selected
+`integration_tests/test_postgres_storage.py`; it fails rather than skips if
+`TEST_POSTGRES_URL` is absent. That test URL must identify a test control database
+with CREATE DATABASE permission. Tests create/drop only their own UUID-named
+databases, never use the operator's `DATABASE_URL` as input, and intercept provider
+HTTP. Its configuration follows the [official uv Actions guide](https://docs.astral.sh/uv/guides/integration/github/).
 Provider tests simulate HTTP responses and do not prove real key access.
 Docker build/runtime has not run locally. Remote CI at `2a3f937` verified the
 image build, non-root execution, production imports, startup liveness and the

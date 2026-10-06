@@ -12,6 +12,8 @@ from .exceptions import (
     RiotRateLimitError,
 )
 
+MAX_RETRY_AFTER_SECONDS = 30.0
+
 
 class RiotHTTPClient(BaseHTTPClient):
     """
@@ -64,7 +66,7 @@ class RiotHTTPClient(BaseHTTPClient):
                 pass
             else:
                 if isfinite(retry_after) and retry_after >= 0:
-                    error.retry_after = retry_after
+                    error.retry_after = min(retry_after, MAX_RETRY_AFTER_SECONDS)
             raise error
         elif status_code >= 500:
             raise RiotError(

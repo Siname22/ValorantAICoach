@@ -19,10 +19,13 @@ permissions. Mocked HTTP tests do not confirm those permissions.
 
 ## Next: Stored Player Intelligence
 
-- [ ] Add SQLAlchemy player, match and report models and Alembic migrations.
-- [ ] Cache provider data with timestamps, provenance and refresh limits.
+- [x] Add SQLAlchemy player, match and future-report models and explicit Alembic migration.
+- [x] Add opt-in typed TTL caching with UTC observations and provider provenance.
+- [ ] Verify the PostgreSQL service job on the exact published revision.
+- [ ] Add retention cleanup, configuration invalidation and distributed refresh limits.
 - [ ] Resolve Riot map/character IDs using a versioned content catalog.
-- [ ] Normalize timestamps to one documented representation.
+- [x] Normalize stored match dates to UTC while preserving raw provider values.
+- [ ] Normalize presentation dates and resolve unknown provider date semantics.
 - [ ] Implement measurable match analysis and useful report schemas.
 - [ ] Connect the match analyst and orchestrator to the player service.
 

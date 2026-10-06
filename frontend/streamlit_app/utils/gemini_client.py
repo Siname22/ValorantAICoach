@@ -67,9 +67,10 @@ RETRY_BACKOFF_SECONDS: Final[tuple[float, ...]] = (1.0, 2.0)
 #: pressure; 500 and 504 are transient upstream faults.
 TRANSIENT_STATUS_CODES: Final[frozenset[int]] = frozenset({429, 500, 502, 503, 504})
 
-#: Conversation turns kept when rebuilding the Gemini history. Bounding it keeps
-#: latency and token usage predictable during a live demo.
+#: Completed user/assistant exchanges retained, excluding the initial greeting.
 MAX_HISTORY_TURNS: Final[int] = 20
+MAX_HISTORY_BYTES: Final[int] = 128 * 1024
+MAX_INPUT_CHARS: Final[int] = 4000
 REQUEST_TIMEOUT_MS: Final[int] = 10_000
 
 ROLE_USER: Final[str] = "user"
@@ -118,6 +119,9 @@ MSG_EMPTY_RESPONSE: Final[str] = (
     "Prueba a reformularla de otra manera."
 )
 MSG_EMPTY_MESSAGE: Final[str] = "Escribe una pregunta para que el coach pueda ayudarte."
+MSG_INPUT_TOO_LONG: Final[str] = (
+    f"La pregunta no puede superar los {MAX_INPUT_CHARS} caracteres."
+)
 MSG_SDK_MISSING: Final[str] = (
     "Falta la dependencia 'google-genai'. Añádela a "
     "frontend/streamlit_app/requirements.txt y reinstala las dependencias."
@@ -143,6 +147,33 @@ class ChatMessage:
 
     role: str
     content: str
+
+
+def trim_chat_history(history: list[ChatMessage]) -> list[ChatMessage]:
+    """Bound ordered exchanges, including the greeting and pending input bytes."""
+    greeting = history[:1] if history and history[0].role == ROLE_ASSISTANT else []
+    conversation = history[len(greeting) :]
+    pending = (
+        conversation[-1:] if conversation and conversation[-1].role == ROLE_USER else []
+    )
+    if pending:
+        conversation = conversation[:-1]
+    conversation = conversation[-2 * MAX_HISTORY_TURNS :]
+
+    greeting_bytes = sum(len(message.content.encode("utf-8")) for message in greeting)
+    pending_bytes = sum(len(message.content.encode("utf-8")) for message in pending)
+    if pending_bytes > MAX_HISTORY_BYTES:
+        pending, pending_bytes = [], 0
+    if greeting_bytes + pending_bytes > MAX_HISTORY_BYTES:
+        greeting, greeting_bytes = [], 0
+    sizes = [len(message.content.encode("utf-8")) for message in conversation]
+    retained_bytes = greeting_bytes + pending_bytes + sum(sizes)
+    start = 0
+    # Remove both sides of old exchanges; leave the pending turn last for cleanup.
+    while retained_bytes > MAX_HISTORY_BYTES and start < len(conversation):
+        retained_bytes -= sum(sizes[start : start + 2])
+        start += 2
+    return greeting + conversation[start:] + pending
 
 
 def _read_setting(key: str) -> str | None:
@@ -335,7 +366,7 @@ class GeminiCoachClient:
 
     def _to_sdk_history(self, history: list[ChatMessage]) -> list[Any]:
         """Convert stored messages into the SDK's ``Content`` objects."""
-        recent = history[-MAX_HISTORY_TURNS:] if history else []
+        recent = trim_chat_history(history)
         contents: list[Any] = []
         for message in recent:
             if not message.content.strip():
@@ -385,10 +416,14 @@ class GeminiCoachClient:
         next one takes over. Authentication failures break out immediately,
         because retrying a rejected key only wastes the user's time.
         """
+        if len(message) > MAX_INPUT_CHARS:
+            raise GeminiClientError(MSG_INPUT_TOO_LONG)
         if not message.strip():
             raise GeminiClientError(MSG_EMPTY_MESSAGE)
 
-        turns = history or []
+        turns = trim_chat_history(
+            (history or []) + [ChatMessage(role=ROLE_USER, content=message)]
+        )[:-1]
         last_transient: Exception | None = None
         model_rejected = False
 
