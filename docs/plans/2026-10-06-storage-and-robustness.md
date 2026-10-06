@@ -28,7 +28,7 @@
 - [x] Observe the expected focused failures without network, real keys or long sleeps.
 - [x] Implement only the specified bounds, preserving failure cleanup and valid profiles.
 - [x] Run focused and existing frontend/provider tests plus Ruff/Black.
-- [ ] Independent review and aggregate commit after integration checks.
+- [x] Independent review and aggregate commit after integration checks.
 
 ### Task 2: Explicit Schema and Migrations
 
@@ -40,7 +40,7 @@
 - [x] Implement mapped models, explicit revision and metadata wiring without `create_all` in startup.
 - [x] Verify upgrade/repeated upgrade/downgrade/re-upgrade and metadata parity on a temporary database.
 - [x] Retain the existing encoded-URL tests; compile PostgreSQL offline SQL with no connection.
-- [ ] Independent review and aggregate commit after integration checks.
+- [x] Independent review and aggregate commit after integration checks.
 
 ### Task 3: Activated Storage, Refresh and Restart Retention
 
@@ -52,7 +52,7 @@
 - [x] Implement typed cache revalidation, transactional records and thread-safe connection lifecycle; verify TTL expiry, empty history, lookup isolation, corrupt cache, DB failure and provider failure semantics.
 - [x] Add a PostgreSQL service CI job that actually upgrades, tests restart retention/schema integrity and downgrades; no silent skip when that job runs.
 - [x] Run full backend/frontend pytest, Gemini resilience, imports, Ruff, Black and whitespace checks; independently review changed paths.
-- [ ] Update README with actual evidence, publish the integration branch and inspect exact-head CI. Do not merge or deploy.
+- [x] Update README with actual evidence, publish the integration branch and inspect exact-head CI. Do not merge or deploy.
 
 ## Evidence and Limits
 
@@ -69,5 +69,6 @@ No unresolved architecture choice blocks this approved wave. Live provider keys,
 - Behavioral RED/GREEN covered schema creation, API restart retention, section caching, invalid detail/partial schema, nonblocking startup, deterministic shared-row writes, chat bounds, avatars, devcontainer protections and retry limits. Supplementary risk tests characterize existing behavior, not invented RED claims.
 - Full-suite RED exposed migration logging interference (4 failed/482 passed); focused RED 4 failed/23 passed became GREEN 27 passed with existing loggers preserved, followed by the full suite above.
 - Independent reviews closed the three P2 issues (startup thread, shared-row ordering, hexadecimal avatar hosts) after focused re-tests. Scoped branch publication was approved; no main merge or production release was approved.
-- PostgreSQL real execution, simultaneous PostgreSQL transactions, live providers and deployment remain unverified locally. Cache retention cleanup/configuration invalidation and distributed quotas remain open.
+- PostgreSQL real execution passed in CI run 37436302896 for source head `16146ab`: 19 tests, no skips. Python 3.12/3.13 and container jobs passed. Simultaneous PostgreSQL transactions, live providers and deployment remain unverified. Cache retention cleanup/configuration invalidation and distributed quotas remain open.
 - Native Git dry-run push still rejected its credential on October 6. Publication uses the already authenticated GitHub connector, non-forced branch updates and exact-tree verification; no authentication gate is bypassed.
+- Runtime commit: local `aff61ee` / remote `16146ab`, tree `00e10e8ce4190a46bfc84f45ce572dd2e7fa2a32`. History-only local merge `c8774a6` retained both ancestries with zero source delta. A documentation-only follow-up records CI proof and must receive its own checks.

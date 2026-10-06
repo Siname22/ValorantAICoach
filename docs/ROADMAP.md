@@ -21,7 +21,7 @@ permissions. Mocked HTTP tests do not confirm those permissions.
 
 - [x] Add SQLAlchemy player, match and future-report models and explicit Alembic migration.
 - [x] Add opt-in typed TTL caching with UTC observations and provider provenance.
-- [ ] Verify the PostgreSQL service job on the exact published revision.
+- [x] Verify the PostgreSQL service job for published source `16146ab` (19 tests).
 - [ ] Add retention cleanup, configuration invalidation and distributed refresh limits.
 - [ ] Resolve Riot map/character IDs using a versioned content catalog.
 - [x] Normalize stored match dates to UTC while preserving raw provider values.

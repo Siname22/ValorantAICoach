@@ -117,9 +117,13 @@ their conclusions; a generic chatbot is not a personalized match analyst.
   DDL generation pass. No operator or production database has been modified.
 - Added separate PostgreSQL 16 CI proof: real migration round trips, REST restart
   retention, UTC provenance and player/provider upserts. Sixteen target-guard
-  tests pass locally; real PostgreSQL execution remains pending exact-head CI.
+  tests pass locally. CI run 37436302896 for source head `16146ab` passed all
+  19 PostgreSQL tests, including the three real database cases, with no skips.
   The job fails rather than skips without its explicit test-only URL and only
-  creates/drops its own UUID databases. Docker has not run locally.
+  creates/drops its own UUID databases. Python 3.12/3.13 and the production
+  container also passed. Python 3.13 logs confirm 493 tests, Gemini 81/81, imports,
+  Ruff and Black 115 files; container logs confirm startup retry recovery,
+  liveness 200 and no-provider 503. Docker has not run locally.
 - Sealed integration security scan `8315a654-6422-4fc4-a23e-1b2a4812458f`
   covers base `74b3664` -> old head `9654bef`: 76 files, zero confirmed reportable
   findings, four deferred proof gaps and partial security coverage. Later source
@@ -131,6 +135,12 @@ Retention pruning, configuration-change invalidation, cross-process rate limits,
 content-ID resolution, reports/auth/jobs/OCR/tactics/memory and hosted production
 gates remain open. This update does not complete the October 23 milestone or the
 full December delivery. See `plans/2026-10-06-storage-and-robustness.md`.
+
+Runtime publication: local `aff61ee` and remote `16146ab` have identical tree
+`00e10e8ce4190a46bfc84f45ce572dd2e7fa2a32`. Local history merge `c8774a6`
+preserves both ancestries with the same tree. Main is unchanged at `74b3664`.
+The following documentation-only update records completed evidence; it does not
+change the tested runtime. Its own PR checks must still be inspected.
 
 ## Publication Gate
 
