@@ -47,6 +47,7 @@ REQUIRED_PACKAGES = {
     "plotly": "plotly",
     "pandas": "pandas",
     "google.genai": "google-genai",
+    "httpx": "httpx",
 }
 
 BACKEND_ONLY = {"fastapi", "uvicorn", "sqlalchemy", "alembic", "psycopg"}
@@ -100,9 +101,7 @@ def _check_dependencies() -> list[str]:
 
     for raw_name, pypi_name in REQUIRED_PACKAGES.items():
         if pypi_name.lower() not in declared_names:
-            problems.append(
-                f"{resolved.name} is missing required package: {raw_name}"
-            )
+            problems.append(f"{resolved.name} is missing required package: {raw_name}")
 
     for name, raw_line in declared:
         if not name.replace("-", "").replace("_", "").replace(".", "").isalnum():

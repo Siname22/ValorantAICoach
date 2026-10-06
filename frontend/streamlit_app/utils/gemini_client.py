@@ -29,6 +29,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Final
 
+import httpx
 import streamlit as st
 
 logger = logging.getLogger(__name__)
@@ -66,9 +67,11 @@ RETRY_BACKOFF_SECONDS: Final[tuple[float, ...]] = (1.0, 2.0)
 #: pressure; 500 and 504 are transient upstream faults.
 TRANSIENT_STATUS_CODES: Final[frozenset[int]] = frozenset({429, 500, 502, 503, 504})
 
-#: Conversation turns kept when rebuilding the Gemini history. Bounding it keeps
-#: latency and token usage predictable during a live demo.
+#: Completed user/assistant exchanges retained, excluding the initial greeting.
 MAX_HISTORY_TURNS: Final[int] = 20
+MAX_HISTORY_BYTES: Final[int] = 128 * 1024
+MAX_INPUT_CHARS: Final[int] = 4000
+REQUEST_TIMEOUT_MS: Final[int] = 10_000
 
 ROLE_USER: Final[str] = "user"
 ROLE_ASSISTANT: Final[str] = "assistant"
@@ -93,9 +96,7 @@ MSG_OVERLOADED: Final[str] = (
 #: Permanent configuration fault: credential rejected, insufficient permissions,
 #: or no reachable model. The wording avoids naming the secret so a screenshot of
 #: the deployed app never hints at the credential layout.
-MSG_CONFIG_REVIEW: Final[str] = (
-    "La configuración del servicio de IA necesita revisión."
-)
+MSG_CONFIG_REVIEW: Final[str] = "La configuración del servicio de IA necesita revisión."
 
 #: Kept as an alias because both an invalid key and an unavailable model are, from
 #: the user's point of view, the same actionable situation: configuration.
@@ -103,16 +104,12 @@ MSG_INVALID_KEY: Final[str] = MSG_CONFIG_REVIEW
 MSG_MODEL_UNAVAILABLE: Final[str] = MSG_CONFIG_REVIEW
 
 #: Shown by the page itself, before any client is built, when no key is present.
-MSG_MISSING_KEY: Final[str] = (
-    f"Configura {API_KEY_SECRET} para activar el coach."
-)
+MSG_MISSING_KEY: Final[str] = f"Configura {API_KEY_SECRET} para activar el coach."
 
 #: Unclassified failure. Anything that is neither transient nor a configuration
 #: problem lands here, so the user always gets an actionable sentence instead of
 #: a traceback.
-MSG_UNEXPECTED: Final[str] = (
-    "El coach tuvo un problema inesperado. Inténtalo de nuevo."
-)
+MSG_UNEXPECTED: Final[str] = "El coach tuvo un problema inesperado. Inténtalo de nuevo."
 MSG_GENERIC_FAILURE: Final[str] = MSG_UNEXPECTED
 
 #: Content-level outcomes, distinct from outages: the model answered with nothing
@@ -121,8 +118,9 @@ MSG_EMPTY_RESPONSE: Final[str] = (
     "El coach no ha podido formular una respuesta para esa pregunta. "
     "Prueba a reformularla de otra manera."
 )
-MSG_EMPTY_MESSAGE: Final[str] = (
-    "Escribe una pregunta para que el coach pueda ayudarte."
+MSG_EMPTY_MESSAGE: Final[str] = "Escribe una pregunta para que el coach pueda ayudarte."
+MSG_INPUT_TOO_LONG: Final[str] = (
+    f"La pregunta no puede superar los {MAX_INPUT_CHARS} caracteres."
 )
 MSG_SDK_MISSING: Final[str] = (
     "Falta la dependencia 'google-genai'. Añádela a "
@@ -149,6 +147,33 @@ class ChatMessage:
 
     role: str
     content: str
+
+
+def trim_chat_history(history: list[ChatMessage]) -> list[ChatMessage]:
+    """Bound ordered exchanges, including the greeting and pending input bytes."""
+    greeting = history[:1] if history and history[0].role == ROLE_ASSISTANT else []
+    conversation = history[len(greeting) :]
+    pending = (
+        conversation[-1:] if conversation and conversation[-1].role == ROLE_USER else []
+    )
+    if pending:
+        conversation = conversation[:-1]
+    conversation = conversation[-2 * MAX_HISTORY_TURNS :]
+
+    greeting_bytes = sum(len(message.content.encode("utf-8")) for message in greeting)
+    pending_bytes = sum(len(message.content.encode("utf-8")) for message in pending)
+    if pending_bytes > MAX_HISTORY_BYTES:
+        pending, pending_bytes = [], 0
+    if greeting_bytes + pending_bytes > MAX_HISTORY_BYTES:
+        greeting, greeting_bytes = [], 0
+    sizes = [len(message.content.encode("utf-8")) for message in conversation]
+    retained_bytes = greeting_bytes + pending_bytes + sum(sizes)
+    start = 0
+    # Remove both sides of old exchanges; leave the pending turn last for cleanup.
+    while retained_bytes > MAX_HISTORY_BYTES and start < len(conversation):
+        retained_bytes -= sum(sizes[start : start + 2])
+        start += 2
+    return greeting + conversation[start:] + pending
 
 
 def _read_setting(key: str) -> str | None:
@@ -247,7 +272,7 @@ def _is_transient(exc: Exception) -> bool:
         return True
     # Network-level problems never carry an HTTP status, so they are matched by
     # exception type before falling back to message inspection.
-    if isinstance(exc, (TimeoutError, ConnectionError)):
+    if isinstance(exc, (httpx.TransportError, TimeoutError, ConnectionError)):
         return True
     lowered = str(exc).lower()
     markers = (
@@ -316,10 +341,17 @@ class GeminiCoachClient:
 
         self._genai, self._types, self._errors = _import_sdk()
         try:
-            self._client = self._genai.Client(api_key=resolved_key)
+            self._client = self._genai.Client(
+                api_key=resolved_key,
+                http_options=self._types.HttpOptions(
+                    timeout=REQUEST_TIMEOUT_MS,
+                    # This wrapper owns retries; avoid multiplying SDK attempts.
+                    retry_options=self._types.HttpRetryOptions(attempts=1),
+                ),
+            )
         except Exception as exc:  # noqa: BLE001 - SDK raises broad errors
-            logger.error("Gemini client initialisation failed: %s", exc)
-            raise GeminiConfigurationError(MSG_INVALID_KEY) from exc
+            logger.error("Gemini client initialisation failed: %s", type(exc).__name__)
+            raise GeminiConfigurationError(MSG_INVALID_KEY) from None
 
     def _build_config(self) -> Any:
         return self._types.GenerateContentConfig(
@@ -328,18 +360,18 @@ class GeminiCoachClient:
             max_output_tokens=self.max_output_tokens,
         )
 
+    def close(self) -> None:
+        """Release the SDK's HTTP clients after a coaching turn."""
+        self._client.close()
+
     def _to_sdk_history(self, history: list[ChatMessage]) -> list[Any]:
         """Convert stored messages into the SDK's ``Content`` objects."""
-        recent = history[-MAX_HISTORY_TURNS:] if history else []
+        recent = trim_chat_history(history)
         contents: list[Any] = []
         for message in recent:
             if not message.content.strip():
                 continue
-            role = (
-                _GEMINI_MODEL_ROLE
-                if message.role == ROLE_ASSISTANT
-                else ROLE_USER
-            )
+            role = _GEMINI_MODEL_ROLE if message.role == ROLE_ASSISTANT else ROLE_USER
             contents.append(
                 self._types.Content(
                     role=role,
@@ -384,10 +416,14 @@ class GeminiCoachClient:
         next one takes over. Authentication failures break out immediately,
         because retrying a rejected key only wastes the user's time.
         """
+        if len(message) > MAX_INPUT_CHARS:
+            raise GeminiClientError(MSG_INPUT_TOO_LONG)
         if not message.strip():
             raise GeminiClientError(MSG_EMPTY_MESSAGE)
 
-        turns = history or []
+        turns = trim_chat_history(
+            (history or []) + [ChatMessage(role=ROLE_USER, content=message)]
+        )[:-1]
         last_transient: Exception | None = None
         model_rejected = False
 
@@ -403,15 +439,15 @@ class GeminiCoachClient:
                         logger.error(
                             "Gemini rejected the credential (model=%s): %s",
                             model,
-                            exc,
+                            type(exc).__name__,
                         )
-                        raise GeminiConfigurationError(MSG_INVALID_KEY) from exc
+                        raise GeminiConfigurationError(MSG_INVALID_KEY) from None
 
                     if _is_model_missing(exc):
                         logger.warning(
                             "Model '%s' is not available for this key: %s",
                             model,
-                            exc,
+                            type(exc).__name__,
                         )
                         model_rejected = True
                         last_transient = exc
@@ -426,20 +462,20 @@ class GeminiCoachClient:
                             attempt,
                             MAX_ATTEMPTS_PER_MODEL,
                             _status_code(exc),
-                            exc,
+                            type(exc).__name__,
                         )
                         if attempt < MAX_ATTEMPTS_PER_MODEL:
-                            index = min(
-                                attempt - 1, len(RETRY_BACKOFF_SECONDS) - 1
-                            )
+                            index = min(attempt - 1, len(RETRY_BACKOFF_SECONDS) - 1)
                             self._sleep(RETRY_BACKOFF_SECONDS[index])
                             continue
                         break  # Exhausted this model; fall through to the next.
 
                     logger.error(
-                        "Unexpected Gemini failure (model=%s): %s", model, exc
+                        "Unexpected Gemini failure (model=%s): %s",
+                        model,
+                        type(exc).__name__,
                     )
-                    raise GeminiClientError(MSG_GENERIC_FAILURE) from exc
+                    raise GeminiClientError(MSG_GENERIC_FAILURE) from None
                 else:
                     if model != self.model:
                         logger.info(
@@ -455,8 +491,8 @@ class GeminiCoachClient:
             "Every Gemini model in the chain failed: %s", list(self.model_chain)
         )
         if model_rejected and not _is_transient(last_transient or Exception()):
-            raise GeminiClientError(MSG_MODEL_UNAVAILABLE) from last_transient
-        raise GeminiClientError(MSG_OVERLOADED) from last_transient
+            raise GeminiClientError(MSG_MODEL_UNAVAILABLE) from None
+        raise GeminiClientError(MSG_OVERLOADED) from None
 
 
 def get_gemini_client(

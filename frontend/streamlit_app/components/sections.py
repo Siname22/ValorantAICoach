@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import sys
+from contextlib import closing, suppress
+from html import escape
 from pathlib import Path
 
 # Guarantees `utils` stays importable even when this module is loaded before the
@@ -9,17 +11,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd  # noqa: E402
-import plotly.graph_objects as go  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from utils.api_client import APIClientError, get_api_client  # noqa: E402
+from utils.avatar import external_avatar_url  # noqa: E402
 from utils.coach_persona import (  # noqa: E402
     COACH_TAGLINE,
     build_system_prompt,
     get_starter_prompts,
     get_welcome_message,
 )
+from utils.config import get_api_base_url  # noqa: E402
 from utils.gemini_client import (  # noqa: E402
+    MAX_INPUT_CHARS,
+    MSG_INPUT_TOO_LONG,
     MSG_MISSING_KEY,
     MSG_UNEXPECTED,
     ROLE_ASSISTANT,
@@ -31,11 +36,11 @@ from utils.gemini_client import (  # noqa: E402
     get_model_chain,
     get_model_name,
     is_configured,
+    trim_chat_history,
 )
 from utils.ui import (  # noqa: E402
     apply_chat_styles,
     apply_global_styles,
-    render_metric_card,
     render_page_header,
     render_sidebar,
 )
@@ -49,7 +54,7 @@ def render_home_page() -> None:
         page_title="Valorant AI Coach",
         page_icon="🎯",
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="auto",
     )
     apply_global_styles()
     render_sidebar()
@@ -113,111 +118,129 @@ def render_player_search_page() -> None:
         page_title="Player Search • Valorant AI Coach",
         page_icon="🔎",
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="auto",
     )
     apply_global_styles()
     render_sidebar()
 
     render_page_header(
+        "Valorant AI Coach",
         "Player search",
-        "Enter a player identity to fetch the profile, rank and recent matches "
-        "from the existing REST API in a polished product interface.",
-        eyebrow="LIVE DATA",
+        eyebrow="",
     )
 
-    st.markdown("")
-    left_col, right_col = st.columns([1.25, 0.75], vertical_alignment="top")
-
-    with left_col, st.container():
-        st.markdown("<div class='hero-card'>", unsafe_allow_html=True)
-        with st.form("player_search"):
-            game_name = st.text_input("Game Name", value="TestPlayer")
-            tag_line = st.text_input("Tag", value="NA1")
-            submitted = st.form_submit_button("Analyze", type="primary")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with right_col:
-        render_metric_card(
-            "Status",
-            "HTTP-ready",
-            "The UI calls the REST API directly and keeps the backend untouched.",
-        )
-        render_metric_card(
-            "Data sources",
-            "Tracker → Henrik → Riot",
-            "Fallback strategy preserved from the backend layer.",
-        )
-        render_metric_card(
-            "Presentation mode",
-            "SaaS-style",
-            "Optimized for demos, talks and recruiter walkthroughs.",
+    with st.form("player_search"):
+        name_col, tag_col = st.columns([2, 1])
+        with name_col:
+            game_name = st.text_input("Game name", value="TestPlayer")
+        with tag_col:
+            tag_line = st.text_input("Tag line", value="NA1")
+        submitted = st.form_submit_button(
+            "Search player", type="primary", icon=":material/search:"
         )
 
     if submitted:
+        game_name = game_name.strip()
+        tag_line = tag_line.strip()
         if not game_name or not tag_line:
             st.warning("Please provide both a game name and a tag line.")
             return
 
+        result = {
+            "game_name": game_name,
+            "tag_line": tag_line,
+            "profile": None,
+            "rank": None,
+            "matches_payload": None,
+            "error": None,
+        }
         client = get_api_client()
         with st.spinner("Querying the backend API..."):
             try:
-                profile = client.get_player_profile(game_name, tag_line)
-                rank = client.get_player_rank(game_name, tag_line)
-                matches_payload = client.get_player_matches(game_name, tag_line)
+                result["profile"] = client.get_player_profile(game_name, tag_line)
             except APIClientError as exc:
-                st.error(str(exc))
-                st.info(
-                    "Ensure the FastAPI backend is running at the configured "
-                    "URL before using the demo."
-                )
-                return
-
-        st.success("Player data retrieved successfully.")
-        profile_col, rank_col = st.columns([1.5, 0.8], vertical_alignment="top")
-        with profile_col:
-            st.markdown("### Profile")
-            card_content = "<div class='hero-card'>"
-            if profile.get("avatar_url"):
-                st.image(profile["avatar_url"], width=120)
+                result["error"] = str(exc)
             else:
-                st.markdown(
-                    "<div style='width:120px;height:120px;border-radius:16px;"
-                    "background:#161b22;border:1px dashed #30363d;"
-                    "display:flex;align-items:center;justify-content:center;"
-                    "color:#8b949e;'>Avatar placeholder</div>",
-                    unsafe_allow_html=True,
-                )
-            card_content += (
-                f"<h3>{profile.get('game_name', game_name)}#"
-                f"{profile.get('tag_line', tag_line)}</h3>"
-            )
-            card_content += (
-                f"<p><strong>Level:</strong> "
-                f"{profile.get('account_level', 'Unknown')}</p>"
-            )
-            card_content += (
-                f"<p><strong>Region:</strong> {profile.get('region', 'Unknown')}</p>"
-            )
-            card_content += (
-                "<p><strong>Provider strategy:</strong> "
-                "Tracker → Henrik → Riot</p>"
-            )
-            card_content += "</div>"
-            st.markdown(card_content, unsafe_allow_html=True)
+                with suppress(APIClientError):
+                    result["rank"] = client.get_player_rank(game_name, tag_line)
+                with suppress(APIClientError):
+                    result["matches_payload"] = client.get_player_matches(
+                        game_name, tag_line
+                    )
+        st.session_state["player_search_result"] = result
 
-        with rank_col:
-            st.markdown("### Rank")
+    result = st.session_state.get("player_search_result")
+    if result is None:
+        return
+    if result["error"] is not None:
+        st.error(result["error"])
+        st.info(
+            "Ensure the FastAPI backend is running at the configured "
+            "URL before using the demo."
+        )
+        return
+
+    profile = result["profile"]
+    rank = result["rank"]
+    matches_payload = result["matches_payload"]
+    if rank is not None and matches_payload is not None:
+        st.success("Player data retrieved successfully.")
+    else:
+        st.success("Player profile retrieved successfully.")
+    profile_col, rank_col = st.columns([1.5, 0.8], vertical_alignment="top")
+    with profile_col:
+        st.markdown("### Profile")
+        card_content = "<div class='hero-card'>"
+        avatar_url = external_avatar_url(profile.get("avatar_url"))
+        if avatar_url:
+            st.image(avatar_url, width=120)
+        else:
             st.markdown(
-                f"<div class='metric-card'><h4>{rank.get('tier_name', 'Unranked')}</h4>"
+                "<div style='width:120px;height:120px;border-radius:16px;"
+                "background:#161b22;border:1px dashed #30363d;"
+                "display:flex;align-items:center;justify-content:center;"
+                "color:#8b949e;'>Avatar placeholder</div>",
+                unsafe_allow_html=True,
+            )
+        card_content += (
+            f"<h3>{escape(str(profile.get('game_name', result['game_name'])))}#"
+            f"{escape(str(profile.get('tag_line', result['tag_line'])))}</h3>"
+        )
+        card_content += (
+            f"<p><strong>Level:</strong> "
+            f"{escape(str(profile.get('account_level', 'Unknown')))}</p>"
+        )
+        card_content += (
+            f"<p><strong>Region:</strong> "
+            f"{escape(str(profile.get('region', 'Unknown')))}</p>"
+        )
+        card_content += (
+            "<p><strong>Provider strategy:</strong> " "Tracker → Henrik → Riot</p>"
+        )
+        card_content += "</div>"
+        st.markdown(card_content, unsafe_allow_html=True)
+
+    with rank_col:
+        st.markdown("### Rank")
+        if rank is None:
+            st.warning("Rank is currently unavailable. Please try again.")
+        else:
+            points = rank.get("points")
+            points_label = escape(str(points)) if points is not None else "—"
+            st.markdown(
+                f"<div class='metric-card'><h4>"
+                f"{escape(str(rank.get('tier_name', 'Unranked')))}</h4>"
                 f"<p style='color:#8b949e;'>Rank name: "
-                f"{rank.get('rank_name') or 'Not available'}</p>"
-                f"<p style='color:#8b949e;'>Points: "
-                f"{rank.get('points') or '—'}</p></div>",
+                f"{escape(str(rank.get('rank_name') or 'Not available'))}</p>"
+                f"<p style='color:#8b949e;'>Points: {points_label}</p></div>",
                 unsafe_allow_html=True,
             )
 
-        st.markdown("---")
-        st.subheader("Recent matches")
+    st.markdown("---")
+    st.subheader("Recent matches")
+    if matches_payload is None:
+        st.warning("Recent matches are currently unavailable. Please try again.")
+    else:
         matches = matches_payload.get("matches", [])
         if matches:
             frame = pd.DataFrame(matches)
@@ -243,7 +266,7 @@ def render_architecture_page() -> None:
         page_title="Architecture • Valorant AI Coach",
         page_icon="🧱",
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="auto",
     )
     apply_global_styles()
     render_sidebar()
@@ -284,8 +307,7 @@ def render_architecture_page() -> None:
         "domain model.",
         "Clean Architecture: business logic remains isolated from the transport "
         "layer.",
-        "SOLID: services and providers follow a maintainable, testable "
-        "structure.",
+        "SOLID: services and providers follow a maintainable, testable " "structure.",
         "Dependency Injection: providers are wired at runtime through the "
         "application container.",
     ]
@@ -299,7 +321,7 @@ def render_roadmap_page() -> None:
         page_title="Roadmap • Valorant AI Coach",
         page_icon="🛣️",
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="auto",
     )
     apply_global_styles()
     render_sidebar()
@@ -311,41 +333,25 @@ def render_roadmap_page() -> None:
         eyebrow="PRODUCT ROADMAP",
     )
 
-    items = [
-        ("Backend", 100),
-        ("REST API", 100),
-        ("Providers", 95),
-        ("OCR", 35),
-        ("Computer Vision", 25),
-        ("LLM Coach", 20),
-        ("Match Analyzer", 30),
-        ("AI Recommendations", 15),
+    milestones = [
+        (
+            "Provider API and player lookup",
+            "Integrated; live credentials pending",
+            "2026-10-12",
+        ),
+        ("Persistence and refresh policy", "Not implemented", "2026-10-23"),
+        ("Grounded personalized coaching", "Not implemented", "2026-11-06"),
+        ("Authentication, jobs and agent memory", "Not implemented", "2026-11-13"),
+        ("OCR and tactical timeline", "Not implemented", "2026-11-20"),
+        ("Production release candidate", "Not deployed", "2026-11-30"),
+        ("Final delivery", "Planned", "2026-12-10"),
     ]
-
-    fig = go.Figure(
-        data=[
-            go.Bar(
-                x=[name for name, _ in items],
-                y=[value for _, value in items],
-                marker_color="#f04f5f",
-            )
-        ]
+    st.dataframe(
+        pd.DataFrame(milestones, columns=["Milestone", "Status", "Target"]),
+        hide_index=True,
+        use_container_width=True,
     )
-    fig.update_layout(
-        template="plotly_dark",
-        margin=dict(l=20, r=20, t=20, b=40),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        height=330,
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    for name, progress in items:
-        st.markdown(
-            f"<div class='metric-card'><strong>{name}</strong>"
-            f"<br>{'█' * int(progress / 10)} {progress}%</div>",
-            unsafe_allow_html=True,
-        )
+    st.caption("Target dates are planning checkpoints, not delivery guarantees.")
 
 
 def render_api_docs_page() -> None:
@@ -354,7 +360,7 @@ def render_api_docs_page() -> None:
         page_title="API Docs • Valorant AI Coach",
         page_icon="📚",
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="auto",
     )
     apply_global_styles()
     render_sidebar()
@@ -367,12 +373,15 @@ def render_api_docs_page() -> None:
     )
 
     col_a, col_b, col_c = st.columns(3)
+    base_url = get_api_base_url()
     with col_a:
-        st.link_button("Swagger UI", "http://127.0.0.1:8000/docs")
+        st.link_button("Swagger UI", f"{base_url}/docs")
     with col_b:
-        st.link_button("ReDoc", "http://127.0.0.1:8000/redoc")
+        st.link_button("ReDoc", f"{base_url}/redoc")
     with col_c:
-        st.link_button("GitHub repository", "https://github.com/Siname22/ValorantAICoach")
+        st.link_button(
+            "GitHub repository", "https://github.com/Siname22/ValorantAICoach"
+        )
 
     st.markdown("---")
     st.subheader("Available endpoints")
@@ -380,6 +389,10 @@ def render_api_docs_page() -> None:
         ("GET /players/{game}/{tag}", "Player profile and enriched identity"),
         ("GET /players/{game}/{tag}/rank", "Competitive rank information"),
         ("GET /players/{game}/{tag}/matches", "Recent match history"),
+        ("GET /players/{game}/{tag}/stats", "Tracker lifetime statistics"),
+        ("GET /players/{game}/{tag}/overview", "Identity and available optional data"),
+        ("GET /matches/{match_id}", "Riot match details"),
+        ("GET /health/live", "Application liveness"),
     ]
     for endpoint, description in endpoints:
         st.markdown(
@@ -408,14 +421,22 @@ def _render_coach_setup_notice() -> None:
     )
     with st.expander("secrets.toml template"):
         st.code(
-            'GEMINI_API_KEY = "your_key_here"\n'
-            'GEMINI_MODEL = "gemini-2.5-flash"',
+            'GEMINI_API_KEY = "your_key_here"\n' 'GEMINI_MODEL = "gemini-2.5-flash"',
             language="toml",
         )
     st.link_button("Open Google AI Studio", "https://aistudio.google.com/apikey")
-    st.caption(
-        "Full walkthrough: docs/chatbot_installation.md in the repository."
-    )
+    st.caption("Full walkthrough: docs/chatbot_installation.md in the repository.")
+
+
+def _render_coach_messages(
+    messages: list[ChatMessage], fallback_model: str | None = None
+) -> None:
+    for index, message in enumerate(messages):
+        avatar = "🤖" if message.role == ROLE_ASSISTANT else "🎯"
+        with st.chat_message(message.role, avatar=avatar):
+            st.markdown(message.content)
+            if fallback_model and index == len(messages) - 1:
+                st.caption(f"Respondido por el modelo de respaldo: {fallback_model}")
 
 
 def render_ai_coach_page() -> None:
@@ -424,7 +445,7 @@ def render_ai_coach_page() -> None:
         page_title="AI Coach • Valorant AI Coach",
         page_icon="🤖",
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="auto",
     )
     apply_global_styles()
     apply_chat_styles()
@@ -445,6 +466,7 @@ def render_ai_coach_page() -> None:
         st.session_state.coach_messages = [
             ChatMessage(role=ROLE_ASSISTANT, content=get_welcome_message())
         ]
+    st.session_state.coach_messages = trim_chat_history(st.session_state.coach_messages)
 
     header_cols = st.columns([2.4, 0.8, 0.8], vertical_alignment="center")
     with header_cols[0]:
@@ -489,32 +511,38 @@ def render_ai_coach_page() -> None:
                     st.session_state.coach_pending_prompt = starter
                     st.rerun()
 
-    for message in st.session_state.coach_messages:
-        avatar = "🤖" if message.role == ROLE_ASSISTANT else "🎯"
-        with st.chat_message(message.role, avatar=avatar):
-            st.markdown(message.content)
-
-    typed_prompt = st.chat_input("Ask your Valorant coach anything…")
+    typed_prompt = st.chat_input(
+        "Ask your Valorant coach anything…", max_chars=MAX_INPUT_CHARS
+    )
     prompt = st.session_state.pop("coach_pending_prompt", None) or typed_prompt
 
-    if not prompt:
+    if prompt and len(prompt) > MAX_INPUT_CHARS:
+        _render_coach_messages(st.session_state.coach_messages)
+        st.error(MSG_INPUT_TOO_LONG, icon="⚠️")
         return
 
-    st.session_state.coach_messages.append(
-        ChatMessage(role=ROLE_USER, content=prompt)
+    if prompt:
+        st.session_state.coach_messages.append(
+            ChatMessage(role=ROLE_USER, content=prompt)
+        )
+        st.session_state.coach_messages = trim_chat_history(
+            st.session_state.coach_messages
+        )
+    _render_coach_messages(
+        st.session_state.coach_messages,
+        fallback_model=st.session_state.pop("coach_fallback_model", None),
     )
-    with st.chat_message(ROLE_USER, avatar="🎯"):
-        st.markdown(prompt)
+    if not prompt:
+        return
 
     # The history excludes the turn just appended: the SDK receives it as the
     # message being sent, not as part of the previous conversation.
     history = st.session_state.coach_messages[:-1]
-
     with st.chat_message(ROLE_ASSISTANT, avatar="🤖"):
         with st.spinner("Analysing the situation…"):
             try:
-                client = get_gemini_client(build_system_prompt())
-                reply = client.send_message(prompt, history=history)
+                with closing(get_gemini_client(build_system_prompt())) as client:
+                    reply = client.send_message(prompt, history=history)
             except GeminiConfigurationError as exc:
                 st.error(str(exc), icon="🔑")
                 st.session_state.coach_messages.pop()
@@ -523,20 +551,31 @@ def render_ai_coach_page() -> None:
                 st.error(str(exc), icon="⚠️")
                 st.session_state.coach_messages.pop()
                 return
-            except Exception:  # noqa: BLE001 - last line of defence
-                # Nothing should reach this point: the client already classifies
-                # every failure it knows about. It exists so that an unforeseen
-                # bug can never render a traceback in a public deployment.
-                logger.exception("Unhandled failure while contacting the coach")
+            except Exception as exc:  # noqa: BLE001 - last line of defence
+                # The client classifies known failures; keep unforeseen bugs
+                # from rendering a traceback in a public deployment.
+                logger.error(
+                    "Unhandled failure while contacting the coach: %s",
+                    type(exc).__name__,
+                )
                 st.error(MSG_UNEXPECTED, icon="⚠️")
                 st.session_state.coach_messages.pop()
                 return
         st.markdown(reply)
-        # Surfaced only when the automatic fallback had to leave the configured
-        # model, so the audience of the demo can see what actually happened.
+        # Surfaced only when fallback leaves the configured model.
         if client.active_model != client.model:
             st.caption(f"Respondido por el modelo de respaldo: {client.active_model}")
 
-    st.session_state.coach_messages.append(
-        ChatMessage(role=ROLE_ASSISTANT, content=reply)
-    )
+    response_message = ChatMessage(role=ROLE_ASSISTANT, content=reply)
+    st.session_state.coach_messages.append(response_message)
+    retained = trim_chat_history(st.session_state.coach_messages)
+    trimmed = len(retained) < len(st.session_state.coach_messages)
+    st.session_state.coach_messages = retained
+    if trimmed:
+        if (
+            client.active_model != client.model
+            and retained
+            and retained[-1] is response_message
+        ):
+            st.session_state.coach_fallback_model = client.active_model
+        st.rerun()

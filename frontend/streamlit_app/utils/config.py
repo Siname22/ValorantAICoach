@@ -29,7 +29,5 @@ def get_api_base_url() -> str:
     Resolution order: Streamlit secrets, environment variable, local default.
     """
     return (
-        _from_streamlit_secrets()
-        or os.getenv(API_BASE_URL_KEY)
-        or DEFAULT_API_BASE_URL
+        _from_streamlit_secrets() or os.getenv(API_BASE_URL_KEY) or DEFAULT_API_BASE_URL
     ).rstrip("/")

@@ -6,10 +6,9 @@ from typing import Any
 import httpx
 
 from backend.providers.base.client import BaseHTTPClient
-from backend.providers.base.exceptions import ServerError
 
 from .config import TrackerConfig
-from .exceptions import TrackerRateLimitError
+from .exceptions import TrackerRateLimitError, TrackerResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -73,18 +72,17 @@ class TrackerHTTPClient(BaseHTTPClient):
             params=params,
             headers=self._auth_headers(),
         )
-        payload = response.json()
+        try:
+            payload = response.json()
+        except ValueError as error:
+            raise TrackerResponseError("Tracker.gg returned invalid JSON") from error
         if not isinstance(payload, dict):
-            raise ServerError(
-                "Tracker.gg returned an unexpected JSON payload",
-                response.status_code,
-                response.text,
-            )
+            raise TrackerResponseError("Tracker.gg returned an unexpected JSON payload")
         return payload
 
     def _auth_headers(self) -> dict[str, str]:
         """Builds the authentication headers required by Tracker.gg."""
-        return {"TRN-Api-Key": self.config.api_key}
+        return {"TRN-Api-Key": self.config.api_key} if self.config.api_key else {}
 
     def _handle_error_response(self, response: httpx.Response) -> None:
         """

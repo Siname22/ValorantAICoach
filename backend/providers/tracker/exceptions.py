@@ -1,5 +1,6 @@
 from backend.providers.base.exceptions import (
     AuthenticationError,
+    InvalidResponseError,
     NotFoundError,
     ProviderError,
     RateLimitError,
@@ -9,6 +10,10 @@ from backend.providers.base.exceptions import (
 
 class TrackerError(ProviderError):
     """Base exception for Tracker.gg provider errors."""
+
+
+class TrackerResponseError(TrackerError, InvalidResponseError):
+    """Tracker returned malformed data rather than an availability error."""
 
 
 class TrackerAuthenticationError(TrackerError, AuthenticationError):

@@ -1,3 +1,6 @@
+from math import isfinite
+from typing import Any
+
 import httpx
 
 from backend.providers.base.client import BaseHTTPClient
@@ -9,6 +12,8 @@ from .exceptions import (
     RiotRateLimitError,
 )
 
+MAX_RETRY_AFTER_SECONDS = 30.0
+
 
 class RiotHTTPClient(BaseHTTPClient):
     """
@@ -16,6 +21,31 @@ class RiotHTTPClient(BaseHTTPClient):
     Overrides _handle_error_response to map generic provider exceptions to
     Riot-specific ones.
     """
+
+    async def request(
+        self,
+        method: str,
+        endpoint: str,
+        params: dict[str, Any] | None = None,
+        json: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        auth_type: str | None = None,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        request_headers = dict(headers or {})
+        if auth_type == "api_key":
+            if self.config.api_key:
+                request_headers["X-Riot-Token"] = self.config.api_key
+            auth_type = None
+        return await super().request(
+            method,
+            endpoint,
+            params=params,
+            json=json,
+            headers=request_headers,
+            auth_type=auth_type,
+            **kwargs,
+        )
 
     def _handle_error_response(self, response: httpx.Response) -> None:
         """
@@ -29,10 +59,16 @@ class RiotHTTPClient(BaseHTTPClient):
         elif status_code == 404:
             raise RiotNotFoundError(message, status_code, response.text)
         elif status_code == 429:
-            raise RiotRateLimitError(message, status_code, response.text)
+            error = RiotRateLimitError(message, status_code, response.text)
+            try:
+                retry_after = float(response.headers["Retry-After"])
+            except (KeyError, ValueError):
+                pass
+            else:
+                if isfinite(retry_after) and retry_after >= 0:
+                    error.retry_after = min(retry_after, MAX_RETRY_AFTER_SECONDS)
+            raise error
         elif status_code >= 500:
-            # We can use a generic RiotError or create a RiotServerError if needed
-            # For now, let's keep it consistent with the test expectations
             raise RiotError(
                 f"Riot Server Error {status_code}: {response.text}",
                 status_code,

@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: docker/backend.Dockerfile
-    command: uv run uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uv run --no-sync uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
     environment:
       APP_ENV: ${APP_ENV:-development}
@@ -11,6 +11,27 @@ services:
       APP_NAME: ${APP_NAME:-ValorantAICoach}
       APP_PORT: ${APP_PORT:-8000}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://valorant:valorant@postgres:5432/valorant_ai_coach}
+      DATABASE_ENABLED: ${DATABASE_ENABLED:-false}
+      DATABASE_CACHE_TTL_SECONDS: ${DATABASE_CACHE_TTL_SECONDS:-300}
+      RIOT_API_KEY: ${RIOT_API_KEY:-}
+      RIOT_ENABLED: ${RIOT_ENABLED:-true}
+      RIOT_REGION: ${RIOT_REGION:-eu}
+      RIOT_BASE_URL: ${RIOT_BASE_URL:-https://eu.api.riotgames.com}
+      RIOT_ACCOUNT_BASE_URL: ${RIOT_ACCOUNT_BASE_URL:-https://europe.api.riotgames.com}
+      RIOT_TIMEOUT: ${RIOT_TIMEOUT:-10.0}
+      RIOT_RETRIES: ${RIOT_RETRIES:-2}
+      RIOT_MATCH_HISTORY_LIMIT: ${RIOT_MATCH_HISTORY_LIMIT:-10}
+      HENRIK_API_KEY: ${HENRIK_API_KEY:-}
+      HENRIK_ENABLED: ${HENRIK_ENABLED:-true}
+      HENRIK_BASE_URL: ${HENRIK_BASE_URL:-https://api.henrikdev.xyz/valorant/v1}
+      HENRIK_TIMEOUT: ${HENRIK_TIMEOUT:-10.0}
+      HENRIK_RETRIES: ${HENRIK_RETRIES:-2}
+      HENRIK_HEALTH_REGION: ${HENRIK_HEALTH_REGION:-eu}
+      TRACKER_API_KEY: ${TRACKER_API_KEY:-}
+      TRACKER_ENABLED: ${TRACKER_ENABLED:-true}
+      TRACKER_BASE_URL: ${TRACKER_BASE_URL:-https://public-api.tracker.gg/v2/valorant/standard}
+      TRACKER_TIMEOUT: ${TRACKER_TIMEOUT:-10.0}
+      TRACKER_RETRIES: ${TRACKER_RETRIES:-2}
     ports:
       - "${APP_PORT:-8000}:8000"
     volumes:
@@ -22,6 +43,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   postgres:
     image: postgres:16-alpine

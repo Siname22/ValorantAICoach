@@ -45,7 +45,6 @@ for _leaked in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_MODEL"):
 
 from utils import gemini_client as gc  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Minimal assertion harness
 # ---------------------------------------------------------------------------
@@ -332,8 +331,7 @@ def case_3_model_overloaded() -> None:
         message = str(exc)
         check(
             "the exhausted-chain message matches the specification verbatim",
-            message
-            == "El servicio de IA está temporalmente saturado. "
+            message == "El servicio de IA está temporalmente saturado. "
             "Inténtalo de nuevo en unos segundos.",
             message,
         )
@@ -492,7 +490,7 @@ def case_6_configuration() -> None:
     )
     check(
         "the transient status set matches the specification",
-        gc.TRANSIENT_STATUS_CODES == frozenset({429, 500, 502, 503, 504}),
+        frozenset({429, 500, 502, 503, 504}) == gc.TRANSIENT_STATUS_CODES,
         str(sorted(gc.TRANSIENT_STATUS_CODES)),
     )
 
@@ -527,7 +525,8 @@ def case_6_configuration() -> None:
 
     check(
         "404 is treated as an unavailable model, not a transient fault",
-        gc._is_model_missing(FakeAPIError(404)) and not gc._is_transient(FakeAPIError(404)),
+        gc._is_model_missing(FakeAPIError(404))
+        and not gc._is_transient(FakeAPIError(404)),
     )
 
     # A 404 on every model is a configuration problem, so the user is told to
@@ -628,9 +627,18 @@ def case_7_persona_and_sdk() -> None:
         lowered = message.lower()
         clean = not any(
             token in lowered
-            for token in ("503", "429", "unavailable", "traceback", "exception", "google api")
+            for token in (
+                "503",
+                "429",
+                "unavailable",
+                "traceback",
+                "exception",
+                "google api",
+            )
         )
-        check(f"the message is free of technical noise: {message[:45]}…", clean, message)
+        check(
+            f"the message is free of technical noise: {message[:45]}…", clean, message
+        )
 
 
 # ---------------------------------------------------------------------------
