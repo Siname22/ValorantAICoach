@@ -28,8 +28,9 @@ the Streamlit/Gemini work from `develop`.
 
 **Development integration, not a production release.** Backend and frontend
 verification on October 6 after the approved update: 493 pytest tests passed,
-no skips. There were 25 dependency warnings (Starlette and Alembic's legacy
-path-separator configuration). The separate Gemini resilience script passed
+no skips. There was 1 dependency warning (Starlette's test client deprecation;
+Alembic's legacy path-separator configuration is resolved with path_separator = os).
+The separate Gemini resilience script passed
 81 checks; imports, Ruff and Black passed across 115 Python files. Sixteen
 PostgreSQL target-guard tests passed locally without connecting to a database.
 The PostgreSQL CI suite separately passed 19 tests (16 guards and three real
