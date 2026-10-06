@@ -1,0 +1,19 @@
+# ==============================================================================
+# ValorantAICoach - Streamlit runtime configuration
+# ------------------------------------------------------------------------------
+# Mirrors the dark theme already implemented in utils/ui.py so the deployed app
+# renders identically to the local run. No UI redesign is introduced here.
+# ==============================================================================
+
+[theme]
+base = "dark"
+primaryColor = "#f04f5f"
+backgroundColor = "#03050a"
+secondaryBackgroundColor = "#0b1119"
+textColor = "#f4f7fb"
+
+[browser]
+gatherUsageStats = false
+
+[client]
+showErrorDetails = true
