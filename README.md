@@ -14,7 +14,8 @@ The integration is published in draft [PR #8](https://github.com/Siname22/Valora
 The authenticated GitHub connector preserved the exact local Git tree and
 original history; local Git push still requires renewed authentication.
 `main` is unchanged and merging requires the owner's approval.
-Remote Python 3.12/3.13 and container checks passed on pre-update head `9654bef`.
+Remote Python 3.12/3.13, PostgreSQL 16 and container checks passed for source
+head `16146ab` in [CI run 37436302896](https://github.com/Siname22/ValorantAICoach/actions/runs/37436302896).
 CI reproduced the startup connection reset and recovered with bounded retries,
 then verified liveness 200 and the no-provider 503. The real-curl regression
 tests also passed on Linux with no skips. The PR shows checks for subsequent
@@ -31,7 +32,8 @@ no skips. There were 25 dependency warnings (Starlette and Alembic's legacy
 path-separator configuration). The separate Gemini resilience script passed
 81 checks; imports, Ruff and Black passed across 115 Python files. Sixteen
 PostgreSQL target-guard tests passed locally without connecting to a database.
-The three real PostgreSQL tests are separate CI evidence, not part of that count.
+The PostgreSQL CI suite separately passed 19 tests (16 guards and three real
+database tests), with no skips. These are not part of the 493 local test count.
 Live provider credentials and public
 deployment have not been verified. See [roadmap](docs/ROADMAP.md) and
 [delivery plan](docs/DELIVERY_PLAN.md) for the complete remaining scope.
@@ -151,8 +153,10 @@ Real temporary SQLite migrations, schema/model parity, restart retention,
 TTL/corruption refresh, concurrent misses, isolation and transactional failures
 are tested. A separate PostgreSQL CI job tests real migration round trips,
 restart retention and player/provider upserts against disposable test databases;
-its result must be checked on the exact published revision. No production
-database has been migrated. Percent-encoded URLs retain their eight Alembic
+it passed for published source revision `16146ab`. Simultaneous PostgreSQL
+transactions have not been directly exercised; deterministic write ordering is
+covered by SQL traces. No production database has been migrated.
+Percent-encoded URLs retain their eight Alembic
 configuration regressions.
 
 Expired rows are not yet pruned automatically. TTL limits freshness, not database
@@ -207,7 +211,7 @@ with CREATE DATABASE permission. Tests create/drop only their own UUID-named
 databases, never use the operator's `DATABASE_URL` as input, and intercept provider
 HTTP. Its configuration follows the [official uv Actions guide](https://docs.astral.sh/uv/guides/integration/github/).
 Provider tests simulate HTTP responses and do not prove real key access.
-Docker build/runtime has not run locally. Remote CI at `2a3f937` verified the
+Docker build/runtime has not run locally. Remote CI for source `16146ab` verified the
 image build, non-root execution, production imports, startup liveness and the
 no-provider 503. Real upstream and hosted deployment smoke tests remain gates. The
 liveness command retries startup transport failures while retaining HTTP
