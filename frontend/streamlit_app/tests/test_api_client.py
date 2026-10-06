@@ -169,3 +169,34 @@ def test_empty_player_data_is_not_presented_as_a_confirmed_player(
     monkeypatch.setattr(requests, "get", lambda *a, **kw: response(200, "{}"))
     with pytest.raises(APIClientError):
         getattr(APIClient(BASE_URL), method_name)("Player", "EU1")
+
+
+def test_api_client_coaching_reports(monkeypatch):
+    client = APIClient(BASE_URL)
+    report_data = {
+        "id": "rep-123",
+        "payload": {"title": "Report"},
+        "evidence": [],
+    }
+
+    # Test POST generate
+    monkeypatch.setattr(
+        requests, "post", lambda *a, **kw: response(200, json.dumps(report_data))
+    )
+    generated = client.generate_coaching_report("Player", "EU1", limit=3)
+    assert generated["id"] == "rep-123"
+
+    # Test GET list
+    list_data = {"reports": [report_data], "count": 1}
+    monkeypatch.setattr(
+        requests, "get", lambda *a, **kw: response(200, json.dumps(list_data))
+    )
+    listed = client.list_coaching_reports("Player", "EU1", limit=5)
+    assert listed["count"] == 1
+
+    # Test GET detail
+    monkeypatch.setattr(
+        requests, "get", lambda *a, **kw: response(200, json.dumps(report_data))
+    )
+    detail = client.get_coaching_report("Player", "EU1", "rep-123")
+    assert detail["id"] == "rep-123"

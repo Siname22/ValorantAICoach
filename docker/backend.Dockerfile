@@ -16,6 +16,7 @@ RUN uv sync --frozen --no-cache --no-dev
 COPY alembic.ini ./
 COPY backend ./backend
 COPY database ./database
+COPY agents ./agents
 
 # Run as a non-root user (least privilege)
 RUN useradd --create-home --shell /usr/sbin/nologin appuser \

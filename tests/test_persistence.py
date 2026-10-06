@@ -530,3 +530,76 @@ def test_shared_match_writes_have_stable_lock_order_without_reordering_history(
     finally:
         event.remove(store.engine, "before_cursor_execute", record_query)
         store.close()
+
+
+def test_store_ping_and_prune_expired_snapshots(storage_database):
+    config, engine, url = storage_database
+    command.upgrade(config, "head")
+    store = SQLPlayerStore(url, ttl_seconds=300, test_mode=True)
+    try:
+        assert store.ping() is True
+
+        now = datetime.now(UTC)
+        with Session(engine) as session, session.begin():
+            session.add_all(
+                [
+                    PlayerSnapshot(
+                        key="expired-key",
+                        operation="profile",
+                        payload={"name": "Old"},
+                        providers=["riot"],
+                        observed_at=now - timedelta(days=2),
+                        expires_at=now - timedelta(days=1),
+                    ),
+                    PlayerSnapshot(
+                        key="active-key",
+                        operation="profile",
+                        payload={"name": "Fresh"},
+                        providers=["riot"],
+                        observed_at=now,
+                        expires_at=now + timedelta(days=1),
+                    ),
+                ]
+            )
+
+        pruned = store.prune_expired_snapshots()
+        assert pruned == 1
+
+        with Session(engine) as session:
+            remaining = session.scalars(select(PlayerSnapshot)).all()
+            assert len(remaining) == 1
+            assert remaining[0].key == "active-key"
+    finally:
+        store.close()
+
+
+def test_persistent_service_readiness_probe_and_cache_prune(
+    storage_database, storage_providers
+):
+    config, _, _ = storage_database
+    command.upgrade(config, "head")
+
+    with TestClient(app) as client:
+        ready_res = client.get("/health/ready")
+        assert ready_res.status_code == 200
+        ready_data = ready_res.json()
+        assert ready_data["status"] == "ready"
+        assert ready_data["database"] == "connected"
+        assert ready_data["providers_configured"] == 1
+
+        prune_res = client.post("/system/cache/prune")
+        assert prune_res.status_code == 200
+        assert prune_res.json() == {"pruned_count": 0}
+
+        service = getattr(app.state, "player_service", None)
+        assert service is not None
+        orig_ping = service.store.ping
+        service.store.ping = lambda: False
+        try:
+            unhealthy_res = client.get("/health/ready")
+            assert unhealthy_res.status_code == 503
+            unhealthy_data = unhealthy_res.json()
+            assert unhealthy_data["status"] == "unhealthy"
+            assert unhealthy_data["database"] == "disconnected"
+        finally:
+            service.store.ping = orig_ping

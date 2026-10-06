@@ -545,6 +545,17 @@ class PlayerService:
     ) -> list[dict[str, Any]]:
         return []
 
+    async def ready(self) -> dict[str, Any]:
+        configured = any(p is not None for p in self._providers)
+        return {
+            "status": "ready" if configured else "degraded",
+            "database": "disabled",
+            "providers_configured": len(self._providers),
+        }
+
+    async def prune_expired_cache(self) -> int:
+        return 0
+
     async def close(self) -> None:
         results = await asyncio.gather(
             *(provider.close() for provider in self._providers), return_exceptions=True

@@ -14,7 +14,11 @@ from backend.app.dependencies.provider_deps import (
     create_player_service,
     get_player_service,
 )
-from backend.app.schemas.player_schemas import HealthResponse
+from backend.app.schemas.player_schemas import (
+    CachePruneResponse,
+    HealthResponse,
+    ReadinessResponse,
+)
 from backend.app.services.player_service import (
     PlayerNotFoundError,
     PlayerService,
@@ -124,3 +128,32 @@ async def health_check(
 async def liveness_check() -> HealthResponse:
     """Check the application process without querying external providers."""
     return HealthResponse(status="ok", version=__version__)
+
+
+@app.get(
+    "/health/ready",
+    response_model=ReadinessResponse,
+    tags=["system"],
+    summary="Readiness check",
+    description="Returns readiness status of database and upstream providers.",
+)
+async def readiness_check(
+    service: Annotated[PlayerService, Depends(get_player_service)],
+) -> JSONResponse:
+    ready_data = await service.ready()
+    status_code = 200 if ready_data.get("status") in ("ready", "degraded") else 503
+    return JSONResponse(status_code=status_code, content=ready_data)
+
+
+@app.post(
+    "/system/cache/prune",
+    response_model=CachePruneResponse,
+    tags=["system"],
+    summary="Prune expired cache",
+    description="Deletes expired snapshot cache entries from persistence.",
+)
+async def prune_cache(
+    service: Annotated[PlayerService, Depends(get_player_service)],
+) -> CachePruneResponse:
+    count = await service.prune_expired_cache()
+    return CachePruneResponse(pruned_count=count)

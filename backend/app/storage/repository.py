@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import create_engine, event, select
+from sqlalchemy import create_engine, delete, event, select
 from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import make_url
@@ -274,6 +274,21 @@ class SQLPlayerStore:
                 }
                 for record in records
             ]
+
+    def ping(self) -> bool:
+        try:
+            with Session(self.engine) as session:
+                session.execute(select(1))
+            return True
+        except Exception:
+            return False
+
+    def prune_expired_snapshots(self) -> int:
+        now = datetime.now(UTC)
+        with Session(self.engine) as session, session.begin():
+            statement = delete(PlayerSnapshot).where(PlayerSnapshot.expires_at <= now)
+            result = session.execute(statement)
+            return int(result.rowcount or 0)
 
     def close(self) -> None:
         self.engine.dispose()

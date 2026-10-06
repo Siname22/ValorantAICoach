@@ -98,3 +98,33 @@ class CoachingReportsListResponse(BaseModel):
         ..., description="List of saved coaching reports"
     )
     count: int = Field(..., description="Total reports returned")
+
+
+class ReadinessResponse(BaseModel):
+    """Application readiness status."""
+
+    status: str = Field(
+        ...,
+        description="Readiness status (ready, degraded, unhealthy)",
+        examples=["ready"],
+    )
+    database: str = Field(
+        ...,
+        description="Database connection status",
+        examples=["connected"],
+    )
+    providers_configured: int = Field(
+        ...,
+        description="Number of configured upstream providers",
+        examples=[3],
+    )
+
+
+class CachePruneResponse(BaseModel):
+    """Result of cache pruning operation."""
+
+    pruned_count: int = Field(
+        ...,
+        description="Number of expired cache records removed",
+        examples=[0],
+    )

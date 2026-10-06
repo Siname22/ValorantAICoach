@@ -38,6 +38,7 @@ services:
       - ./backend:/app/backend
       - ./database:/app/database
       - ./alembic.ini:/app/alembic.ini
+      - ./agents:/app/agents
       # Keep the container virtualenv isolated from bind mounts
       - backend_venv:/app/.venv
     depends_on:
@@ -49,6 +50,23 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    restart: unless-stopped
+    environment:
+      VALORANT_API_BASE_URL: http://backend:8000
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+    ports:
+      - "${FRONTEND_PORT:-8501}:8501"
+    volumes:
+      - ./frontend:/app/frontend
+      - frontend_venv:/app/.venv
+    depends_on:
+      - backend
 
   postgres:
     image: postgres:16-alpine
@@ -70,3 +88,4 @@ services:
 volumes:
   postgres_data:
   backend_venv:
+  frontend_venv:

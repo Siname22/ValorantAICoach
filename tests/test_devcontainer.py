@@ -5,6 +5,9 @@ import tomllib
 from pathlib import Path
 
 import pytest
+
+pytest.importorskip("streamlit")
+
 from click.testing import CliRunner
 from packaging.specifiers import SpecifierSet
 from streamlit import config, net_util

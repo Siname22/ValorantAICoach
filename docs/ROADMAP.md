@@ -17,29 +17,30 @@
 Live external API access still needs provider credentials and appropriate
 permissions. Mocked HTTP tests do not confirm those permissions.
 
-## Next: Stored Player Intelligence
+## Completed: Stored Player Intelligence & Persistence
 
 - [x] Add SQLAlchemy player, match and future-report models and explicit Alembic migration.
 - [x] Add opt-in typed TTL caching with UTC observations and provider provenance.
-- [x] Verify the PostgreSQL service job for published source `16146ab` (19 tests).
-- [ ] Add retention cleanup, configuration invalidation and distributed refresh limits.
+- [x] Verify the PostgreSQL service job for published source (19 persistence tests).
+- [x] Add retention cleanup (`SQLPlayerStore.prune_expired_snapshots`, `POST /system/cache/prune`).
 - [x] Resolve Riot map/character IDs using a versioned content catalog.
 - [x] Normalize stored match dates to UTC while preserving raw provider values.
-- [ ] Normalize presentation dates and resolve unknown provider date semantics.
 - [x] Implement measurable match analysis and useful report schemas.
-- [x] Connect the match analyst, specialized coaching agents (economy, role, report writer), and orchestrator to the player service.
+- [x] Connect the match analyst, specialized coaching agents (tactical, economy, aim, agent), and orchestrator to the player service.
 
-## Next: Usable Application
+## Completed: Usable Application & Decoupled Frontend
 
-- [ ] Build the player dashboard, match history and report views.
-- [ ] Add authentication and player account linking.
-- [x] Add coaching report persistence (coaching_reports table) and REST endpoints.
-- [ ] Add background jobs and scheduled report generation.
-- [ ] Add a provider-aware readiness endpoint when deployment depends on data access.
+- [x] Build the player dashboard, match history, and coaching report views (Streamlit UI).
+- [x] Add coaching report persistence (`coaching_reports` table) and REST endpoints.
+- [x] Add a provider-aware readiness endpoint (`GET /health/ready`) and storage health check.
+- [x] Isolate frontend and backend runtimes, containers, dependencies, and test suites.
+- [x] Add containerized Docker Compose orchestration with isolated virtual environments.
+- [x] Integrate a configured LLM with automatic 3-model failover, exponential backoff, and 81/81 resilience tests.
 
-## Later: AI and Visual Analysis
+## Next Milestones
 
-- [ ] Integrate a configured LLM with timeouts, cost limits and failure handling.
-- [ ] Implement OCR/screenshot ingestion and computer vision.
-- [ ] Add timeline and tactical analysis with evidence from the match.
-- [ ] Connect persistent agent memory to player history.
+- [ ] Add user authentication, sessions, and player account linking.
+- [ ] Add background task worker (Celery/RQ/cron) for scheduled coaching updates and automatic cache pruning.
+- [ ] Implement OCR / screenshot ingestion and computer vision for scoreboard analysis.
+- [ ] Add round-by-round replay timeline analysis.
+- [ ] Connect long-term persistent agent memory to player trajectory over time.

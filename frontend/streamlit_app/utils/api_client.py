@@ -91,6 +91,72 @@ class APIClient:
             raise APIClientError("The API returned an invalid match history.")
         return payload
 
+    def _post(
+        self, path: str, json_data: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        try:
+            response = requests.post(
+                f"{self.base_url}{path}", json=json_data, timeout=20.0
+            )
+        except requests.Timeout:
+            raise APIClientError(
+                "The API request timed out. Please try again."
+            ) from None
+        except requests.RequestException:
+            raise APIClientError(
+                "The API could not be reached. Please try again."
+            ) from None
+
+        if response.status_code >= 400:
+            raise APIClientError(
+                f"API request failed (HTTP {response.status_code}). Please try again."
+            )
+
+        try:
+            payload = response.json()
+        except ValueError:
+            raise APIClientError("The API returned an invalid response.") from None
+        if not isinstance(payload, dict):
+            raise APIClientError("The API returned an invalid response.")
+        return payload
+
+    def generate_coaching_report(
+        self,
+        game_name: str,
+        tag_line: str,
+        *,
+        region: str | None = None,
+        limit: int = 5,
+    ) -> dict[str, Any]:
+        query = f"?limit={limit}" + (f"&region={region}" if region else "")
+        return self._post(
+            f"/players/{quote(game_name, safe='')}/"
+            f"{quote(tag_line, safe='')}/reports{query}"
+        )
+
+    def list_coaching_reports(
+        self,
+        game_name: str,
+        tag_line: str,
+        *,
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        return self._request(
+            f"/players/{quote(game_name, safe='')}/"
+            f"{quote(tag_line, safe='')}/reports?limit={limit}"
+        )
+
+    def get_coaching_report(
+        self,
+        game_name: str,
+        tag_line: str,
+        report_id: str,
+    ) -> dict[str, Any]:
+        return self._request(
+            f"/players/{quote(game_name, safe='')}/"
+            f"{quote(tag_line, safe='')}/reports/{quote(report_id, safe='')}"
+        )
+
 
 def get_api_client() -> APIClient:
     return APIClient()

@@ -210,3 +210,34 @@ def test_tracker_invalid_nested_data_returns_502(
     with TestClient(app) as client:
         response = client.get(f"/players/Test/EU1{suffix}")
     assert response.status_code == 502
+
+
+@respx.mock
+def test_readiness_probe_reports_degraded_when_unconfigured(provider_environment):
+    with TestClient(app) as client:
+        response = client.get("/health/ready")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "degraded"
+    assert data["database"] == "disabled"
+    assert data["providers_configured"] == 0
+
+
+@respx.mock
+def test_readiness_probe_reports_ready_with_provider(provider_environment, monkeypatch):
+    monkeypatch.setenv("HENRIK_API_KEY", "test-key")
+    monkeypatch.setenv("HENRIK_BASE_URL", "https://api.henrikdev.xyz/valorant/v1")
+    with TestClient(app) as client:
+        response = client.get("/health/ready")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ready"
+    assert data["database"] == "disabled"
+    assert data["providers_configured"] == 1
+
+
+def test_cache_prune_endpoint_returns_count(provider_environment):
+    with TestClient(app) as client:
+        response = client.post("/system/cache/prune")
+    assert response.status_code == 200
+    assert response.json() == {"pruned_count": 0}

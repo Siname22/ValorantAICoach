@@ -207,6 +207,24 @@ class PersistentPlayerService(PlayerService):
             self.store.list_coaching_reports, player_id, limit
         )
 
+    async def ready(self) -> dict[str, Any]:
+        db_ok = await self._storage_call(self.store.ping)
+        configured = any(p is not None for p in self._providers)
+        if not db_ok:
+            status = "unhealthy"
+        elif configured:
+            status = "ready"
+        else:
+            status = "degraded"
+        return {
+            "status": status,
+            "database": "connected" if db_ok else "disconnected",
+            "providers_configured": len(self._providers),
+        }
+
+    async def prune_expired_cache(self) -> int:
+        return await self._storage_call(self.store.prune_expired_snapshots)
+
     async def close(self) -> None:
         try:
             await super().close()
