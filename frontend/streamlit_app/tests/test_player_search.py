@@ -245,3 +245,94 @@ def test_profile_failure_prevents_optional_fetches_and_clears_previous_result(
     app.run()
     assert not app.exception
     assert "TestPlayer#NA1" not in markdown(app)
+
+
+# Invalid avatar references must not be passed to Streamlit's file/image loader.
+@pytest.mark.parametrize(
+    "avatar",
+    [
+        pytest.param("avatar.png", id="relative-path"),
+        pytest.param("/tmp/avatar.png", id="absolute-path"),
+        pytest.param(r"C:\private\avatar.png", id="windows-path"),
+        pytest.param(r"\\server\share\avatar.png", id="unc-path"),
+        pytest.param("file:///tmp/avatar.png", id="file-url"),
+        pytest.param("//cdn.example.test/avatar.png", id="scheme-relative"),
+        pytest.param("data:image/png;base64,aGVsbG8=", id="data-url"),
+        pytest.param("http://cdn.example.test/avatar.png", id="http"),
+        pytest.param("https://user:password@cdn.example.test/a.png", id="credentials"),
+        pytest.param("https://@cdn.example.test/a.png", id="empty-credentials"),
+        pytest.param("https:///avatar.png", id="missing-host"),
+        pytest.param("https://[bad-address]/a.png", id="bad-ipv6"),
+        pytest.param("https://cdn.example.test:bad/a.png", id="bad-port"),
+        pytest.param("https://cdn.example.test:65536/a.png", id="port-range"),
+        pytest.param("https://cdn..example.test/a.png", id="empty-host-label"),
+        pytest.param("https://-cdn.example.test/a.png", id="bad-host-label"),
+        pytest.param("https://cdn%2eexample.test/a.png", id="encoded-host"),
+        pytest.param("https://localhost/a.png", id="local-host"),
+        pytest.param("https://127.0.0.1/a.png", id="loopback"),
+        pytest.param("https://[::1]/a.png", id="ipv6-loopback"),
+        pytest.param("https://127.1/a.png", id="short_ip"),
+        pytest.param("https://127.0.0.0x1/a.png", id="alternate-loopback"),
+        pytest.param("https://10.0.0.0x1/a.png", id="alternate-private"),
+        pytest.param("https://169.254.169.0xfe/a.png", id="alternate-link-local"),
+        pytest.param("https://127.0.0.0X01/a.png", id="alternate-uppercase"),
+        pytest.param("https://127.0.0.0x/a.png", id="alternate-empty-hex"),
+        pytest.param("https://[2606:4700:4700::1111%25eth0]/a.png", id="scoped_ip"),
+        pytest.param("https://cdn.example.test\\avatar.png", id="backslash"),
+        pytest.param(" https://cdn.example.test/a.png", id="leading-space"),
+        pytest.param("https://cdn.example.test/a b.png", id="raw-space"),
+        pytest.param("https://cdn.example.test/a\n.png", id="newline"),
+        pytest.param("https://cdn.example.test/a\x00.png", id="nul"),
+        pytest.param("https://cdn.example.test/a\x7f.png", id="del"),
+        pytest.param("https://cdn.example.test/a\x85.png", id="unicode-control"),
+        pytest.param("https://cdn.example.test/a%0a.png", id="encoded-control"),
+        pytest.param(True, id="boolean"),
+        pytest.param(["https://cdn.example.test/a.png"], id="list"),
+    ],
+)
+def test_rejected_avatars_keep_profile_rank_and_matches(player_app, avatar):
+    app, payloads, calls = player_app
+    payloads["profile"]["avatar_url"] = avatar
+    submit(app)
+
+    assert not app.get("image")
+    assert "Avatar placeholder" in markdown(app)
+    assert "TestPlayer#NA1" in markdown(app)
+    assert "<strong>Level:</strong> 42" in markdown(app)
+    assert "<strong>Region:</strong> na" in markdown(app)
+    assert "Gold 1" in markdown(app)
+    assert app.dataframe[0].value.iloc[0]["map_name"] == "Ascent"
+    assert [endpoint for endpoint, _ in calls] == ["profile", "rank", "matches"]
+    app.run()
+    assert not app.exception
+    assert not app.get("image")
+    assert "TestPlayer#NA1" in markdown(app)
+    assert len(calls) == 3
+
+
+# Valid HTTPS references must render as URLs, without server-side image fetching.
+@pytest.mark.parametrize(
+    "avatar",
+    [
+        "https://cdn.example.test/avatar.png",
+        "https://cdn.example.test:8443/avatar%20one.png?v=2#crop",
+        "HTTPS://cdn.example.test/avatar.png",
+        "https://[2606:4700:4700::1111]/avatar.png",
+        "https://xn--bcher-kva.example/avatar.png",
+        pytest.param("https://8.8.8.8/avatar.png", id="public_ipv4"),
+    ],
+)
+def test_valid_https_avatars_render_without_extra_requests(player_app, avatar):
+    app, payloads, calls = player_app
+    payloads["profile"]["avatar_url"] = avatar
+    submit(app)
+
+    assert len(app.get("image")) == 1
+    assert app.get("image")[0].proto.imgs[0].url == avatar
+    assert "Avatar placeholder" not in markdown(app)
+    assert "TestPlayer#NA1" in markdown(app)
+    assert len(calls) == 3
+    app.run()
+    assert not app.exception
+    assert app.get("image")[0].proto.imgs[0].url == avatar
+    assert len(calls) == 3

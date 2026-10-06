@@ -11,6 +11,8 @@ services:
       APP_NAME: ${APP_NAME:-ValorantAICoach}
       APP_PORT: ${APP_PORT:-8000}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://valorant:valorant@postgres:5432/valorant_ai_coach}
+      DATABASE_ENABLED: ${DATABASE_ENABLED:-false}
+      DATABASE_CACHE_TTL_SECONDS: ${DATABASE_CACHE_TTL_SECONDS:-300}
       RIOT_API_KEY: ${RIOT_API_KEY:-}
       RIOT_ENABLED: ${RIOT_ENABLED:-true}
       RIOT_REGION: ${RIOT_REGION:-eu}

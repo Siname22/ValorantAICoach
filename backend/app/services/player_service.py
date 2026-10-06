@@ -341,6 +341,20 @@ class PlayerService:
         region: str | None = None,
         limit: int = 10,
     ) -> list[PlayerMatch]:
+        matches, _ = await self._get_recent_matches_with_source(
+            game_name, tag_line, puuid=puuid, region=region, limit=limit
+        )
+        return matches
+
+    async def _get_recent_matches_with_source(
+        self,
+        game_name: str,
+        tag_line: str,
+        puuid: str | None = None,
+        *,
+        region: str | None = None,
+        limit: int = 10,
+    ) -> tuple[list[PlayerMatch], str]:
         if not 1 <= limit <= 20:
             raise ValueError("Match limit must be between 1 and 20")
         errors: list[Exception] = []
@@ -364,7 +378,7 @@ class PlayerService:
                         agent_name=m.agent_name,
                     )
                     for m in matches[:limit]
-                ]
+                ], "tracker"
             except Exception as error:
                 self._record_failure("tracker", error, errors)
 
@@ -405,7 +419,7 @@ class PlayerService:
                             agent_name=match.stats.character.name,
                         )
                     )
-                return summaries
+                return summaries, "henrik"
             except Exception as error:
                 self._record_failure("henrik", error, errors)
 
@@ -430,7 +444,7 @@ class PlayerService:
                         agent_name=m.player_stats.agent_name,
                     )
                     for m in matches[:limit]
-                ]
+                ], "riot"
             except Exception as error:
                 self._record_failure("riot", error, errors)
 

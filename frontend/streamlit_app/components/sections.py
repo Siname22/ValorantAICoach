@@ -14,6 +14,7 @@ import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from utils.api_client import APIClientError, get_api_client  # noqa: E402
+from utils.avatar import external_avatar_url  # noqa: E402
 from utils.coach_persona import (  # noqa: E402
     COACH_TAGLINE,
     build_system_prompt,
@@ -22,6 +23,8 @@ from utils.coach_persona import (  # noqa: E402
 )
 from utils.config import get_api_base_url  # noqa: E402
 from utils.gemini_client import (  # noqa: E402
+    MAX_INPUT_CHARS,
+    MSG_INPUT_TOO_LONG,
     MSG_MISSING_KEY,
     MSG_UNEXPECTED,
     ROLE_ASSISTANT,
@@ -33,6 +36,7 @@ from utils.gemini_client import (  # noqa: E402
     get_model_chain,
     get_model_name,
     is_configured,
+    trim_chat_history,
 )
 from utils.ui import (  # noqa: E402
     apply_chat_styles,
@@ -187,8 +191,9 @@ def render_player_search_page() -> None:
     with profile_col:
         st.markdown("### Profile")
         card_content = "<div class='hero-card'>"
-        if profile.get("avatar_url"):
-            st.image(profile["avatar_url"], width=120)
+        avatar_url = external_avatar_url(profile.get("avatar_url"))
+        if avatar_url:
+            st.image(avatar_url, width=120)
         else:
             st.markdown(
                 "<div style='width:120px;height:120px;border-radius:16px;"
@@ -423,6 +428,17 @@ def _render_coach_setup_notice() -> None:
     st.caption("Full walkthrough: docs/chatbot_installation.md in the repository.")
 
 
+def _render_coach_messages(
+    messages: list[ChatMessage], fallback_model: str | None = None
+) -> None:
+    for index, message in enumerate(messages):
+        avatar = "🤖" if message.role == ROLE_ASSISTANT else "🎯"
+        with st.chat_message(message.role, avatar=avatar):
+            st.markdown(message.content)
+            if fallback_model and index == len(messages) - 1:
+                st.caption(f"Respondido por el modelo de respaldo: {fallback_model}")
+
+
 def render_ai_coach_page() -> None:
     """Render the Gemini-powered coaching assistant."""
     st.set_page_config(
@@ -450,6 +466,7 @@ def render_ai_coach_page() -> None:
         st.session_state.coach_messages = [
             ChatMessage(role=ROLE_ASSISTANT, content=get_welcome_message())
         ]
+    st.session_state.coach_messages = trim_chat_history(st.session_state.coach_messages)
 
     header_cols = st.columns([2.4, 0.8, 0.8], vertical_alignment="center")
     with header_cols[0]:
@@ -494,25 +511,33 @@ def render_ai_coach_page() -> None:
                     st.session_state.coach_pending_prompt = starter
                     st.rerun()
 
-    for message in st.session_state.coach_messages:
-        avatar = "🤖" if message.role == ROLE_ASSISTANT else "🎯"
-        with st.chat_message(message.role, avatar=avatar):
-            st.markdown(message.content)
-
-    typed_prompt = st.chat_input("Ask your Valorant coach anything…")
+    typed_prompt = st.chat_input(
+        "Ask your Valorant coach anything…", max_chars=MAX_INPUT_CHARS
+    )
     prompt = st.session_state.pop("coach_pending_prompt", None) or typed_prompt
 
-    if not prompt:
+    if prompt and len(prompt) > MAX_INPUT_CHARS:
+        _render_coach_messages(st.session_state.coach_messages)
+        st.error(MSG_INPUT_TOO_LONG, icon="⚠️")
         return
 
-    st.session_state.coach_messages.append(ChatMessage(role=ROLE_USER, content=prompt))
-    with st.chat_message(ROLE_USER, avatar="🎯"):
-        st.markdown(prompt)
+    if prompt:
+        st.session_state.coach_messages.append(
+            ChatMessage(role=ROLE_USER, content=prompt)
+        )
+        st.session_state.coach_messages = trim_chat_history(
+            st.session_state.coach_messages
+        )
+    _render_coach_messages(
+        st.session_state.coach_messages,
+        fallback_model=st.session_state.pop("coach_fallback_model", None),
+    )
+    if not prompt:
+        return
 
     # The history excludes the turn just appended: the SDK receives it as the
     # message being sent, not as part of the previous conversation.
     history = st.session_state.coach_messages[:-1]
-
     with st.chat_message(ROLE_ASSISTANT, avatar="🤖"):
         with st.spinner("Analysing the situation…"):
             try:
@@ -527,9 +552,8 @@ def render_ai_coach_page() -> None:
                 st.session_state.coach_messages.pop()
                 return
             except Exception as exc:  # noqa: BLE001 - last line of defence
-                # Nothing should reach this point: the client already classifies
-                # every failure it knows about. It exists so that an unforeseen
-                # bug can never render a traceback in a public deployment.
+                # The client classifies known failures; keep unforeseen bugs
+                # from rendering a traceback in a public deployment.
                 logger.error(
                     "Unhandled failure while contacting the coach: %s",
                     type(exc).__name__,
@@ -538,11 +562,20 @@ def render_ai_coach_page() -> None:
                 st.session_state.coach_messages.pop()
                 return
         st.markdown(reply)
-        # Surfaced only when the automatic fallback had to leave the configured
-        # model, so the audience of the demo can see what actually happened.
+        # Surfaced only when fallback leaves the configured model.
         if client.active_model != client.model:
             st.caption(f"Respondido por el modelo de respaldo: {client.active_model}")
 
-    st.session_state.coach_messages.append(
-        ChatMessage(role=ROLE_ASSISTANT, content=reply)
-    )
+    response_message = ChatMessage(role=ROLE_ASSISTANT, content=reply)
+    st.session_state.coach_messages.append(response_message)
+    retained = trim_chat_history(st.session_state.coach_messages)
+    trimmed = len(retained) < len(st.session_state.coach_messages)
+    st.session_state.coach_messages = retained
+    if trimmed:
+        if (
+            client.active_model != client.model
+            and retained
+            and retained[-1] is response_message
+        ):
+            st.session_state.coach_fallback_model = client.active_model
+        st.rerun()

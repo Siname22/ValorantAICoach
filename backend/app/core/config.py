@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,6 +12,8 @@ class Settings(BaseSettings):
     database_url: str = (
         "postgresql+psycopg://valorant:valorant@localhost:5432/valorant_ai_coach"
     )
+    database_enabled: bool = False
+    database_cache_ttl_seconds: int = Field(default=300, ge=1, le=86400)
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -1,6 +1,9 @@
 import logging
 
+from backend.app.core.config import get_settings
 from backend.app.services.player_service import PlayerService
+from backend.app.storage.player_service import PersistentPlayerService
+from backend.app.storage.repository import SQLPlayerStore
 from backend.providers.henrik.config import HenrikConfig
 from backend.providers.henrik.provider import HenrikProvider
 from backend.providers.riot.config import RiotConfig
@@ -16,6 +19,16 @@ logger = logging.getLogger(__name__)
 
 def create_player_service() -> PlayerService:
     """Build the application service using only configured, enabled providers."""
+    settings = get_settings()
+    store = (
+        SQLPlayerStore(
+            settings.database_url,
+            ttl_seconds=settings.database_cache_ttl_seconds,
+            test_mode=settings.app_env == "test",
+        )
+        if settings.database_enabled
+        else None
+    )
     providers = {}
     disabled = {}
     for name, config_type, provider_type in (
@@ -33,6 +46,10 @@ def create_player_service() -> PlayerService:
             disabled[name] = "disabled"
             continue
         providers[f"{name}_provider"] = provider_type(config)
+    if store is not None:
+        return PersistentPlayerService(
+            store=store, **providers, disabled_providers=disabled
+        )
     return PlayerService(**providers, disabled_providers=disabled)
 
 
