@@ -7,13 +7,11 @@ providers and a Streamlit frontend with a Gemini assistant.
 
 ## Development Status
 
-Current branch: `codex/system-integration`.
+Current branch: `feature/player-intelligence-and-coach`.
 Backend version: 0.4.0.
 
-The integration is published in draft [PR #8](https://github.com/Siname22/ValorantAICoach/pull/8).
-The authenticated GitHub connector preserved the exact local Git tree and
-original history; local Git push still requires renewed authentication.
-`main` is unchanged and merging requires the owner's approval.
+The integration is published in draft [PR #8](https://github.com/Siname22/ValorantAICoach/pull/8)
+and continued in branch `feature/player-intelligence-and-coach`.
 Remote Python 3.12/3.13, PostgreSQL 16 and container checks passed for source
 head `16146ab` in [CI run 37436302896](https://github.com/Siname22/ValorantAICoach/actions/runs/37436302896).
 CI reproduced the startup connection reset and recovered with bounded retries,
@@ -24,17 +22,19 @@ updates. Passing CI is not a production-release claim.
 The backend foundation was verified before the current integration: player
 identity, rank/history fallback, Riot match detail, explicit provider failures,
 and application-scoped HTTP client cleanup. The current branch also incorporates
-the Streamlit/Gemini work from `develop`.
+the Streamlit/Gemini work from `develop`, active player context injection into the AI
+coach, map and agent name resolution via `ValorantContentCatalog`, and the
+quantitative `MatchAnalystAgent`.
 
 **Development integration, not a production release.** Backend and frontend
-verification on October 6 after the approved update: 493 pytest tests passed,
+verification on October 6 after the approved update: 506 pytest tests passed,
 no skips. There was 1 dependency warning (Starlette's test client deprecation;
 Alembic's legacy path-separator configuration is resolved with path_separator = os).
 The separate Gemini resilience script passed
-81 checks; imports, Ruff and Black passed across 115 Python files. Sixteen
+81 checks; imports, Ruff and Black passed across 120 Python files. Sixteen
 PostgreSQL target-guard tests passed locally without connecting to a database.
 The PostgreSQL CI suite separately passed 19 tests (16 guards and three real
-database tests), with no skips. These are not part of the 493 local test count.
+database tests), with no skips. These are not part of the 506 local test count.
 Live provider credentials and public
 deployment have not been verified. See [roadmap](docs/ROADMAP.md) and
 [delivery plan](docs/DELIVERY_PLAN.md) for the complete remaining scope.
@@ -82,8 +82,10 @@ The example targets Europe. `RIOT_REGION` derives the shard host only when
 change that URL as well when selecting another shard. Continental account routing
 uses the independent `RIOT_ACCOUNT_BASE_URL`.
 
-Match summaries include provider provenance. Riot map/character IDs are not yet
-resolved to display names. Timestamps retain provider formats. Henrik's raw
+Match summaries include provider provenance. Riot map asset paths
+(e.g. `/Game/Maps/Ascent/Ascent`) and character UUIDs (e.g. `add6443a-41bd-e414-f6ad-e58d267f4e95`)
+are resolved to canonical display names and roles (`Ascent`, `Jett - Duelist`) via the
+built-in `ValorantContentCatalog`. Timestamps retain provider formats. Henrik's raw
 `stats.score` has no documented total/average meaning: the normalized
 `score` is null and the original is retained in `provider_score`.
 See the [stored-match contract](https://docs.henrikdev.xyz/valorant/guides/stored-matches.md)
@@ -169,8 +171,10 @@ provider-configuration cache invalidation remain release work.
 The existing assistant uses the official `google-genai` SDK.
 Configure `GEMINI_API_KEY` in Streamlit secrets or environment;
 `GEMINI_MODEL` selects the preferred model. No key means the coach is disabled.
-The current chat is general coaching: automatic live-player context, persistent
-memory and grounded match reports remain separate delivery milestones.
+The current chat is personalized coaching: when an active player has been looked up
+in the dashboard, their identity, rank, and recent match metrics are automatically
+injected into the assistant's system prompt. Persistent memory and scheduled background
+reports remain separate delivery milestones.
 SDK transport phases have 10-second timeouts. The wrapper controls retries
 without multiplying the SDK's own attempts, handles actual HTTPX transport
 failures, closes the client after each turn, and sanitizes logs and errors.

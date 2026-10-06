@@ -32,6 +32,7 @@ from utils.gemini_client import (  # noqa: E402
     ChatMessage,
     GeminiClientError,
     GeminiConfigurationError,
+    format_player_context,
     get_gemini_client,
     get_model_chain,
     get_model_name,
@@ -502,6 +503,32 @@ def render_ai_coach_page() -> None:
 
     st.markdown("")
 
+    searched_player = st.session_state.get("player_search_result")
+    player_context: str | None = None
+    if searched_player and not searched_player.get("error"):
+        player_context = format_player_context(
+            profile=searched_player.get("profile"),
+            rank=searched_player.get("rank"),
+            matches=searched_player.get("matches_payload"),
+        )
+        if player_context:
+            player_name = escape(
+                f"{searched_player.get('game_name')}#{searched_player.get('tag_line')}"
+            )
+            tier = escape(
+                str((searched_player.get("rank") or {}).get("tier_name") or "Unranked")
+            )
+            card_html = (
+                "<div class='metric-card' style='margin-bottom:1rem;"
+                "border-left:3px solid #ff4655;'>"
+                f"<strong>🎯 Active player context:</strong> {player_name} "
+                f"<span style='color:#8b949e;'>(Rank: {tier})</span><br/>"
+                "<span style='font-size:0.85rem; color:#a7b2bf;'>"
+                "The coach incorporates this player's stats and recent matches "
+                "into its analysis.</span></div>"
+            )
+            st.markdown(card_html, unsafe_allow_html=True)
+
     if len(st.session_state.coach_messages) == 1:
         st.caption("Suggested questions")
         starter_cols = st.columns(2)
@@ -541,7 +568,11 @@ def render_ai_coach_page() -> None:
     with st.chat_message(ROLE_ASSISTANT, avatar="🤖"):
         with st.spinner("Analysing the situation…"):
             try:
-                with closing(get_gemini_client(build_system_prompt())) as client:
+                with closing(
+                    get_gemini_client(
+                        build_system_prompt(player_context=player_context)
+                    )
+                ) as client:
                     reply = client.send_message(prompt, history=history)
             except GeminiConfigurationError as exc:
                 st.error(str(exc), icon="🔑")

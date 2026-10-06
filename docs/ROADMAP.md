@@ -23,10 +23,10 @@ permissions. Mocked HTTP tests do not confirm those permissions.
 - [x] Add opt-in typed TTL caching with UTC observations and provider provenance.
 - [x] Verify the PostgreSQL service job for published source `16146ab` (19 tests).
 - [ ] Add retention cleanup, configuration invalidation and distributed refresh limits.
-- [ ] Resolve Riot map/character IDs using a versioned content catalog.
+- [x] Resolve Riot map/character IDs using a versioned content catalog.
 - [x] Normalize stored match dates to UTC while preserving raw provider values.
 - [ ] Normalize presentation dates and resolve unknown provider date semantics.
-- [ ] Implement measurable match analysis and useful report schemas.
+- [x] Implement measurable match analysis and useful report schemas.
 - [ ] Connect the match analyst and orchestrator to the player service.
 
 ## Next: Usable Application

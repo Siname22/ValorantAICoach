@@ -2,6 +2,7 @@ import asyncio
 import logging
 from typing import Any, Literal, NoReturn
 
+from backend.app.content.catalog import resolve_agent_name, resolve_map_name
 from backend.providers.base.exceptions import InvalidResponseError, NotFoundError
 from backend.providers.base.models import ProviderStatus
 from backend.providers.henrik.provider import HenrikProvider
@@ -432,7 +433,7 @@ class PlayerService:
                 return [
                     PlayerMatch(
                         match_id=m.match_id,
-                        map_name=m.map_id,
+                        map_name=resolve_map_name(m.map_id),
                         mode=m.game_mode,
                         timestamp=m.game_start_time,
                         result=m.result,
@@ -441,7 +442,7 @@ class PlayerService:
                         assists=m.player_stats.assists,
                         score=m.player_stats.score,
                         provider="riot",
-                        agent_name=m.player_stats.agent_name,
+                        agent_name=resolve_agent_name(m.player_stats.agent_name),
                     )
                     for m in matches[:limit]
                 ], "riot"
