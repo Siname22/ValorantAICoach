@@ -1,5 +1,6 @@
 import hashlib
 import json
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -10,7 +11,14 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from .models import Base, MatchRecord, PlayerMatchHistory, PlayerRecord, PlayerSnapshot
+from .models import (
+    Base,
+    CoachingReportRecord,
+    MatchRecord,
+    PlayerMatchHistory,
+    PlayerRecord,
+    PlayerSnapshot,
+)
 
 
 def request_key(operation: str, parameters: dict[str, Any]) -> str:
@@ -187,6 +195,85 @@ class SQLPlayerStore:
                     "expires_at": now + timedelta(seconds=self.ttl_seconds),
                 },
             )
+
+    def save_coaching_report(
+        self,
+        player_id: str,
+        payload: dict[str, Any],
+        evidence: list[dict[str, Any]],
+        provider: str = "orchestrator",
+        report_id: str | None = None,
+        identity: dict[str, str] | None = None,
+    ) -> str:
+        rep_id = report_id or str(uuid.uuid4())
+        json.dumps(payload, allow_nan=False)
+        json.dumps(evidence, allow_nan=False)
+        now = datetime.now(UTC)
+        with Session(self.engine) as session, session.begin():
+            if identity:
+                session.execute(
+                    self._insert(PlayerRecord)
+                    .values(
+                        id=player_id,
+                        game_name=identity.get("game_name", "Player"),
+                        tag_line=identity.get("tag_line", "000"),
+                        observed_at=now,
+                    )
+                    .on_conflict_do_nothing(index_elements=["id"])
+                )
+            self._upsert(
+                session,
+                CoachingReportRecord,
+                {
+                    "id": rep_id,
+                    "player_id": player_id,
+                    "schema_version": 1,
+                    "provider": provider,
+                    "payload": payload,
+                    "evidence": evidence,
+                    "created_at": now,
+                },
+            )
+        return rep_id
+
+    def get_coaching_report(self, report_id: str) -> dict[str, Any] | None:
+        with Session(self.engine) as session:
+            record = session.get(CoachingReportRecord, report_id)
+            if record is None:
+                return None
+            return {
+                "id": record.id,
+                "player_id": record.player_id,
+                "schema_version": record.schema_version,
+                "provider": record.provider,
+                "payload": record.payload,
+                "evidence": record.evidence,
+                "created_at": record.created_at.isoformat(),
+            }
+
+    def list_coaching_reports(
+        self, player_id: str, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        with Session(self.engine) as session:
+            statement = (
+                select(CoachingReportRecord)
+                .where(CoachingReportRecord.player_id == player_id)
+                .order_by(CoachingReportRecord.created_at.desc())
+                .limit(limit)
+            )
+            records = session.execute(statement).scalars().all()
+            return [
+                {
+                    "id": record.id,
+                    "player_id": record.player_id,
+                    "schema_version": record.schema_version,
+                    "provider": record.provider,
+                    "payload": record.payload,
+                    "evidence": record.evidence,
+                    "created_at": record.created_at.isoformat(),
+                }
+                for record in records
+            ]
 
     def close(self) -> None:
         self.engine.dispose()

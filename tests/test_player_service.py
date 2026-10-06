@@ -291,3 +291,34 @@ async def test_health_isolates_provider_exception(
     assert health["status"] == "degraded"
     assert health["providers"]["tracker"]["status"] == "unhealthy"
     assert "private-response" not in health["providers"]["tracker"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_get_recent_matches_riot_resolves_map_and_agent_names(mock_riot):
+    from backend.providers.riot.models import Match as RiotMatch
+    from backend.providers.riot.models import MatchPlayerStats
+
+    mock_riot.get_player_match_history.return_value = [
+        RiotMatch(
+            matchId="riot-match-1",
+            mapId="/Game/Maps/Ascent/Ascent",
+            gameMode="Competitive",
+            gameStartTimeMillis=1700000000000,
+            result="Victory",
+            player_stats=MatchPlayerStats(
+                kills=22,
+                deaths=10,
+                assists=5,
+                score=4500,
+                character="add6443a-41bd-e414-f6ad-e58d267f4e95",
+            ),
+        )
+    ]
+    service = PlayerService(mock_riot, None, None)
+    matches = await service.get_recent_matches("Player", "Tag", puuid="test-puuid")
+
+    assert len(matches) == 1
+    assert matches[0].match_id == "riot-match-1"
+    assert matches[0].map_name == "Ascent"
+    assert matches[0].agent_name == "Jett"
+    assert matches[0].provider == "riot"

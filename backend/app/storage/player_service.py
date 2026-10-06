@@ -159,6 +159,54 @@ class PersistentPlayerService(PlayerService):
             "match_detail", {"match_id": match_id}, TypeAdapter(MatchDetail), fetch
         )
 
+    async def generate_coaching_report(
+        self,
+        game_name: str,
+        tag_line: str,
+        *,
+        region: str | None = None,
+        limit: int = 5,
+    ) -> dict[str, Any]:
+        report = await super().generate_coaching_report(
+            game_name, tag_line, region=region, limit=limit
+        )
+        player_id = request_key(
+            "identity", {"game_name": game_name, "tag_line": tag_line}
+        )
+        report_id = report.get("report_id")
+        evidence = report.get("evidence", [])
+        saved_id = await self._storage_call(
+            self.store.save_coaching_report,
+            player_id,
+            report,
+            evidence,
+            "orchestrator",
+            report_id,
+            {"game_name": game_name, "tag_line": tag_line},
+        )
+        return {
+            "id": saved_id,
+            "player_id": player_id,
+            "schema_version": 1,
+            "provider": "orchestrator",
+            "payload": report,
+            "evidence": evidence,
+            "created_at": report.get("created_at") or "",
+        }
+
+    async def get_coaching_report(self, report_id: str) -> dict[str, Any] | None:
+        return await self._storage_call(self.store.get_coaching_report, report_id)
+
+    async def list_coaching_reports(
+        self, game_name: str, tag_line: str, *, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        player_id = request_key(
+            "identity", {"game_name": game_name, "tag_line": tag_line}
+        )
+        return await self._storage_call(
+            self.store.list_coaching_reports, player_id, limit
+        )
+
     async def close(self) -> None:
         try:
             await super().close()

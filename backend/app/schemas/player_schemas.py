@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -75,3 +75,26 @@ class HealthResponse(BaseModel):
     providers: dict[str, str] | None = Field(
         None, description="Status of individual data providers"
     )
+
+
+class CoachingReportResponse(BaseModel):
+    """Grounded AI coaching report for a player."""
+
+    id: str = Field(..., description="Unique report identifier")
+    player_id: str | None = Field(None, description="Internal player identifier")
+    schema_version: int = Field(1, description="Schema format version")
+    provider: str = Field("orchestrator", description="Generating agent or provider")
+    payload: dict[str, Any] = Field(..., description="Full structured coaching plan")
+    evidence: list[dict[str, Any]] = Field(
+        default_factory=list, description="Grounding evidence"
+    )
+    created_at: str | None = Field(None, description="Report generation timestamp")
+
+
+class CoachingReportsListResponse(BaseModel):
+    """List of historical coaching reports for a player."""
+
+    reports: list[CoachingReportResponse] = Field(
+        ..., description="List of saved coaching reports"
+    )
+    count: int = Field(..., description="Total reports returned")
