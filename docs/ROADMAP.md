@@ -27,13 +27,14 @@ permissions. Mocked HTTP tests do not confirm those permissions.
 - [x] Normalize stored match dates to UTC while preserving raw provider values.
 - [ ] Normalize presentation dates and resolve unknown provider date semantics.
 - [x] Implement measurable match analysis and useful report schemas.
-- [ ] Connect the match analyst and orchestrator to the player service.
+- [x] Connect the match analyst, specialized coaching agents (economy, role, report writer), and orchestrator to the player service.
 
 ## Next: Usable Application
 
 - [ ] Build the player dashboard, match history and report views.
 - [ ] Add authentication and player account linking.
-- [ ] Add report persistence and background jobs.
+- [x] Add coaching report persistence (coaching_reports table) and REST endpoints.
+- [ ] Add background jobs and scheduled report generation.
 - [ ] Add a provider-aware readiness endpoint when deployment depends on data access.
 
 ## Later: AI and Visual Analysis

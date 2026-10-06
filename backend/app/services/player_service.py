@@ -494,6 +494,57 @@ class PlayerService:
                 overall = "unhealthy"
         return {"status": overall, "providers": results}
 
+    async def generate_coaching_report(
+        self,
+        game_name: str,
+        tag_line: str,
+        *,
+        region: str | None = None,
+        limit: int = 5,
+    ) -> dict[str, Any]:
+        from agents.orchestrator.agent import OrchestratorAgent
+        from agents.orchestrator.schema import OrchestratorInput
+        from agents.shared.context import AgentContext
+
+        matches = await self.get_recent_matches(
+            game_name, tag_line, region=region, limit=limit
+        )
+        rank_name = None
+        try:
+            rank = await self.get_rank(game_name, tag_line, region=region)
+            rank_name = rank.tier_name
+        except Exception:
+            pass
+
+        stats_dict = None
+        try:
+            stats = await self.get_stats_overview(game_name, tag_line)
+            stats_dict = stats.model_dump()
+        except Exception:
+            pass
+
+        matches_data = [match.model_dump() for match in matches]
+        orchestrator = OrchestratorAgent()
+        output = await orchestrator.run(
+            OrchestratorInput(
+                game_name=game_name,
+                tag_line=tag_line,
+                rank=rank_name,
+                matches=matches_data,
+                player_stats=stats_dict,
+            ),
+            AgentContext(),
+        )
+        return output.report or {}
+
+    async def get_coaching_report(self, report_id: str) -> dict[str, Any] | None:
+        return None
+
+    async def list_coaching_reports(
+        self, game_name: str, tag_line: str, *, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        return []
+
     async def close(self) -> None:
         results = await asyncio.gather(
             *(provider.close() for provider in self._providers), return_exceptions=True

@@ -23,18 +23,20 @@ The backend foundation was verified before the current integration: player
 identity, rank/history fallback, Riot match detail, explicit provider failures,
 and application-scoped HTTP client cleanup. The current branch also incorporates
 the Streamlit/Gemini work from `develop`, active player context injection into the AI
-coach, map and agent name resolution via `ValorantContentCatalog`, and the
-quantitative `MatchAnalystAgent`.
+coach, map and agent name resolution via `ValorantContentCatalog`, specialized
+coaching agents (`MatchAnalystAgent`, `EconomyCoachAgent`, `RoleCoachAgent`,
+`ReportWriterAgent`), multi-agent orchestration, and coaching report persistence with
+REST endpoints.
 
 **Development integration, not a production release.** Backend and frontend
-verification on October 6 after the approved update: 506 pytest tests passed,
+verification on October 6 after the approved update: 517 pytest tests passed,
 no skips. There was 1 dependency warning (Starlette's test client deprecation;
 Alembic's legacy path-separator configuration is resolved with path_separator = os).
 The separate Gemini resilience script passed
-81 checks; imports, Ruff and Black passed across 120 Python files. Sixteen
+81 checks; imports, Ruff and Black passed across 131 Python files. Sixteen
 PostgreSQL target-guard tests passed locally without connecting to a database.
 The PostgreSQL CI suite separately passed 19 tests (16 guards and three real
-database tests), with no skips. These are not part of the 506 local test count.
+database tests), with no skips. These are not part of the 517 local test count.
 Live provider credentials and public
 deployment have not been verified. See [roadmap](docs/ROADMAP.md) and
 [delivery plan](docs/DELIVERY_PLAN.md) for the complete remaining scope.
@@ -99,6 +101,9 @@ GET /players/{game}/{tag}/rank
 GET /players/{game}/{tag}/matches?region=eu&limit=5
 GET /players/{game}/{tag}/stats
 GET /players/{game}/{tag}/overview?limit=5
+POST /players/{game}/{tag}/reports?limit=5
+GET /players/{game}/{tag}/reports?limit=10
+GET /players/{game}/{tag}/reports/{reportId}
 GET /matches/{matchId}
 GET /health
 GET /health/live
