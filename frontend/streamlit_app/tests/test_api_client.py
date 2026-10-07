@@ -200,3 +200,24 @@ def test_api_client_coaching_reports(monkeypatch):
     )
     detail = client.get_coaching_report("Player", "EU1", "rep-123")
     assert detail["id"] == "rep-123"
+
+
+def test_api_client_player_stats(monkeypatch):
+    client = APIClient(BASE_URL)
+    stats_data = {
+        "kd_ratio": 1.25,
+        "win_pct": 55.0,
+        "headshot_pct": 24.5,
+        "matches_played": 10,
+        "damage_per_round": 145.2,
+        "source": "calculated",
+    }
+    monkeypatch.setattr(
+        requests, "get", lambda *a, **kw: response(200, json.dumps(stats_data))
+    )
+    result = client.get_player_stats("Player", "EU1")
+    assert result["kd_ratio"] == 1.25
+
+    monkeypatch.setattr(requests, "get", lambda *a, **kw: response(200, "[]"))
+    with pytest.raises(APIClientError):
+        client.get_player_stats("Player", "EU1")

@@ -1,6 +1,7 @@
 import asyncio
+import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request
@@ -27,15 +28,52 @@ from backend.app.services.player_service import (
 )
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
+
+
+async def _run_cache_prune_worker(
+    service: PlayerService, interval_seconds: int
+) -> None:
+    logger.info(
+        "Starting background cache prune worker (interval=%ds)", interval_seconds
+    )
+    while True:
+        try:
+            await asyncio.sleep(interval_seconds)
+            pruned = await service.prune_expired_cache()
+            if pruned > 0:
+                logger.info(
+                    "Background cache prune worker pruned %d expired snapshots",
+                    pruned,
+                )
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            logger.warning("Background cache prune encountered an error", exc_info=True)
 
 
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+    app_settings = get_settings()
     service = await asyncio.to_thread(create_player_service)
     application.state.player_service = service
+    prune_task: asyncio.Task[None] | None = None
+    if (
+        app_settings.database_enabled
+        and app_settings.database_auto_prune_interval_seconds > 0
+    ):
+        prune_task = asyncio.create_task(
+            _run_cache_prune_worker(
+                service, app_settings.database_auto_prune_interval_seconds
+            )
+        )
     try:
         yield
     finally:
+        if prune_task is not None:
+            prune_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await prune_task
         await service.close()
         application.state.player_service = None
 

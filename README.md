@@ -8,7 +8,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688)](https://fastapi.tiangolo.com/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.39+-FF4B4B)](https://streamlit.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Tests](https://img.shields.io/badge/Tests-523%20Passing-success)](https://pytest.org/)
+[![Tests](https://img.shields.io/badge/Tests-527%20Passing-success)](https://pytest.org/)
 [![Resilience](https://img.shields.io/badge/Gemini%20Resilience-81%2F81%20Verified-brightgreen)](https://ai.google.dev/)
 [![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Ruff](https://img.shields.io/badge/linter-ruff-red)](https://github.com/astral-sh/ruff)
@@ -81,6 +81,7 @@ The FastAPI backend exposes comprehensive endpoints documented via OpenAPI/Swagg
 | `GET` | `/players/{game_name}/{tag_line}/rank` | Competitive rank tier, rank rating (RR), and MMR data. |
 | `GET` | `/players/{game_name}/{tag_line}/matches` | Recent match history with normalized stats. |
 | `GET` | `/matches/{match_id}` | Detailed match summary by ID. |
+| `DELETE` | `/players/{game_name}/{tag_line}/cache` | Invalidate player snapshot cache on demand. |
 | `POST` | `/players/{game_name}/{tag_line}/reports` | Generate a grounded multi-agent coaching report. |
 | `GET` | `/players/{game_name}/{tag_line}/reports` | List historical coaching reports for a player. |
 | `GET` | `/players/{game_name}/{tag_line}/reports/{id}` | Retrieve a specific coaching report by ID. |
@@ -114,7 +115,7 @@ Located in `frontend/streamlit_app/utils/gemini_coach.py`, the AI coach delivers
 The repository maintains strict test coverage, formatting, and linting standards:
 
 ```text
-523 passed, 0 failures, 0 skips
+527 passed, 0 failures, 0 skips
 81/81 Gemini resilience checks passed
 100% Ruff & Black compliance
 ```
@@ -237,11 +238,13 @@ ValorantAICoach/
 - [x] Readiness (`/health/ready`) and liveness (`/health/live`) probes
 - [x] Multi-agent analytical framework (Tactical, Economy, Aim, Agent-specific)
 - [x] Streamlit web dashboard with interactive charts and match viewer
+- [x] Interactive Multi-Agent Coaching Report cards and history browser
 - [x] Resilient Gemini AI chatbot with 3-model failover and backoff
 - [x] Container and dependency isolation (Backend vs Frontend)
+- [x] Automated continuous cache pruning background worker
+- [x] On-demand player cache invalidation (`DELETE /players/{game}/{tag}/cache`)
 - [ ] Computer Vision & OCR integration for in-game scoreboard capture
 - [ ] Round-by-round replay timeline analysis
-- [ ] Automated continuous cache pruning background worker
 
 ---
 
@@ -249,8 +252,8 @@ ValorantAICoach/
 
 This repository follows a strict review and branch workflow:
 1. **Never commit directly to `main`**.
-2. Create descriptive feature branches (`feature/backend-...`, `fix/...`).
-3. Ensure 100% test pass rate (`523+ tests passing`), Ruff, and Black formatting.
+2. Create descriptive feature branches (`feature/...`, `fix/...`).
+3. Ensure 100% test pass rate (`527+ tests passing`), Ruff, and Black formatting.
 4. Submit work via Pull Request with clear release notes.
 
 ---

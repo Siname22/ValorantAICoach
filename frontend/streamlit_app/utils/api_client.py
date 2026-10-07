@@ -91,6 +91,14 @@ class APIClient:
             raise APIClientError("The API returned an invalid match history.")
         return payload
 
+    def get_player_stats(self, game_name: str, tag_line: str) -> dict[str, Any]:
+        payload = self._request(
+            f"/players/{quote(game_name, safe='')}/{quote(tag_line, safe='')}/stats"
+        )
+        if not isinstance(payload, dict):
+            raise APIClientError("The API returned an invalid stats overview.")
+        return payload
+
     def _post(
         self, path: str, json_data: dict[str, Any] | None = None
     ) -> dict[str, Any]:

@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     )
     database_enabled: bool = False
     database_cache_ttl_seconds: int = Field(default=300, ge=1, le=86400)
+    database_auto_prune_interval_seconds: int = Field(
+        default=0,
+        ge=0,
+        le=86400,
+        description="Interval for periodic background cache pruning (0 to disable)",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

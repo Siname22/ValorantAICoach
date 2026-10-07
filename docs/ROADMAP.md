@@ -22,7 +22,8 @@ permissions. Mocked HTTP tests do not confirm those permissions.
 - [x] Add SQLAlchemy player, match and future-report models and explicit Alembic migration.
 - [x] Add opt-in typed TTL caching with UTC observations and provider provenance.
 - [x] Verify the PostgreSQL service job for published source (19 persistence tests).
-- [x] Add retention cleanup (`SQLPlayerStore.prune_expired_snapshots`, `POST /system/cache/prune`).
+- [x] Add retention cleanup (`SQLPlayerStore.prune_expired_snapshots`, `POST /system/cache/prune`, `DELETE /players/{game}/{tag}/cache`).
+- [x] Add automated periodic background cache pruning worker in FastAPI lifespan.
 - [x] Resolve Riot map/character IDs using a versioned content catalog.
 - [x] Normalize stored match dates to UTC while preserving raw provider values.
 - [x] Implement measurable match analysis and useful report schemas.
@@ -31,6 +32,7 @@ permissions. Mocked HTTP tests do not confirm those permissions.
 ## Completed: Usable Application & Decoupled Frontend
 
 - [x] Build the player dashboard, match history, and coaching report views (Streamlit UI).
+- [x] Interactive Multi-Agent coaching report generation cards and historical reports browser.
 - [x] Add coaching report persistence (`coaching_reports` table) and REST endpoints.
 - [x] Add a provider-aware readiness endpoint (`GET /health/ready`) and storage health check.
 - [x] Isolate frontend and backend runtimes, containers, dependencies, and test suites.
@@ -40,7 +42,7 @@ permissions. Mocked HTTP tests do not confirm those permissions.
 ## Next Milestones
 
 - [ ] Add user authentication, sessions, and player account linking.
-- [ ] Add background task worker (Celery/RQ/cron) for scheduled coaching updates and automatic cache pruning.
+- [ ] Add scheduled coaching update jobs for tracked players.
 - [ ] Implement OCR / screenshot ingestion and computer vision for scoreboard analysis.
 - [ ] Add round-by-round replay timeline analysis.
 - [ ] Connect long-term persistent agent memory to player trajectory over time.

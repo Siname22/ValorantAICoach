@@ -603,3 +603,94 @@ def test_persistent_service_readiness_probe_and_cache_prune(
             assert unhealthy_data["database"] == "disconnected"
         finally:
             service.store.ping = orig_ping
+
+
+def test_invalidate_player_cache_endpoint_and_store(
+    storage_database, storage_providers
+):
+    config, engine, url = storage_database
+    command.upgrade(config, "head")
+
+    store = SQLPlayerStore(url, ttl_seconds=300, test_mode=True)
+    try:
+        now = datetime.now(UTC)
+        id_a = request_key("identity", {"game_name": "PlayerA", "tag_line": "EU1"})
+        id_b = request_key("identity", {"game_name": "PlayerB", "tag_line": "EU1"})
+        with Session(engine) as session, session.begin():
+            session.add_all(
+                [
+                    PlayerRecord(
+                        id=id_a,
+                        game_name="PlayerA",
+                        tag_line="EU1",
+                        observed_at=now,
+                    ),
+                    PlayerRecord(
+                        id=id_b,
+                        game_name="PlayerB",
+                        tag_line="EU1",
+                        observed_at=now,
+                    ),
+                    PlayerSnapshot(
+                        key="snap-a",
+                        operation="profile",
+                        player_id=id_a,
+                        payload={"name": "A"},
+                        providers=["riot"],
+                        observed_at=now,
+                        expires_at=now + timedelta(hours=1),
+                    ),
+                    PlayerSnapshot(
+                        key="snap-b",
+                        operation="profile",
+                        player_id=id_b,
+                        payload={"name": "B"},
+                        providers=["riot"],
+                        observed_at=now,
+                        expires_at=now + timedelta(hours=1),
+                    ),
+                ]
+            )
+        deleted_b = store.invalidate_player_cache(id_b)
+        assert deleted_b == 1
+    finally:
+        store.close()
+
+    with TestClient(app) as client:
+        res = client.delete("/players/PlayerA/EU1/cache")
+        assert res.status_code == 200
+        assert res.json() == {"status": "ok", "invalidated_snapshots": 1}
+
+    with Session(engine) as session:
+        remaining = session.scalars(select(PlayerSnapshot)).all()
+        assert len(remaining) == 0
+
+
+@pytest.mark.asyncio
+async def test_background_cache_prune_task_runs_periodically(
+    storage_database, storage_providers, monkeypatch
+):
+    config, engine, _ = storage_database
+    command.upgrade(config, "head")
+    monkeypatch.setenv("DATABASE_AUTO_PRUNE_INTERVAL_SECONDS", "1")
+    get_settings.cache_clear()
+
+    now = datetime.now(UTC)
+    with Session(engine) as session, session.begin():
+        session.add(
+            PlayerSnapshot(
+                key="expired-auto-snap",
+                operation="profile",
+                payload={"data": "expired"},
+                providers=["henrik"],
+                observed_at=now - timedelta(days=2),
+                expires_at=now - timedelta(days=1),
+            )
+        )
+
+    async with lifespan(app):
+        await asyncio.sleep(1.2)
+
+    with Session(engine) as session:
+        remaining = session.scalars(select(PlayerSnapshot)).all()
+        assert len(remaining) == 0

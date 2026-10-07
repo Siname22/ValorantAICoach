@@ -5,6 +5,7 @@ import sys
 from contextlib import closing, suppress
 from html import escape
 from pathlib import Path
+from typing import Any
 
 # Guarantees `utils` stays importable even when this module is loaded before the
 # Streamlit entrypoint has registered the app directory on sys.path.
@@ -123,6 +124,7 @@ def render_player_search_page() -> None:
     )
     apply_global_styles()
     render_sidebar()
+    client = get_api_client()
 
     render_page_header(
         "Valorant AI Coach",
@@ -155,7 +157,6 @@ def render_player_search_page() -> None:
             "matches_payload": None,
             "error": None,
         }
-        client = get_api_client()
         with st.spinner("Querying the backend API..."):
             try:
                 result["profile"] = client.get_player_profile(game_name, tag_line)
@@ -260,6 +261,109 @@ def render_player_search_page() -> None:
         else:
             st.info("No matches were returned for this player.")
 
+    st.markdown("---")
+    st.subheader("AI Tactical Coaching")
+    st.markdown(
+        "Synthesize recent match telemetry across combat, economy, and agent "
+        "mechanics into a personalized multi-agent coaching report."
+    )
+
+    if st.button(
+        "🎯 Generate AI Coaching Report",
+        type="primary",
+        key="btn_generate_report",
+    ):
+        with st.spinner("Specialized agents are evaluating match telemetry..."):
+            try:
+                rep = client.generate_coaching_report(
+                    result["game_name"], result["tag_line"], limit=5
+                )
+                payload = rep.get("payload") or rep
+                st.session_state["coaching_report"] = payload
+                st.session_state["coaching_report_error"] = None
+            except APIClientError as exc:
+                st.session_state["coaching_report_error"] = str(exc)
+
+    if st.session_state.get("coaching_report_error"):
+        st.warning(
+            f"Report generation error: {st.session_state['coaching_report_error']}"
+        )
+
+    active_report = st.session_state.get("coaching_report")
+    if active_report:
+        render_coaching_report_card(active_report)
+
+    with st.expander("📜 Historical Coaching Reports", expanded=False):
+        if st.button("Fetch Report History", key="btn_fetch_history"):
+            try:
+                hist = client.list_coaching_reports(
+                    result["game_name"], result["tag_line"], limit=10
+                )
+                st.session_state["historical_reports_list"] = hist.get("reports", [])
+            except APIClientError as exc:
+                st.warning(f"Could not retrieve history: {exc}")
+
+        saved = st.session_state.get("historical_reports_list")
+        if saved:
+            options = {
+                f"{r.get('id', 'rep')} ({r.get('created_at') or 'date unknown'})": r
+                for r in saved
+            }
+            chosen = st.selectbox(
+                "Select a report to inspect:",
+                options=list(options.keys()),
+                key="select_saved_report",
+            )
+            if chosen and st.button("View Selected Report", key="btn_view_saved"):
+                selected_item = options[chosen]
+                st.session_state["coaching_report"] = (
+                    selected_item.get("payload") or selected_item
+                )
+                st.rerun()
+        elif saved is not None:
+            st.info("No prior coaching reports found for this player.")
+
+
+def render_coaching_report_card(report: dict[str, Any]) -> None:
+    """Render a structured multi-agent coaching report in Streamlit."""
+    title = report.get("title") or "Tactical Coaching Report"
+    summary = report.get("executive_summary") or "No executive summary available."
+    strengths = report.get("key_strengths") or []
+    flaws = report.get("critical_flaws") or []
+    plan = report.get("training_plan") or []
+    evidence = report.get("evidence") or []
+
+    st.markdown(f"#### 📋 {escape(title)}")
+    st.info(f"**Executive Summary:** {escape(summary)}")
+
+    col_s, col_f = st.columns(2)
+    with col_s:
+        st.markdown("##### 🟢 Key Strengths")
+        if strengths:
+            for item in strengths:
+                st.markdown(f"- {escape(str(item))}")
+        else:
+            st.markdown("- *No key strengths identified.*")
+
+    with col_f:
+        st.markdown("##### 🔴 Priority Improvements")
+        if flaws:
+            for item in flaws:
+                st.markdown(f"- {escape(str(item))}")
+        else:
+            st.markdown("- *No critical flaws identified.*")
+
+    st.markdown("##### 🎯 Actionable Training Plan")
+    if plan:
+        for index, step in enumerate(plan, 1):
+            st.markdown(f"**Step {index}:** {escape(str(step))}")
+    else:
+        st.markdown("- *Training plan unavailable.*")
+
+    if evidence:
+        with st.expander("🔍 Match Evidence & Telemetry", expanded=False):
+            st.json(evidence)
+
 
 def render_architecture_page() -> None:
     """Render an architectural overview of the system."""
@@ -337,12 +441,24 @@ def render_roadmap_page() -> None:
     milestones = [
         (
             "Provider API and player lookup",
-            "Integrated; live credentials pending",
+            "Integrated (Tracker, Henrik, Riot with fallback)",
             "2026-10-12",
         ),
-        ("Persistence and refresh policy", "Not implemented", "2026-10-23"),
-        ("Grounded personalized coaching", "Not implemented", "2026-11-06"),
-        ("Authentication, jobs and agent memory", "Not implemented", "2026-11-13"),
+        (
+            "Persistence and refresh policy",
+            "Implemented (PostgreSQL 16, Alembic, Cache Pruning)",
+            "2026-10-23",
+        ),
+        (
+            "Grounded personalized coaching",
+            "Implemented (Multi-Agent framework, Report Writer)",
+            "2026-11-06",
+        ),
+        (
+            "Authentication, jobs and agent memory",
+            "In progress (Background pruning, multi-agent)",
+            "2026-11-13",
+        ),
         ("OCR and tactical timeline", "Not implemented", "2026-11-20"),
         ("Production release candidate", "Not deployed", "2026-11-30"),
         ("Final delivery", "Planned", "2026-12-10"),

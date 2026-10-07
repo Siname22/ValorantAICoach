@@ -225,6 +225,12 @@ class PersistentPlayerService(PlayerService):
     async def prune_expired_cache(self) -> int:
         return await self._storage_call(self.store.prune_expired_snapshots)
 
+    async def invalidate_player_cache(self, game_name: str, tag_line: str) -> int:
+        player_id = request_key(
+            "identity", {"game_name": game_name, "tag_line": tag_line}
+        )
+        return await self._storage_call(self.store.invalidate_player_cache, player_id)
+
     async def close(self) -> None:
         try:
             await super().close()

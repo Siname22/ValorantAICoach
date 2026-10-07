@@ -336,3 +336,44 @@ def test_valid_https_avatars_render_without_extra_requests(player_app, avatar):
     assert not app.exception
     assert app.get("image")[0].proto.imgs[0].url == avatar
     assert len(calls) == 3
+
+
+def test_player_search_generates_and_displays_coaching_report(player_app, monkeypatch):
+    app, payloads, calls = player_app
+    submit(app)
+
+    report_payload = {
+        "id": "rep-test-1",
+        "payload": {
+            "title": "Tactical Coaching: TestPlayer#NA1",
+            "executive_summary": "Solid mechanics, need economy discipline.",
+            "key_strengths": ["High first blood conversion"],
+            "critical_flaws": ["Forcing after round 2 losses"],
+            "training_plan": [
+                "Practice save rounds on eco",
+                "Warmup 15 mins in Deathmatch",
+            ],
+            "evidence": [{"metric": "ACS", "value": 240}],
+        },
+    }
+
+    def post(url, *args, **kwargs):
+        res = requests.Response()
+        res.status_code = 200
+        res.encoding = "utf-8"
+        res._content = json.dumps(report_payload).encode("utf-8")
+        return res
+
+    monkeypatch.setattr(requests, "post", post)
+
+    gen_btn = next((b for b in app.button if "Generate" in b.label), None)
+    assert gen_btn is not None
+    gen_btn.click().run()
+    assert not app.exception
+
+    text = markdown(app)
+    assert "Tactical Coaching: TestPlayer#NA1" in text
+    assert any("Solid mechanics" in item.value for item in app.info)
+    assert "High first blood conversion" in text
+    assert "Forcing after round 2 losses" in text
+    assert "Step 1:" in text

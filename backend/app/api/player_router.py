@@ -1,4 +1,4 @@
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from backend.app.dependencies.provider_deps import get_player_service
 from backend.app.schemas.player_schemas import (
@@ -182,3 +182,21 @@ async def get_coaching_report(
     if report is None:
         raise HTTPException(status_code=404, detail="Coaching report not found.")
     return CoachingReportResponse(**report)
+
+
+@router.delete(
+    "/{game_name}/{tag_line}/cache",
+    summary="Invalidate player cached data",
+    description=(
+        "Clears stored snapshots for the specified player, forcing subsequent "
+        "queries to fetch fresh data."
+    ),
+    responses=ERROR_RESPONSES,
+)
+async def invalidate_player_cache(
+    game_name: GameName,
+    tag_line: TagLine,
+    service: Service,
+) -> dict[str, Any]:
+    count = await service.invalidate_player_cache(game_name, tag_line)
+    return {"status": "ok", "invalidated_snapshots": count}

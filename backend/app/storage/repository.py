@@ -290,5 +290,13 @@ class SQLPlayerStore:
             result = session.execute(statement)
             return int(result.rowcount or 0)
 
+    def invalidate_player_cache(self, player_id: str) -> int:
+        with Session(self.engine) as session, session.begin():
+            statement = delete(PlayerSnapshot).where(
+                PlayerSnapshot.player_id == player_id
+            )
+            result = session.execute(statement)
+            return int(result.rowcount or 0)
+
     def close(self) -> None:
         self.engine.dispose()

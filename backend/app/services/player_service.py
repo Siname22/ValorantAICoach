@@ -556,6 +556,9 @@ class PlayerService:
     async def prune_expired_cache(self) -> int:
         return 0
 
+    async def invalidate_player_cache(self, game_name: str, tag_line: str) -> int:
+        return 0
+
     async def close(self) -> None:
         results = await asyncio.gather(
             *(provider.close() for provider in self._providers), return_exceptions=True
