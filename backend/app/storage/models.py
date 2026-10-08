@@ -141,3 +141,6 @@ class LinkedAccountRecord(Base):
     region: Mapped[str | None] = mapped_column(String(16), nullable=True)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     linked_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    last_synced_at: Mapped[datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True, default=None
+    )

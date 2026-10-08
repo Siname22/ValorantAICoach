@@ -277,6 +277,21 @@ class APIClient:
     def delete_linked_account(self, account_id: str) -> dict[str, Any]:
         return self._delete(f"/auth/me/accounts/{quote(account_id, safe='')}")
 
+    def get_player_progression(self, game_name: str, tag_line: str) -> dict[str, Any]:
+        return self._request(
+            f"/players/{quote(game_name, safe='')}/"
+            f"{quote(tag_line, safe='')}/progression"
+        )
+
+    def sync_player(
+        self, game_name: str, tag_line: str, *, region: str | None = None
+    ) -> dict[str, Any]:
+        query = f"?region={region}" if region else ""
+        return self._post(
+            f"/players/{quote(game_name, safe='')}/"
+            f"{quote(tag_line, safe='')}/sync{query}"
+        )
+
 
 def get_api_client() -> APIClient:
     return APIClient()

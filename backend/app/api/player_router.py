@@ -7,7 +7,9 @@ from backend.app.schemas.player_schemas import (
     PlayerMatchesResponse,
     PlayerMatchResponse,
     PlayerProfileResponse,
+    PlayerProgressionResponse,
     PlayerRankResponse,
+    PlayerSyncResponse,
 )
 from backend.app.services.player_service import (
     CompletePlayerProfile,
@@ -200,3 +202,43 @@ async def invalidate_player_cache(
 ) -> dict[str, Any]:
     count = await service.invalidate_player_cache(game_name, tag_line)
     return {"status": "ok", "invalidated_snapshots": count}
+
+
+@router.get(
+    "/{game_name}/{tag_line}/progression",
+    response_model=PlayerProgressionResponse,
+    summary="Get long-term player progression and trajectory",
+    description=(
+        "Analyzes rolling trends across match history, evaluates previous coaching "
+        "reports to distinguish resolved weaknesses from current bottlenecks, and "
+        "provides per-agent performance trajectories."
+    ),
+    responses=ERROR_RESPONSES,
+)
+async def get_player_progression(
+    game_name: GameName,
+    tag_line: TagLine,
+    service: Service,
+) -> PlayerProgressionResponse:
+    progression = await service.get_player_progression(game_name, tag_line)
+    return PlayerProgressionResponse(**progression)
+
+
+@router.post(
+    "/{game_name}/{tag_line}/sync",
+    response_model=PlayerSyncResponse,
+    summary="Synchronize latest matches and coaching reports",
+    description=(
+        "Forces a fresh fetch of matches for the player and automatically generates "
+        "a new multi-agent coaching report if new matches were recorded."
+    ),
+    responses=ERROR_RESPONSES,
+)
+async def sync_player(
+    game_name: GameName,
+    tag_line: TagLine,
+    service: Service,
+    region: RegionQuery = None,
+) -> PlayerSyncResponse:
+    sync_result = await service.sync_player_coaching(game_name, tag_line, region=region)
+    return PlayerSyncResponse(**sync_result)

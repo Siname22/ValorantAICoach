@@ -391,6 +391,7 @@ class SQLPlayerStore:
             "region": region,
             "is_primary": is_primary,
             "linked_at": now.isoformat(),
+            "last_synced_at": None,
         }
 
     def list_linked_accounts(self, user_id: str) -> list[dict[str, Any]]:
@@ -414,6 +415,9 @@ class SQLPlayerStore:
                     "region": acc.region,
                     "is_primary": acc.is_primary,
                     "linked_at": acc.linked_at.isoformat(),
+                    "last_synced_at": (
+                        acc.last_synced_at.isoformat() if acc.last_synced_at else None
+                    ),
                 }
                 for acc in accounts
             ]
@@ -439,6 +443,9 @@ class SQLPlayerStore:
                 "region": acc.region,
                 "is_primary": acc.is_primary,
                 "linked_at": acc.linked_at.isoformat(),
+                "last_synced_at": (
+                    acc.last_synced_at.isoformat() if acc.last_synced_at else None
+                ),
             }
 
     def delete_linked_account(self, account_id: str, user_id: str) -> bool:
@@ -448,6 +455,47 @@ class SQLPlayerStore:
                     LinkedAccountRecord.id == account_id,
                     LinkedAccountRecord.user_id == user_id,
                 )
+            )
+            return bool(result.rowcount and result.rowcount > 0)
+
+    def get_tracked_accounts(self) -> list[dict[str, Any]]:
+        with Session(self.engine) as session:
+            accounts = (
+                session.execute(
+                    select(LinkedAccountRecord)
+                    .where(LinkedAccountRecord.is_primary.is_(True))
+                    .order_by(LinkedAccountRecord.linked_at.desc())
+                )
+                .scalars()
+                .all()
+            )
+            return [
+                {
+                    "id": acc.id,
+                    "user_id": acc.user_id,
+                    "game_name": acc.game_name,
+                    "tag_line": acc.tag_line,
+                    "puuid": acc.puuid,
+                    "region": acc.region,
+                    "is_primary": acc.is_primary,
+                    "linked_at": acc.linked_at.isoformat(),
+                    "last_synced_at": (
+                        acc.last_synced_at.isoformat() if acc.last_synced_at else None
+                    ),
+                }
+                for acc in accounts
+            ]
+
+    def update_account_sync_time(self, game_name: str, tag_line: str) -> bool:
+        now = datetime.now(UTC)
+        with Session(self.engine) as session, session.begin():
+            result = session.execute(
+                update(LinkedAccountRecord)
+                .where(
+                    LinkedAccountRecord.game_name == game_name,
+                    LinkedAccountRecord.tag_line == tag_line,
+                )
+                .values(last_synced_at=now)
             )
             return bool(result.rowcount and result.rowcount > 0)
 

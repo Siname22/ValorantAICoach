@@ -268,21 +268,46 @@ def render_player_search_page() -> None:
         "mechanics into a personalized multi-agent coaching report."
     )
 
-    if st.button(
-        "🎯 Generate AI Coaching Report",
-        type="primary",
-        key="btn_generate_report",
-    ):
-        with st.spinner("Specialized agents are evaluating match telemetry..."):
-            try:
-                rep = client.generate_coaching_report(
-                    result["game_name"], result["tag_line"], limit=5
-                )
-                payload = rep.get("payload") or rep
-                st.session_state["coaching_report"] = payload
-                st.session_state["coaching_report_error"] = None
-            except APIClientError as exc:
-                st.session_state["coaching_report_error"] = str(exc)
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button(
+            "🎯 Generate AI Coaching Report",
+            type="primary",
+            key="btn_generate_report",
+        ):
+            with st.spinner("Specialized agents are evaluating match telemetry..."):
+                try:
+                    rep = client.generate_coaching_report(
+                        result["game_name"], result["tag_line"], limit=5
+                    )
+                    payload = rep.get("payload") or rep
+                    st.session_state["coaching_report"] = payload
+                    st.session_state["coaching_report_error"] = None
+                except APIClientError as exc:
+                    st.session_state["coaching_report_error"] = str(exc)
+
+    with col_btn2:
+        if st.button("🔄 Sync Matches & Auto-Coach", key="btn_sync_matches"):
+            with st.spinner("Syncing latest matches and checking coaching status..."):
+                try:
+                    sync_data = client.sync_player(
+                        result["game_name"], result["tag_line"]
+                    )
+                    if sync_data.get("new_report_generated"):
+                        st.success("New matches detected! Coaching report updated.")
+                        if sync_data.get("report_id"):
+                            rep = client.get_coaching_report(
+                                result["game_name"],
+                                result["tag_line"],
+                                sync_data["report_id"],
+                            )
+                            st.session_state["coaching_report"] = (
+                                rep.get("payload") or rep
+                            )
+                    else:
+                        st.info("Player matches are up to date.")
+                except APIClientError as exc:
+                    st.warning(f"Sync error: {exc}")
 
     if st.session_state.get("coaching_report_error"):
         st.warning(
@@ -292,6 +317,8 @@ def render_player_search_page() -> None:
     active_report = st.session_state.get("coaching_report")
     if active_report:
         render_coaching_report_card(active_report)
+
+    render_player_progression_section(result["game_name"], result["tag_line"], client)
 
     with st.expander("📜 Historical Coaching Reports", expanded=False):
         if st.button("Fetch Report History", key="btn_fetch_history"):
@@ -322,6 +349,112 @@ def render_player_search_page() -> None:
                 st.rerun()
         elif saved is not None:
             st.info("No prior coaching reports found for this player.")
+
+
+def render_player_progression_section(
+    game_name: str, tag_line: str, client: Any
+) -> None:
+    """Render long-term progression analysis and trajectory trends."""
+    with st.expander("📈 Long-Term Trajectory & Evolution", expanded=False):
+        if st.button("Analyze Player Progression", key="btn_fetch_progression"):
+            with st.spinner("Analyzing performance trends and coaching history..."):
+                try:
+                    data = client.get_player_progression(game_name, tag_line)
+                    st.session_state["player_progression_data"] = data
+                    st.session_state["player_progression_error"] = None
+                except APIClientError as exc:
+                    st.session_state["player_progression_error"] = str(exc)
+
+        if st.session_state.get("player_progression_error"):
+            err_msg = st.session_state["player_progression_error"]
+            st.warning(f"Could not load progression: {err_msg}")
+
+        prog = st.session_state.get("player_progression_data")
+        if prog:
+            overview = escape(prog.get("trajectory_narrative", ""))
+            st.info(f"**Trajectory Overview:** {overview}")
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                kd = prog.get("kd_metric", {})
+                trend_icon = (
+                    "🟢"
+                    if kd.get("trend") == "improving"
+                    else ("🔴" if kd.get("trend") == "declining" else "⚪")
+                )
+                kd_delta = (
+                    f"{kd.get('change_pct', 0.0):+.1f}% "
+                    f"({kd.get('trend', 'stable')})"
+                )
+                st.metric(
+                    label=f"K/D Ratio {trend_icon}",
+                    value=f"{kd.get('current', 1.0):.2f}",
+                    delta=kd_delta,
+                )
+            with col2:
+                wr = prog.get("win_rate_metric", {})
+                trend_icon = (
+                    "🟢"
+                    if wr.get("trend") == "improving"
+                    else ("🔴" if wr.get("trend") == "declining" else "⚪")
+                )
+                wr_delta = (
+                    f"{wr.get('change_pct', 0.0):+.1f}% "
+                    f"({wr.get('trend', 'stable')})"
+                )
+                st.metric(
+                    label=f"Win Rate % {trend_icon}",
+                    value=f"{wr.get('current', 50.0):.1f}%",
+                    delta=wr_delta,
+                )
+            with col3:
+                hs = prog.get("headshot_metric", {})
+                st.metric(
+                    label="Headshot %",
+                    value=f"{hs.get('current', 20.0):.1f}%",
+                    delta=f"Avg: {hs.get('historical_avg', 20.0):.1f}%",
+                )
+
+            kd_points = prog.get("kd_metric", {}).get("data_points", [])
+            if kd_points:
+                st.markdown("##### 📊 Rolling K/D Progression")
+                df = pd.DataFrame(kd_points)
+                if "value" in df.columns:
+                    st.line_chart(df["value"])
+
+            col_res, col_act = st.columns(2)
+            with col_res:
+                st.markdown("##### 🟢 Resolved Weaknesses")
+                resolved = prog.get("resolved_focus_areas", [])
+                if resolved:
+                    for area in resolved:
+                        st.markdown(f"- ✅ {escape(str(area))}")
+                else:
+                    st.markdown("- *Keep training to resolve recurring bottlenecks.*")
+
+            with col_act:
+                st.markdown("##### 🎯 Current Focus Bottlenecks")
+                active = prog.get("active_focus_areas", [])
+                if active:
+                    for area in active:
+                        st.markdown(f"- ⚠️ {escape(str(area))}")
+                else:
+                    st.markdown("- *No active critical bottlenecks.*")
+
+            agents = prog.get("agent_trends", {})
+            if agents:
+                st.markdown("##### 🎭 Performance by Agent")
+                agent_rows = []
+                for agent_name, stats in agents.items():
+                    agent_rows.append(
+                        {
+                            "Agent": agent_name,
+                            "Matches": stats.get("matches_played", 0),
+                            "Win %": f"{stats.get('win_pct', 0):.1f}%",
+                            "Avg K/D": f"{stats.get('avg_kd', 1.0):.2f}",
+                        }
+                    )
+                st.dataframe(pd.DataFrame(agent_rows), use_container_width=True)
 
 
 def render_coaching_report_card(report: dict[str, Any]) -> None:

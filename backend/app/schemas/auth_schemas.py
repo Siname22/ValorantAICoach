@@ -76,3 +76,7 @@ class LinkedPlayerAccountResponse(BaseModel):
     linked_at: str = Field(
         ..., description="Timestamp when account was linked in ISO 8601 UTC format"
     )
+    last_synced_at: str | None = Field(
+        None,
+        description="Timestamp of last automated coaching sync in ISO 8601 UTC format",
+    )

@@ -267,6 +267,40 @@ class PersistentPlayerService(PlayerService):
             self.store.delete_linked_account, account_id, user_id
         )
 
+    async def sync_player_coaching(
+        self, game_name: str, tag_line: str, *, region: str | None = None
+    ) -> dict[str, Any]:
+        result = await super().sync_player_coaching(game_name, tag_line, region=region)
+        await self._storage_call(
+            self.store.update_account_sync_time, game_name, tag_line
+        )
+        return result
+
+    async def sync_all_tracked_accounts(self) -> dict[str, Any]:
+        tracked = await self._storage_call(self.store.get_tracked_accounts)
+        details = []
+        for account in tracked:
+            try:
+                res = await self.sync_player_coaching(
+                    account["game_name"],
+                    account["tag_line"],
+                    region=account.get("region"),
+                )
+                details.append(res)
+            except Exception as err:
+                details.append(
+                    {
+                        "synced": False,
+                        "game_name": account["game_name"],
+                        "tag_line": account["tag_line"],
+                        "error": str(err),
+                    }
+                )
+        return {
+            "synced_accounts_count": len(tracked),
+            "details": details,
+        }
+
     async def close(self) -> None:
         try:
             await super().close()
