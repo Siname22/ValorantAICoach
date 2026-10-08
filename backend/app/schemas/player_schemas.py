@@ -128,3 +128,80 @@ class CachePruneResponse(BaseModel):
         description="Number of expired cache records removed",
         examples=[0],
     )
+
+
+class MetricDataPoint(BaseModel):
+    """Single historical metric measurement."""
+
+    timestamp: int | str = Field(..., description="Match timestamp")
+    value: float = Field(..., description="Metric value at this point in time")
+
+
+class PlayerProgressionMetric(BaseModel):
+    """Trajectory tracking for a key performance indicator."""
+
+    name: str = Field(..., description="Metric label")
+    current: float = Field(..., description="Current value from recent matches")
+    historical_avg: float = Field(
+        ..., description="Historical average across all analyzed matches"
+    )
+    trend: Literal["improving", "declining", "stable"] = Field(
+        ..., description="Directional trend"
+    )
+    change_pct: float = Field(
+        ..., description="Percentage change from baseline to recent"
+    )
+    data_points: list[MetricDataPoint] = Field(
+        default_factory=list, description="Historical data points for plotting"
+    )
+
+
+class AgentPerformanceSummary(BaseModel):
+    """Aggregated performance for a specific agent."""
+
+    matches_played: int = Field(..., description="Matches played with this agent")
+    win_pct: float = Field(..., description="Win rate percentage")
+    avg_kd: float = Field(..., description="Average K/D ratio")
+
+
+class PlayerProgressionResponse(BaseModel):
+    """Long-term trajectory and progression analysis for a player."""
+
+    game_name: str = Field(..., description="Player in-game name")
+    tag_line: str = Field(..., description="Player tag line")
+    total_matches_analyzed: int = Field(..., description="Number of matches analyzed")
+    total_reports_generated: int = Field(
+        ..., description="Historical coaching reports count"
+    )
+    kd_metric: PlayerProgressionMetric
+    headshot_metric: PlayerProgressionMetric
+    win_rate_metric: PlayerProgressionMetric
+    resolved_focus_areas: list[str] = Field(
+        default_factory=list,
+        description="Weaknesses from previous reports that show measurable improvement",
+    )
+    active_focus_areas: list[str] = Field(
+        default_factory=list,
+        description="Current areas requiring coaching intervention",
+    )
+    agent_trends: dict[str, AgentPerformanceSummary] = Field(
+        default_factory=dict,
+        description="Per-agent performance breakdowns",
+    )
+    trajectory_narrative: str = Field(
+        ..., description="Executive summary of the player's long-term evolution"
+    )
+
+
+class PlayerSyncResponse(BaseModel):
+    """Result of an on-demand or scheduled coaching sync."""
+
+    synced: bool = Field(..., description="Whether sync completed successfully")
+    game_name: str = Field(..., description="Player name")
+    tag_line: str = Field(..., description="Player tag")
+    new_report_generated: bool = Field(
+        ..., description="Whether a new coaching report was generated"
+    )
+    report_id: str | None = Field(None, description="Generated report ID if applicable")
+    matches_synced: int = Field(..., description="Number of matches refreshed")
+    synced_at: str = Field(..., description="Timestamp of sync in ISO 8601 UTC format")

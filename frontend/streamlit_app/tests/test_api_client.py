@@ -332,3 +332,49 @@ def test_api_client_auth_and_account_linking(monkeypatch):
     )
     cache_res = client.invalidate_cache("TenZ", "SEN")
     assert cache_res["status"] == "ok"
+
+    # Get progression
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda *a, **kw: response(
+            200,
+            json.dumps(
+                {
+                    "game_name": "TenZ",
+                    "tag_line": "SEN",
+                    "total_matches_analyzed": 5,
+                    "total_reports_generated": 2,
+                    "kd_metric": {"trend": "improving", "current": 1.4},
+                    "resolved_focus_areas": ["Aim"],
+                    "active_focus_areas": ["Positioning"],
+                }
+            ),
+        ),
+    )
+    prog = client.get_player_progression("TenZ", "SEN")
+    assert prog["game_name"] == "TenZ"
+    assert prog["kd_metric"]["trend"] == "improving"
+
+    # Sync player
+    monkeypatch.setattr(
+        requests,
+        "post",
+        lambda *a, **kw: response(
+            200,
+            json.dumps(
+                {
+                    "synced": True,
+                    "game_name": "TenZ",
+                    "tag_line": "SEN",
+                    "new_report_generated": True,
+                    "report_id": "rep-123",
+                    "matches_synced": 5,
+                    "synced_at": "2026-10-08T10:00:00Z",
+                }
+            ),
+        ),
+    )
+    sync_res = client.sync_player("TenZ", "SEN", region="na")
+    assert sync_res["synced"] is True
+    assert sync_res["report_id"] == "rep-123"

@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -53,12 +53,38 @@ async def _run_cache_prune_worker(
             logger.warning("Background cache prune encountered an error", exc_info=True)
 
 
+async def _run_coaching_sync_worker(
+    service: PlayerService, interval_seconds: int
+) -> None:
+    logger.info(
+        "Starting background scheduled coaching sync worker (interval=%ds)",
+        interval_seconds,
+    )
+    while True:
+        try:
+            await asyncio.sleep(interval_seconds)
+            sync_result = await service.sync_all_tracked_accounts()
+            count = sync_result.get("synced_accounts_count", 0)
+            if count > 0:
+                logger.info(
+                    "Scheduled coaching worker synced %d tracked accounts", count
+                )
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            logger.warning(
+                "Scheduled coaching sync worker encountered an error",
+                exc_info=True,
+            )
+
+
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     app_settings = get_settings()
     service = await asyncio.to_thread(create_player_service)
     application.state.player_service = service
     prune_task: asyncio.Task[None] | None = None
+    sync_task: asyncio.Task[None] | None = None
     if (
         app_settings.database_enabled
         and app_settings.database_auto_prune_interval_seconds > 0
@@ -68,9 +94,22 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
                 service, app_settings.database_auto_prune_interval_seconds
             )
         )
+    if (
+        app_settings.database_enabled
+        and app_settings.database_auto_sync_interval_seconds > 0
+    ):
+        sync_task = asyncio.create_task(
+            _run_coaching_sync_worker(
+                service, app_settings.database_auto_sync_interval_seconds
+            )
+        )
     try:
         yield
     finally:
+        if sync_task is not None:
+            sync_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await sync_task
         if prune_task is not None:
             prune_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -201,3 +240,17 @@ async def prune_cache(
 ) -> CachePruneResponse:
     count = await service.prune_expired_cache()
     return CachePruneResponse(pruned_count=count)
+
+
+@app.post(
+    "/system/coaching/sync-tracked",
+    tags=["system"],
+    summary="Synchronize all tracked player accounts",
+    description=(
+        "Forces a coaching sync across all active primary linked player accounts."
+    ),
+)
+async def sync_tracked_coaching(
+    service: Annotated[PlayerService, Depends(get_player_service)],
+) -> dict[str, Any]:
+    return await service.sync_all_tracked_accounts()

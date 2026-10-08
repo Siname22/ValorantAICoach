@@ -20,6 +20,15 @@ class Settings(BaseSettings):
         le=86400,
         description="Interval for periodic background cache pruning (0 to disable)",
     )
+    database_auto_sync_interval_seconds: int = Field(
+        default=0,
+        ge=0,
+        le=86400,
+        description=(
+            "Interval for periodic scheduled coaching sync of tracked accounts "
+            "(0 to disable)"
+        ),
+    )
     jwt_secret_key: str = "valorant-ai-coach-secret-key-change-in-production"
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = Field(default=1440, ge=1, le=525600)
