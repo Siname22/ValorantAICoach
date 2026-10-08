@@ -39,9 +39,18 @@ permissions. Mocked HTTP tests do not confirm those permissions.
 - [x] Add containerized Docker Compose orchestration with isolated virtual environments.
 - [x] Integrate a configured LLM with automatic 3-model failover, exponential backoff, and 81/81 resilience tests.
 
+## Completed: User Authentication & Linked Player Accounts
+
+- [x] Add `users` and `linked_player_accounts` relational tables with Alembic migration.
+- [x] Implement secure PBKDF2-HMAC-SHA256 password hashing with salt and constant-time verification.
+- [x] Implement cryptographically signed HS256 JWT access tokens with expiration.
+- [x] Add `/auth/register`, `/auth/login`, and `/auth/me` endpoints.
+- [x] Add `/auth/me/accounts` for linking, listing, and unlinking Riot player identities.
+- [x] Ensure per-user account isolation and primary identity management.
+- [x] Update Streamlit `APIClient` with bearer token authentication and auth methods.
+
 ## Next Milestones
 
-- [ ] Add user authentication, sessions, and player account linking.
 - [ ] Add scheduled coaching update jobs for tracked players.
 - [ ] Implement OCR / screenshot ingestion and computer vision for scoreboard analysis.
 - [ ] Add round-by-round replay timeline analysis.

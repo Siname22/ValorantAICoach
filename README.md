@@ -8,7 +8,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688)](https://fastapi.tiangolo.com/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.39+-FF4B4B)](https://streamlit.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Tests](https://img.shields.io/badge/Tests-527%20Passing-success)](https://pytest.org/)
+[![Tests](https://img.shields.io/badge/Tests-535%20Passing-success)](https://pytest.org/)
 [![Resilience](https://img.shields.io/badge/Gemini%20Resilience-81%2F81%20Verified-brightgreen)](https://ai.google.dev/)
 [![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Ruff](https://img.shields.io/badge/linter-ruff-red)](https://github.com/astral-sh/ruff)
@@ -21,7 +21,8 @@
 
 ### Key Pillars
 - **Unified Multi-Provider Aggregation**: Transparent fallback across Tracker.gg, HenrikDev, and Riot Games APIs with automatic circuit breaking and error isolation.
-- **Enterprise Persistence**: Production PostgreSQL 16 database managed via Alembic migrations, supporting atomic snapshot caching, player histories, and coaching reports.
+- **Enterprise Persistence**: Production PostgreSQL 16 database managed via Alembic migrations, supporting atomic snapshot caching, player histories, coaching reports, and user identities.
+- **User Authentication & Linked Accounts**: Secure PBKDF2-HMAC-SHA256 password hashing, cryptographically signed HS256 JWT access tokens, and multi-identity Riot player account linking with primary profile selection.
 - **Backend & Frontend Isolation**: Headless FastAPI service and interactive Streamlit UI run in fully decoupled containers with independent dependencies and virtual environments.
 - **Grounded Multi-Agent Coaching**: Specialized agents evaluate player telemetry (Aim, Economy, Positioning, Agent Utility) and compile structured, evidence-backed recommendations.
 - **Resilient AI Coach**: Integrated Google Gemini assistant powered by the official SDK with an automatic 3-model fallback chain (`gemini-2.5-flash` &rarr; `gemini-2.5-flash-lite` &rarr; `gemini-3.5-flash`), exponential backoff, and 81/81 resilience validations.
@@ -77,6 +78,12 @@ The FastAPI backend exposes comprehensive endpoints documented via OpenAPI/Swagg
 | `GET` | `/health/live` | Process liveness probe without querying external APIs. |
 | `GET` | `/health/ready` | Readiness probe validating database connection and provider configs. |
 | `POST` | `/system/cache/prune` | Admin endpoint to prune expired snapshot cache records. |
+| `POST` | `/auth/register` | Register a new user account with secure password hashing. |
+| `POST` | `/auth/login` | Authenticate with credentials and receive a JWT bearer token. |
+| `GET` | `/auth/me` | Retrieve profile information for the authenticated user. |
+| `POST` | `/auth/me/accounts` | Link a Valorant player identity to the authenticated user. |
+| `GET` | `/auth/me/accounts` | List all Riot player identities linked to the authenticated user. |
+| `DELETE` | `/auth/me/accounts/{id}` | Unlink a player identity from the authenticated user. |
 | `GET` | `/players/{game_name}/{tag_line}` | Unified player profile (level, card, rank, region). |
 | `GET` | `/players/{game_name}/{tag_line}/rank` | Competitive rank tier, rank rating (RR), and MMR data. |
 | `GET` | `/players/{game_name}/{tag_line}/matches` | Recent match history with normalized stats. |
@@ -115,7 +122,7 @@ Located in `frontend/streamlit_app/utils/gemini_coach.py`, the AI coach delivers
 The repository maintains strict test coverage, formatting, and linting standards:
 
 ```text
-527 passed, 0 failures, 0 skips
+535 passed, 0 failures, 0 skips
 81/81 Gemini resilience checks passed
 100% Ruff & Black compliance
 ```
@@ -209,11 +216,11 @@ ValorantAICoach/
 │   └── specialized/            # Tactical, economy, aim, and agent coaches
 ├── backend/                    # Core FastAPI backend
 │   ├── app/
-│   │   ├── api/                # FastAPI routers (players, matches, system)
-│   │   ├── core/               # Configuration and settings
-│   │   ├── dependencies/       # Dependency injection providers
-│   │   ├── schemas/            # Pydantic domain and response schemas
-│   │   ├── services/           # Player and coaching business logic
+│   │   ├── api/                # FastAPI routers (auth, players, matches, system)
+│   │   ├── core/               # Configuration, settings, and security/JWT
+│   │   ├── dependencies/       # Dependency injection providers & auth guards
+│   │   ├── schemas/            # Pydantic domain, auth, and response schemas
+│   │   ├── services/           # Player, coaching, and auth business logic
 │   │   └── storage/            # SQLAlchemy models, Alembic repository & store
 │   └── providers/              # External API SDKs (Riot, Henrik, Tracker)
 ├── database/                   # Alembic database migration scripts
@@ -223,7 +230,7 @@ ValorantAICoach/
 │       ├── components/         # Reusable UI widgets
 │       ├── utils/              # APIClient, Gemini resilient coach, formatters
 │       └── tests/              # Frontend unit and resilience tests
-├── tests/                      # Backend, provider, persistence, and system tests
+├── tests/                      # Backend, auth, provider, persistence, and system tests
 ├── docker-compose.yml          # Multi-container orchestration
 └── pyproject.toml              # UV / Python dependency management
 ```
@@ -243,6 +250,8 @@ ValorantAICoach/
 - [x] Container and dependency isolation (Backend vs Frontend)
 - [x] Automated continuous cache pruning background worker
 - [x] On-demand player cache invalidation (`DELETE /players/{game}/{tag}/cache`)
+- [x] User authentication (PBKDF2-HMAC-SHA256, HS256 JWT bearer tokens)
+- [x] Riot player account linking with primary profile selection
 - [ ] Computer Vision & OCR integration for in-game scoreboard capture
 - [ ] Round-by-round replay timeline analysis
 
@@ -251,9 +260,9 @@ ValorantAICoach/
 ## 🤝 Contribution Guidelines
 
 This repository follows a strict review and branch workflow:
-1. **Never commit directly to `main`**.
+1. **Never commit directly to `main` without verified testing**.
 2. Create descriptive feature branches (`feature/...`, `fix/...`).
-3. Ensure 100% test pass rate (`527+ tests passing`), Ruff, and Black formatting.
+3. Ensure 100% test pass rate (`535+ tests passing`), Ruff, and Black formatting.
 4. Submit work via Pull Request with clear release notes.
 
 ---
