@@ -559,6 +559,38 @@ class PlayerService:
     async def invalidate_player_cache(self, game_name: str, tag_line: str) -> int:
         return 0
 
+    async def create_user(self, email: str, password_hash: str) -> dict[str, Any]:
+        raise PlayerServiceUnavailableError(
+            "User authentication requires persistent storage."
+        )
+
+    async def get_user_by_email(self, email: str) -> dict[str, Any] | None:
+        raise PlayerServiceUnavailableError(
+            "User authentication requires persistent storage."
+        )
+
+    async def get_user_by_id(self, user_id: str) -> dict[str, Any] | None:
+        raise PlayerServiceUnavailableError(
+            "User authentication requires persistent storage."
+        )
+
+    async def link_player_account(
+        self,
+        user_id: str,
+        game_name: str,
+        tag_line: str,
+        puuid: str | None = None,
+        region: str | None = None,
+        is_primary: bool = False,
+    ) -> dict[str, Any]:
+        raise PlayerServiceUnavailableError("User accounts require persistent storage.")
+
+    async def list_linked_accounts(self, user_id: str) -> list[dict[str, Any]]:
+        return []
+
+    async def delete_linked_account(self, account_id: str, user_id: str) -> bool:
+        return False
+
     async def close(self) -> None:
         results = await asyncio.gather(
             *(provider.close() for provider in self._providers), return_exceptions=True

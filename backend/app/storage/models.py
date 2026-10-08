@@ -3,6 +3,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -109,3 +110,34 @@ class CoachingReportRecord(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime())
+
+
+class UserRecord(Base):
+    """Registered application user."""
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    email: Mapped[str] = mapped_column(
+        String(255), unique=True, index=True, nullable=False
+    )
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime())
+
+
+class LinkedAccountRecord(Base):
+    """Player Riot account linked to a registered user."""
+
+    __tablename__ = "linked_player_accounts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    game_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    tag_line: Mapped[str] = mapped_column(String(16), nullable=False)
+    puuid: Mapped[str | None] = mapped_column(Text, nullable=True)
+    region: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    linked_at: Mapped[datetime] = mapped_column(UTCDateTime())

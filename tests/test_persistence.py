@@ -31,6 +31,8 @@ TABLES = {
     "matches",
     "player_match_history",
     "coaching_reports",
+    "users",
+    "linked_player_accounts",
 }
 
 
@@ -491,7 +493,7 @@ async def test_storage_startup_queries_run_outside_event_loop_thread(
     event.listen(Engine, "before_cursor_execute", record_query)
     try:
         async with lifespan(app):
-            assert len(query_threads) == 5
+            assert len(query_threads) == len(TABLES)
             assert all(thread != event_loop_thread for thread in query_threads)
     finally:
         event.remove(Engine, "before_cursor_execute", record_query)

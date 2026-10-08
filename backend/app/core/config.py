@@ -20,6 +20,9 @@ class Settings(BaseSettings):
         le=86400,
         description="Interval for periodic background cache pruning (0 to disable)",
     )
+    jwt_secret_key: str = "valorant-ai-coach-secret-key-change-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = Field(default=1440, ge=1, le=525600)
 
     model_config = SettingsConfigDict(
         env_file=".env",

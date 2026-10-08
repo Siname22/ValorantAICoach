@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import create_engine, delete, event, select
+from sqlalchemy import create_engine, delete, event, select, update
 from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import make_url
@@ -14,10 +14,12 @@ from sqlalchemy.orm import Session
 from .models import (
     Base,
     CoachingReportRecord,
+    LinkedAccountRecord,
     MatchRecord,
     PlayerMatchHistory,
     PlayerRecord,
     PlayerSnapshot,
+    UserRecord,
 )
 
 
@@ -297,6 +299,157 @@ class SQLPlayerStore:
             )
             result = session.execute(statement)
             return int(result.rowcount or 0)
+
+    def create_user(self, email: str, hashed_password: str) -> dict[str, Any]:
+        normalized_email = email.strip().lower()
+        now = datetime.now(UTC)
+        user_id = str(uuid.uuid4())
+        with Session(self.engine) as session, session.begin():
+            existing = session.execute(
+                select(UserRecord).where(UserRecord.email == normalized_email)
+            ).scalar_one_or_none()
+            if existing is not None:
+                raise ValueError("User with this email already exists")
+            user = UserRecord(
+                id=user_id,
+                email=normalized_email,
+                hashed_password=hashed_password,
+                is_active=True,
+                created_at=now,
+            )
+            session.add(user)
+        return {
+            "id": user_id,
+            "email": normalized_email,
+            "is_active": True,
+            "created_at": now.isoformat(),
+        }
+
+    def get_user_by_email(self, email: str) -> dict[str, Any] | None:
+        normalized_email = email.strip().lower()
+        with Session(self.engine) as session:
+            user = session.execute(
+                select(UserRecord).where(UserRecord.email == normalized_email)
+            ).scalar_one_or_none()
+            if user is None:
+                return None
+            return {
+                "id": user.id,
+                "email": user.email,
+                "hashed_password": user.hashed_password,
+                "is_active": user.is_active,
+                "created_at": user.created_at.isoformat(),
+            }
+
+    def get_user_by_id(self, user_id: str) -> dict[str, Any] | None:
+        with Session(self.engine) as session:
+            user = session.get(UserRecord, user_id)
+            if user is None:
+                return None
+            return {
+                "id": user.id,
+                "email": user.email,
+                "is_active": user.is_active,
+                "created_at": user.created_at.isoformat(),
+            }
+
+    def link_player_account(
+        self,
+        user_id: str,
+        game_name: str,
+        tag_line: str,
+        puuid: str | None = None,
+        region: str | None = None,
+        is_primary: bool = False,
+    ) -> dict[str, Any]:
+        link_id = str(uuid.uuid4())
+        now = datetime.now(UTC)
+        with Session(self.engine) as session, session.begin():
+            if is_primary:
+                session.execute(
+                    update(LinkedAccountRecord)
+                    .where(LinkedAccountRecord.user_id == user_id)
+                    .values(is_primary=False)
+                )
+            account = LinkedAccountRecord(
+                id=link_id,
+                user_id=user_id,
+                game_name=game_name,
+                tag_line=tag_line,
+                puuid=puuid,
+                region=region,
+                is_primary=is_primary,
+                linked_at=now,
+            )
+            session.add(account)
+        return {
+            "id": link_id,
+            "user_id": user_id,
+            "game_name": game_name,
+            "tag_line": tag_line,
+            "puuid": puuid,
+            "region": region,
+            "is_primary": is_primary,
+            "linked_at": now.isoformat(),
+        }
+
+    def list_linked_accounts(self, user_id: str) -> list[dict[str, Any]]:
+        with Session(self.engine) as session:
+            accounts = (
+                session.execute(
+                    select(LinkedAccountRecord)
+                    .where(LinkedAccountRecord.user_id == user_id)
+                    .order_by(LinkedAccountRecord.linked_at.desc())
+                )
+                .scalars()
+                .all()
+            )
+            return [
+                {
+                    "id": acc.id,
+                    "user_id": acc.user_id,
+                    "game_name": acc.game_name,
+                    "tag_line": acc.tag_line,
+                    "puuid": acc.puuid,
+                    "region": acc.region,
+                    "is_primary": acc.is_primary,
+                    "linked_at": acc.linked_at.isoformat(),
+                }
+                for acc in accounts
+            ]
+
+    def get_linked_account(
+        self, account_id: str, user_id: str
+    ) -> dict[str, Any] | None:
+        with Session(self.engine) as session:
+            acc = session.execute(
+                select(LinkedAccountRecord).where(
+                    LinkedAccountRecord.id == account_id,
+                    LinkedAccountRecord.user_id == user_id,
+                )
+            ).scalar_one_or_none()
+            if acc is None:
+                return None
+            return {
+                "id": acc.id,
+                "user_id": acc.user_id,
+                "game_name": acc.game_name,
+                "tag_line": acc.tag_line,
+                "puuid": acc.puuid,
+                "region": acc.region,
+                "is_primary": acc.is_primary,
+                "linked_at": acc.linked_at.isoformat(),
+            }
+
+    def delete_linked_account(self, account_id: str, user_id: str) -> bool:
+        with Session(self.engine) as session, session.begin():
+            result = session.execute(
+                delete(LinkedAccountRecord).where(
+                    LinkedAccountRecord.id == account_id,
+                    LinkedAccountRecord.user_id == user_id,
+                )
+            )
+            return bool(result.rowcount and result.rowcount > 0)
 
     def close(self) -> None:
         self.engine.dispose()

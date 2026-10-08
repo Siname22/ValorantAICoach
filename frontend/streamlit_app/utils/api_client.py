@@ -15,12 +15,108 @@ class APIClientError(RuntimeError):
 class APIClient:
     """Small HTTP client that consumes the FastAPI REST endpoints only."""
 
-    def __init__(self, base_url: str | None = None) -> None:
+    def __init__(self, base_url: str | None = None, token: str | None = None) -> None:
         self.base_url = (base_url or get_api_base_url()).rstrip("/")
+        self.token = token
+
+    def _headers(self) -> dict[str, str]:
+        headers: dict[str, str] = {}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        return headers
 
     def _request(self, path: str) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {"timeout": 10.0}
+        if self.token:
+            kwargs["headers"] = self._headers()
         try:
-            response = requests.get(f"{self.base_url}{path}", timeout=10.0)
+            response = requests.get(f"{self.base_url}{path}", **kwargs)
+        except requests.Timeout:
+            raise APIClientError(
+                "The API request timed out. Please try again."
+            ) from None
+        except requests.RequestException:
+            raise APIClientError(
+                "The API could not be reached. Please try again."
+            ) from None
+
+        if response.status_code >= 400:
+            raise APIClientError(
+                f"API request failed (HTTP {response.status_code}). Please try again."
+            )
+
+        try:
+            payload = response.json()
+        except ValueError:
+            raise APIClientError("The API returned an invalid response.") from None
+        if not isinstance(payload, dict):
+            raise APIClientError("The API returned an invalid response.")
+        return payload
+
+    def _request_list(self, path: str) -> list[dict[str, Any]]:
+        kwargs: dict[str, Any] = {"timeout": 10.0}
+        if self.token:
+            kwargs["headers"] = self._headers()
+        try:
+            response = requests.get(f"{self.base_url}{path}", **kwargs)
+        except requests.Timeout:
+            raise APIClientError(
+                "The API request timed out. Please try again."
+            ) from None
+        except requests.RequestException:
+            raise APIClientError(
+                "The API could not be reached. Please try again."
+            ) from None
+
+        if response.status_code >= 400:
+            raise APIClientError(
+                f"API request failed (HTTP {response.status_code}). Please try again."
+            )
+
+        try:
+            payload = response.json()
+        except ValueError:
+            raise APIClientError("The API returned an invalid response.") from None
+        if not isinstance(payload, list):
+            raise APIClientError("The API returned an invalid response.")
+        return payload
+
+    def _post(
+        self, path: str, json_data: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {"json": json_data, "timeout": 20.0}
+        if self.token:
+            kwargs["headers"] = self._headers()
+        try:
+            response = requests.post(f"{self.base_url}{path}", **kwargs)
+        except requests.Timeout:
+            raise APIClientError(
+                "The API request timed out. Please try again."
+            ) from None
+        except requests.RequestException:
+            raise APIClientError(
+                "The API could not be reached. Please try again."
+            ) from None
+
+        if response.status_code >= 400:
+            raise APIClientError(
+                f"API request failed (HTTP {response.status_code}). Please try again."
+            )
+
+        try:
+            payload = response.json()
+        except ValueError:
+            raise APIClientError("The API returned an invalid response.") from None
+        if not isinstance(payload, dict):
+            raise APIClientError("The API returned an invalid response.")
+        return payload
+
+    def _delete(self, path: str) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {"timeout": 10.0}
+        if self.token:
+            kwargs["headers"] = self._headers()
+        try:
+            response = requests.delete(f"{self.base_url}{path}", **kwargs)
         except requests.Timeout:
             raise APIClientError(
                 "The API request timed out. Please try again."
@@ -99,35 +195,6 @@ class APIClient:
             raise APIClientError("The API returned an invalid stats overview.")
         return payload
 
-    def _post(
-        self, path: str, json_data: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        try:
-            response = requests.post(
-                f"{self.base_url}{path}", json=json_data, timeout=20.0
-            )
-        except requests.Timeout:
-            raise APIClientError(
-                "The API request timed out. Please try again."
-            ) from None
-        except requests.RequestException:
-            raise APIClientError(
-                "The API could not be reached. Please try again."
-            ) from None
-
-        if response.status_code >= 400:
-            raise APIClientError(
-                f"API request failed (HTTP {response.status_code}). Please try again."
-            )
-
-        try:
-            payload = response.json()
-        except ValueError:
-            raise APIClientError("The API returned an invalid response.") from None
-        if not isinstance(payload, dict):
-            raise APIClientError("The API returned an invalid response.")
-        return payload
-
     def generate_coaching_report(
         self,
         game_name: str,
@@ -164,6 +231,51 @@ class APIClient:
             f"/players/{quote(game_name, safe='')}/"
             f"{quote(tag_line, safe='')}/reports/{quote(report_id, safe='')}"
         )
+
+    def invalidate_cache(
+        self,
+        game_name: str,
+        tag_line: str,
+    ) -> dict[str, Any]:
+        return self._delete(
+            f"/players/{quote(game_name, safe='')}/" f"{quote(tag_line, safe='')}/cache"
+        )
+
+    def register(self, email: str, password: str) -> dict[str, Any]:
+        return self._post("/auth/register", {"email": email, "password": password})
+
+    def login(self, email: str, password: str) -> dict[str, Any]:
+        payload = self._post("/auth/login", {"email": email, "password": password})
+        if "access_token" in payload:
+            self.token = payload["access_token"]
+        return payload
+
+    def get_me(self) -> dict[str, Any]:
+        return self._request("/auth/me")
+
+    def link_account(
+        self,
+        game_name: str,
+        tag_line: str,
+        *,
+        region: str | None = None,
+        is_primary: bool = False,
+    ) -> dict[str, Any]:
+        return self._post(
+            "/auth/me/accounts",
+            {
+                "game_name": game_name,
+                "tag_line": tag_line,
+                "region": region,
+                "is_primary": is_primary,
+            },
+        )
+
+    def list_linked_accounts(self) -> list[dict[str, Any]]:
+        return self._request_list("/auth/me/accounts")
+
+    def delete_linked_account(self, account_id: str) -> dict[str, Any]:
+        return self._delete(f"/auth/me/accounts/{quote(account_id, safe='')}")
 
 
 def get_api_client() -> APIClient:

@@ -221,3 +221,114 @@ def test_api_client_player_stats(monkeypatch):
     monkeypatch.setattr(requests, "get", lambda *a, **kw: response(200, "[]"))
     with pytest.raises(APIClientError):
         client.get_player_stats("Player", "EU1")
+
+
+def test_api_client_auth_and_account_linking(monkeypatch):
+    client = APIClient(BASE_URL)
+
+    # Register
+    monkeypatch.setattr(
+        requests,
+        "post",
+        lambda *a, **kw: response(
+            201,
+            json.dumps(
+                {
+                    "id": "u1",
+                    "email": "test@example.com",
+                    "is_active": True,
+                    "created_at": "2026-10-07T12:00:00Z",
+                }
+            ),
+        ),
+    )
+    user = client.register("test@example.com", "Password123!")
+    assert user["id"] == "u1"
+
+    # Login
+    monkeypatch.setattr(
+        requests,
+        "post",
+        lambda *a, **kw: response(
+            200,
+            json.dumps({"access_token": "mock.jwt.token", "token_type": "bearer"}),
+        ),
+    )
+    token_resp = client.login("test@example.com", "Password123!")
+    assert token_resp["access_token"] == "mock.jwt.token"
+    assert client.token == "mock.jwt.token"
+
+    # Get me
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda *a, **kw: response(
+            200,
+            json.dumps(
+                {
+                    "id": "u1",
+                    "email": "test@example.com",
+                    "is_active": True,
+                    "created_at": "2026-10-07T12:00:00Z",
+                }
+            ),
+        ),
+    )
+    me = client.get_me()
+    assert me["email"] == "test@example.com"
+
+    # Link account
+    monkeypatch.setattr(
+        requests,
+        "post",
+        lambda *a, **kw: response(
+            201,
+            json.dumps(
+                {
+                    "id": "acc-1",
+                    "user_id": "u1",
+                    "game_name": "TenZ",
+                    "tag_line": "SEN",
+                    "puuid": None,
+                    "region": "na",
+                    "is_primary": True,
+                    "linked_at": "2026-10-07T12:00:00Z",
+                }
+            ),
+        ),
+    )
+    acc = client.link_account("TenZ", "SEN", region="na", is_primary=True)
+    assert acc["game_name"] == "TenZ"
+    assert acc["is_primary"] is True
+
+    # List linked accounts
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda *a, **kw: response(200, json.dumps([acc])),
+    )
+    accounts = client.list_linked_accounts()
+    assert len(accounts) == 1
+    assert accounts[0]["id"] == "acc-1"
+
+    # Delete linked account
+    monkeypatch.setattr(
+        requests,
+        "delete",
+        lambda *a, **kw: response(
+            200, json.dumps({"status": "deleted", "account_id": "acc-1"})
+        ),
+    )
+    del_res = client.delete_linked_account("acc-1")
+    assert del_res["status"] == "deleted"
+
+    # Invalidate cache
+    monkeypatch.setattr(
+        requests,
+        "delete",
+        lambda *a, **kw: response(
+            200, json.dumps({"status": "ok", "invalidated_snapshots": 2})
+        ),
+    )
+    cache_res = client.invalidate_cache("TenZ", "SEN")
+    assert cache_res["status"] == "ok"

@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from backend import __version__
+from backend.app.api.auth_router import router as auth_router
 from backend.app.api.match_router import router as match_router
 from backend.app.api.player_router import router as player_router
 from backend.app.core.config import get_settings
@@ -79,6 +80,10 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
 
 
 tags_metadata = [
+    {
+        "name": "auth",
+        "description": "User authentication, JWT tokens, and player account linking.",
+    },
     {"name": "matches", "description": "Full match details from the Riot API."},
     {
         "name": "players",
@@ -112,6 +117,7 @@ app = FastAPI(
 )
 
 # Register routers
+app.include_router(auth_router)
 app.include_router(player_router)
 app.include_router(match_router)
 

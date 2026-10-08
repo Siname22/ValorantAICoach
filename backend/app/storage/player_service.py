@@ -231,6 +231,42 @@ class PersistentPlayerService(PlayerService):
         )
         return await self._storage_call(self.store.invalidate_player_cache, player_id)
 
+    async def create_user(self, email: str, password_hash: str) -> dict[str, Any]:
+        return await self._storage_call(self.store.create_user, email, password_hash)
+
+    async def get_user_by_email(self, email: str) -> dict[str, Any] | None:
+        return await self._storage_call(self.store.get_user_by_email, email)
+
+    async def get_user_by_id(self, user_id: str) -> dict[str, Any] | None:
+        return await self._storage_call(self.store.get_user_by_id, user_id)
+
+    async def link_player_account(
+        self,
+        user_id: str,
+        game_name: str,
+        tag_line: str,
+        puuid: str | None = None,
+        region: str | None = None,
+        is_primary: bool = False,
+    ) -> dict[str, Any]:
+        return await self._storage_call(
+            self.store.link_player_account,
+            user_id,
+            game_name,
+            tag_line,
+            puuid,
+            region,
+            is_primary,
+        )
+
+    async def list_linked_accounts(self, user_id: str) -> list[dict[str, Any]]:
+        return await self._storage_call(self.store.list_linked_accounts, user_id)
+
+    async def delete_linked_account(self, account_id: str, user_id: str) -> bool:
+        return await self._storage_call(
+            self.store.delete_linked_account, account_id, user_id
+        )
+
     async def close(self) -> None:
         try:
             await super().close()
