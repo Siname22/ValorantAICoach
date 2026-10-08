@@ -49,9 +49,19 @@ permissions. Mocked HTTP tests do not confirm those permissions.
 - [x] Ensure per-user account isolation and primary identity management.
 - [x] Update Streamlit `APIClient` with bearer token authentication and auth methods.
 
+## Completed: Player Progression Trajectory & Scheduled Coaching Jobs
+
+- [x] Add `last_synced_at` column to `linked_player_accounts` with Alembic migration.
+- [x] Implement player trajectory analytics (`GET /players/{game}/{tag}/progression`) evaluating rolling K/D, win rate, headshot rates, agent mastery, and trend classification (improving, declining, stable).
+- [x] Implement dynamic weakness resolution tracking (detects resolved vs active focus areas across consecutive coaching reports).
+- [x] Implement on-demand match and coaching synchronization (`POST /players/{game}/{tag}/sync`).
+- [x] Implement tracked accounts batch synchronization (`POST /system/coaching/sync-tracked`).
+- [x] Add automated background coaching sync worker in FastAPI `lifespan` governed by `database_auto_sync_interval_seconds`.
+- [x] Expose progression metrics, visual trajectory delta indicators, and on-demand synchronization in Streamlit frontend.
+
 ## Next Milestones
 
-- [ ] Add scheduled coaching update jobs for tracked players.
 - [ ] Implement OCR / screenshot ingestion and computer vision for scoreboard analysis.
 - [ ] Add round-by-round replay timeline analysis.
-- [ ] Connect long-term persistent agent memory to player trajectory over time.
+- [ ] Implement team synergy & counter-pick recommendation engine.
+
