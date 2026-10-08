@@ -59,9 +59,19 @@ permissions. Mocked HTTP tests do not confirm those permissions.
 - [x] Add automated background coaching sync worker in FastAPI `lifespan` governed by `database_auto_sync_interval_seconds`.
 - [x] Expose progression metrics, visual trajectory delta indicators, and on-demand synchronization in Streamlit frontend.
 
+## Completed: Computer Vision & Scoreboard OCR Ingestion
+
+- [x] Implement `ScoreboardVisionService` supporting multimodal image understanding (Google Gemini `gemini-2.5-flash`) with resilient heuristic OCR fallback.
+- [x] Validate and decode image payloads (PNG, JPEG, WebP) with magic byte detection and size safety guards.
+- [x] Structured scoreboard extraction: map resolution, game mode, match outcome, rounds won/lost, and per-player telemetry (ACS, K/D/A, ADR, first bloods).
+- [x] Direct persistence integration: convert extracted scoreboard into domain `PlayerMatch` and persist into PostgreSQL / SQLite history.
+- [x] Expose vision endpoints: `POST /vision/scoreboard/analyze` (base64/data URL), `POST /vision/scoreboard/upload` (multipart file), and `POST /players/{game}/{tag}/scoreboard`.
+- [x] Add interactive Streamlit UI section with image preview, confidence scores, extracted player tables, and tactical takeaways.
+
 ## Next Milestones
 
-- [ ] Implement OCR / screenshot ingestion and computer vision for scoreboard analysis.
 - [ ] Add round-by-round replay timeline analysis.
 - [ ] Implement team synergy & counter-pick recommendation engine.
+- [ ] Production deployment hardening, security audit, and Release 1.0.
+
 

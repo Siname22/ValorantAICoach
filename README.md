@@ -8,7 +8,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688)](https://fastapi.tiangolo.com/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.39+-FF4B4B)](https://streamlit.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Tests](https://img.shields.io/badge/Tests-544%20Passing-success)](https://pytest.org/)
+[![Tests](https://img.shields.io/badge/Tests-554%20Passing-success)](https://pytest.org/)
 [![Resilience](https://img.shields.io/badge/Gemini%20Resilience-81%2F81%20Verified-brightgreen)](https://ai.google.dev/)
 [![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Ruff](https://img.shields.io/badge/linter-ruff-red)](https://github.com/astral-sh/ruff)
@@ -90,6 +90,9 @@ The FastAPI backend exposes comprehensive endpoints documented via OpenAPI/Swagg
 | `GET` | `/players/{game_name}/{tag_line}/matches` | Recent match history with normalized stats. |
 | `GET` | `/players/{game_name}/{tag_line}/progression` | Long-term trajectory analytics (K/D, win rate, weakness resolution). |
 | `POST` | `/players/{game_name}/{tag_line}/sync` | On-demand match history synchronization and coaching update. |
+| `POST` | `/vision/scoreboard/analyze` | Computer vision / OCR analysis of scoreboard screenshot (base64). |
+| `POST` | `/vision/scoreboard/upload` | Direct multipart image file upload for scoreboard analysis. |
+| `POST` | `/players/{game_name}/{tag_line}/scoreboard` | Analyze and ingest scoreboard screenshot for a specific player. |
 | `GET` | `/matches/{match_id}` | Detailed match summary by ID. |
 | `DELETE` | `/players/{game_name}/{tag_line}/cache` | Invalidate player snapshot cache on demand. |
 | `POST` | `/players/{game_name}/{tag_line}/reports` | Generate a grounded multi-agent coaching report. |
@@ -125,7 +128,7 @@ Located in `frontend/streamlit_app/utils/gemini_coach.py`, the AI coach delivers
 The repository maintains strict test coverage, formatting, and linting standards:
 
 ```text
-544 passed, 0 failures, 0 skips
+554 passed, 0 failures, 0 skips
 81/81 Gemini resilience checks passed
 100% Ruff & Black compliance
 ```
@@ -257,9 +260,10 @@ ValorantAICoach/
 - [x] Riot player account linking with primary profile selection
 - [x] Player progression trajectory analytics & weakness resolution tracking
 - [x] Scheduled background coaching sync worker & on-demand sync endpoints
-- [ ] Computer Vision & OCR integration for in-game scoreboard capture
+- [x] Computer Vision & OCR integration for in-game scoreboard capture
 - [ ] Round-by-round replay timeline analysis
 - [ ] Team synergy & counter-pick recommendation engine
+- [ ] Production deployment hardening, security audit, and Release 1.0
 
 ---
 
@@ -268,7 +272,7 @@ ValorantAICoach/
 This repository follows a strict review and branch workflow:
 1. **Never commit directly to `main` without verified testing**.
 2. Create descriptive feature branches (`feature/...`, `fix/...`).
-3. Ensure 100% test pass rate (`544+ tests passing`), Ruff, and Black formatting.
+3. Ensure 100% test pass rate (`554+ tests passing`), Ruff, and Black formatting.
 4. Submit work via Pull Request with clear release notes.
 
 ---
