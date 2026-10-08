@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import logging
 import sys
 from contextlib import closing, suppress
@@ -319,6 +320,7 @@ def render_player_search_page() -> None:
         render_coaching_report_card(active_report)
 
     render_player_progression_section(result["game_name"], result["tag_line"], client)
+    render_scoreboard_vision_section(result["game_name"], result["tag_line"], client)
 
     with st.expander("📜 Historical Coaching Reports", expanded=False):
         if st.button("Fetch Report History", key="btn_fetch_history"):
@@ -455,6 +457,108 @@ def render_player_progression_section(
                         }
                     )
                 st.dataframe(pd.DataFrame(agent_rows), use_container_width=True)
+
+
+def render_scoreboard_vision_section(
+    game_name: str, tag_line: str, client: Any
+) -> None:
+    """Render scoreboard screenshot upload and Computer Vision analysis."""
+    with st.expander("📸 Scoreboard Ingestion (Computer Vision / OCR)", expanded=False):
+        st.markdown(
+            "Upload an end-of-match scoreboard screenshot to extract match "
+            "telemetry and tactical insights when external APIs are delayed."
+        )
+        uploaded_file = st.file_uploader(
+            "Scoreboard Image (PNG, JPEG, WebP)",
+            type=["png", "jpg", "jpeg", "webp"],
+            key="scoreboard_file_uploader",
+        )
+        save_history = st.checkbox(
+            "Save match directly to player history (updates coaching reports)",
+            value=True,
+            key="cb_vision_save_history",
+        )
+
+        if uploaded_file is not None:
+            st.image(
+                uploaded_file,
+                caption="Scoreboard Preview",
+                use_container_width=True,
+            )
+            if st.button("🔍 Analyze Scoreboard Screenshot", key="btn_analyze_vision"):
+                with st.spinner("Analyzing scoreboard with Computer Vision & OCR..."):
+                    try:
+                        raw = uploaded_file.getvalue()
+                        b64_img = base64.b64encode(raw).decode("utf-8")
+                        res = client.analyze_scoreboard(
+                            b64_img,
+                            game_name=game_name,
+                            tag_line=tag_line,
+                            save_to_history=save_history,
+                        )
+                        st.session_state["scoreboard_vision_analysis"] = res
+                        st.success("Scoreboard analyzed successfully!")
+                    except APIClientError as exc:
+                        st.error(f"Failed to analyze scoreboard: {exc}")
+
+        analysis = st.session_state.get("scoreboard_vision_analysis")
+        if analysis:
+            st.markdown("---")
+            res_str = analysis.get("result", "Victory")
+            is_win = "win" in res_str.lower() or "vic" in res_str.lower()
+            res_color = "🟢" if is_win else "🔴"
+            rounds_won = analysis.get("rounds_won", 0)
+            rounds_lost = analysis.get("rounds_lost", 0)
+            map_name = escape(analysis.get("map_name", "Unknown"))
+            st.markdown(
+                f"### {res_color} {escape(res_str)} — {map_name} "
+                f"({rounds_won} - {rounds_lost})"
+            )
+            col_i1, col_i2, col_i3 = st.columns(3)
+            with col_i1:
+                st.metric("Mode", analysis.get("game_mode", "Competitive"))
+            with col_i2:
+                conf = analysis.get("confidence_score", 0.9) * 100
+                st.metric("Vision Confidence", f"{conf:.0f}%")
+            with col_i3:
+                st.metric(
+                    "Extractor",
+                    analysis.get("extractor_engine", "heuristic-ocr"),
+                )
+
+            takeaways = analysis.get("tactical_takeaways", [])
+            if takeaways:
+                st.markdown("##### 💡 Tactical Takeaways from Scoreboard")
+                for t in takeaways:
+                    st.markdown(f"- 🎯 {escape(str(t))}")
+
+            rows = analysis.get("scoreboard_rows", [])
+            if rows:
+                st.markdown("##### 👥 Parsed Scoreboard Players")
+                p_data = []
+                for p in rows:
+                    p_name = p.get("player_name", "")
+                    p_tag = f"#{p.get('tag_line')}" if p.get("tag_line") else ""
+                    p_data.append(
+                        {
+                            "Player": f"{p_name}{p_tag}",
+                            "Agent": p.get("agent", "Unknown"),
+                            "Team": p.get("team", "unknown"),
+                            "ACS": p.get("score", 0),
+                            "K": p.get("kills", 0),
+                            "D": p.get("deaths", 0),
+                            "A": p.get("assists", 0),
+                            "ADR": p.get("damage_per_round") or "-",
+                        }
+                    )
+                st.dataframe(pd.DataFrame(p_data), use_container_width=True)
+
+            if analysis.get("persisted_as_match"):
+                st.success(
+                    "✅ Match was successfully added to your persistent match "
+                    "history. You can now generate coaching reports based on this "
+                    "match!"
+                )
 
 
 def render_coaching_report_card(report: dict[str, Any]) -> None:

@@ -292,6 +292,24 @@ class APIClient:
             f"{quote(tag_line, safe='')}/sync{query}"
         )
 
+    def analyze_scoreboard(
+        self,
+        image_base64: str,
+        *,
+        game_name: str | None = None,
+        tag_line: str | None = None,
+        save_to_history: bool = True,
+    ) -> dict[str, Any]:
+        return self._post(
+            "/vision/scoreboard/analyze",
+            {
+                "image_base64": image_base64,
+                "game_name": game_name,
+                "tag_line": tag_line,
+                "save_to_history": save_to_history,
+            },
+        )
+
 
 def get_api_client() -> APIClient:
     return APIClient()

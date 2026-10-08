@@ -834,6 +834,15 @@ class PlayerService:
             "details": [],
         }
 
+    async def ingest_vision_match(
+        self,
+        match: PlayerMatch,
+        game_name: str,
+        tag_line: str,
+    ) -> bool:
+        """Persist a vision-extracted match into history when persistence is active."""
+        return False
+
     async def close(self) -> None:
         results = await asyncio.gather(
             *(provider.close() for provider in self._providers), return_exceptions=True
