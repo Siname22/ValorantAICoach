@@ -6,6 +6,7 @@ from weakref import WeakValueDictionary
 from pydantic import AfterValidator, TypeAdapter, ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
+from backend.app.schemas.timeline_schemas import PlayerTimelineAnalyticsResponse
 from backend.app.services.player_service import (
     PlayerMatch,
     PlayerProfile,
@@ -14,6 +15,7 @@ from backend.app.services.player_service import (
     PlayerServiceUnavailableError,
     PlayerStatsOverview,
 )
+from backend.app.services.timeline_service import TimelineService
 
 from .repository import SQLPlayerStore, request_key
 
@@ -153,7 +155,13 @@ class PersistentPlayerService(PlayerService):
         original = super().get_match
 
         async def fetch():
-            return await original(match_id), ["riot"]
+            try:
+                return await original(match_id), ["riot"]
+            except PlayerServiceUnavailableError:
+                stored = await self._storage_call(self.store.get_match_record, match_id)
+                if stored is not None:
+                    return stored, ["stored"]
+                raise
 
         return await self._cached(
             "match_detail", {"match_id": match_id}, TypeAdapter(MatchDetail), fetch
@@ -318,6 +326,31 @@ class PersistentPlayerService(PlayerService):
             ["vision"],
         )
         return True
+
+    async def get_player_timeline_analytics(
+        self,
+        game_name: str,
+        tag_line: str,
+        *,
+        region: str | None = None,
+        limit: int = 5,
+    ) -> PlayerTimelineAnalyticsResponse:
+        player_id = request_key(
+            "identity", {"game_name": game_name, "tag_line": tag_line}
+        )
+        stored_details = await self._storage_call(
+            self.store.list_player_match_details, player_id, limit
+        )
+        if stored_details:
+            return TimelineService.aggregate_player_timeline_analytics(
+                stored_details,
+                player_identifier=player_id,
+                game_name=game_name,
+                tag_line=tag_line,
+            )
+        return await super().get_player_timeline_analytics(
+            game_name, tag_line, region=region, limit=limit
+        )
 
     async def close(self) -> None:
         try:

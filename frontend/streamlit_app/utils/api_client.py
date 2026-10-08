@@ -310,6 +310,29 @@ class APIClient:
             },
         )
 
+    def get_match_timeline(
+        self, match_id: str, *, player: str | None = None
+    ) -> dict[str, Any]:
+        query = f"?player={quote(player, safe='')}" if player else ""
+        return self._request(f"/matches/{quote(match_id, safe='')}/timeline{query}")
+
+    def get_player_timeline_analytics(
+        self,
+        game_name: str,
+        tag_line: str,
+        *,
+        region: str | None = None,
+        limit: int = 5,
+    ) -> dict[str, Any]:
+        params = [f"limit={limit}"]
+        if region:
+            params.append(f"region={quote(region, safe='')}")
+        query = f"?{'&'.join(params)}"
+        return self._request(
+            f"/players/{quote(game_name, safe='')}/"
+            f"{quote(tag_line, safe='')}/timeline-analytics{query}"
+        )
+
 
 def get_api_client() -> APIClient:
     return APIClient()
