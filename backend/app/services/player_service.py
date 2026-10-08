@@ -4,6 +4,11 @@ from datetime import UTC, datetime
 from typing import Any, Literal, NoReturn
 
 from backend.app.content.catalog import resolve_agent_name, resolve_map_name
+from backend.app.schemas.timeline_schemas import (
+    MatchTimelineResponse,
+    PlayerTimelineAnalyticsResponse,
+)
+from backend.app.services.timeline_service import TimelineService
 from backend.providers.base.exceptions import InvalidResponseError, NotFoundError
 from backend.providers.base.models import ProviderStatus
 from backend.providers.henrik.provider import HenrikProvider
@@ -842,6 +847,51 @@ class PlayerService:
     ) -> bool:
         """Persist a vision-extracted match into history when persistence is active."""
         return False
+
+    async def get_match_timeline(
+        self,
+        match_id: str,
+        player_identifier: str | None = None,
+    ) -> MatchTimelineResponse:
+        match_detail = await self.get_match(match_id)
+        return TimelineService.parse_match_timeline(
+            match_detail, player_identifier=player_identifier
+        )
+
+    async def get_player_timeline_analytics(
+        self,
+        game_name: str,
+        tag_line: str,
+        *,
+        region: str | None = None,
+        limit: int = 5,
+    ) -> PlayerTimelineAnalyticsResponse:
+        try:
+            profile = await self.get_player(game_name, tag_line)
+            player_ident = profile.puuid or f"{game_name}#{tag_line}"
+        except Exception:
+            player_ident = f"{game_name}#{tag_line}"
+
+        match_details: list[dict[str, Any]] = []
+        try:
+            recent_matches = await self.get_recent_matches(
+                game_name, tag_line, region=region, limit=limit
+            )
+            for m in recent_matches:
+                try:
+                    detail = await self.get_match(m.match_id)
+                    match_details.append(detail)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        return TimelineService.aggregate_player_timeline_analytics(
+            match_details,
+            player_identifier=player_ident,
+            game_name=game_name,
+            tag_line=tag_line,
+        )
 
     async def close(self) -> None:
         results = await asyncio.gather(

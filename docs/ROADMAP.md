@@ -68,9 +68,17 @@ permissions. Mocked HTTP tests do not confirm those permissions.
 - [x] Expose vision endpoints: `POST /vision/scoreboard/analyze` (base64/data URL), `POST /vision/scoreboard/upload` (multipart file), and `POST /players/{game}/{tag}/scoreboard`.
 - [x] Add interactive Streamlit UI section with image preview, confidence scores, extracted player tables, and tactical takeaways.
 
+## Completed: Round-by-Round Replay Timeline Analysis
+
+- [x] Implement `TimelineService` parsing Riot VAL-match-v1 `roundResults` into structured chronological round events.
+- [x] Detect canonical tactical events: trade kills ($\le 3000$ms window), first bloods, clutches (1vX situations and ceremonies), thrifty rounds, and Spike plants/defuses with retake outcomes.
+- [x] Identify critical tactical leaks: anti-eco round losses, low trade efficiency, defensive site instability, and post-plant retake conversion failures.
+- [x] Aggregate player timeline analytics across recent matches: attack vs defense win rates, trade efficiency %, clutch win breakdown, and tactical leak alerts.
+- [x] Expose REST endpoints: `GET /matches/{match_id}/timeline` and `GET /players/{game_name}/{tag_line}/timeline-analytics`.
+- [x] Add interactive Streamlit UI tabs: cross-match tactical analytics overview and single-match round inspector with chronological kill log and Spike events.
+
 ## Next Milestones
 
-- [ ] Add round-by-round replay timeline analysis.
 - [ ] Implement team synergy & counter-pick recommendation engine.
 - [ ] Production deployment hardening, security audit, and Release 1.0.
 

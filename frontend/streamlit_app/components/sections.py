@@ -321,6 +321,7 @@ def render_player_search_page() -> None:
 
     render_player_progression_section(result["game_name"], result["tag_line"], client)
     render_scoreboard_vision_section(result["game_name"], result["tag_line"], client)
+    render_replay_timeline_section(result["game_name"], result["tag_line"], client)
 
     with st.expander("📜 Historical Coaching Reports", expanded=False):
         if st.button("Fetch Report History", key="btn_fetch_history"):
@@ -559,6 +560,190 @@ def render_scoreboard_vision_section(
                     "history. You can now generate coaching reports based on this "
                     "match!"
                 )
+
+
+def render_replay_timeline_section(game_name: str, tag_line: str, client: Any) -> None:
+    """Render round-by-round replay timeline explorer and tactical analytics."""
+    with st.expander("⏱️ Replay Timeline & Round Analysis", expanded=False):
+        tab_analytics, tab_match = st.tabs(
+            ["📊 Tactical Analytics (Recent)", "🔍 Single Match Replay"]
+        )
+
+        with tab_analytics:
+            if st.button(
+                "Fetch Cross-Match Tactical Analytics",
+                key="btn_fetch_timeline_analytics",
+            ):
+                with st.spinner(
+                    "Aggregating replay timelines across recent matches..."
+                ):
+                    try:
+                        t_data = client.get_player_timeline_analytics(
+                            game_name, tag_line, limit=5
+                        )
+                        st.session_state["timeline_analytics_data"] = t_data
+                    except APIClientError as exc:
+                        st.error(f"Failed to fetch timeline analytics: {exc}")
+
+            t_data = st.session_state.get("timeline_analytics_data")
+            if t_data:
+                col_t1, col_t2, col_t3, col_t4 = st.columns(4)
+                with col_t1:
+                    atk_wr = t_data.get("overall_attack_win_rate", 0.0)
+                    st.metric("Attack Win Rate", f"{atk_wr:.1f}%")
+                with col_t2:
+                    def_wr = t_data.get("overall_defense_win_rate", 0.0)
+                    st.metric("Defense Win Rate", f"{def_wr:.1f}%")
+                with col_t3:
+                    trade_eff = t_data.get("overall_trade_efficiency", 0.0)
+                    st.metric("Trade Efficiency", f"{trade_eff:.1f}%")
+                with col_t4:
+                    clutch_wr = t_data.get("overall_clutch_win_rate", 0.0)
+                    st.metric("Clutch Win Rate", f"{clutch_wr:.1f}%")
+
+                col_sub1, col_sub2 = st.columns(2)
+                with col_sub1:
+                    st.metric(
+                        "Anti-Eco Losses",
+                        t_data.get("anti_eco_losses_total", 0),
+                    )
+                with col_sub2:
+                    ret_sr = t_data.get("retake_success_rate", 0.0)
+                    st.metric("Retake Success Rate", f"{ret_sr:.1f}%")
+
+                clutches = t_data.get("clutches_won_breakdown", {})
+                if clutches:
+                    st.markdown("##### 🏆 Clutches Won Breakdown")
+                    c_cols = st.columns(len(clutches))
+                    for col, (situation, count) in zip(
+                        c_cols, clutches.items(), strict=False
+                    ):
+                        with col:
+                            st.metric(situation, count)
+
+                leaks = t_data.get("identified_tactical_leaks", [])
+                if leaks:
+                    st.markdown("##### ⚠️ Identified Tactical Leaks")
+                    for leak in leaks:
+                        st.warning(escape(str(leak)))
+
+        with tab_match:
+            match_id_input = st.text_input(
+                "Match ID to inspect replay timeline:",
+                key="input_timeline_match_id",
+                placeholder="e.g. 50f38b1d-c6a0-43ec-8094-0d707736630f",
+            )
+            if st.button("Inspect Replay Timeline", key="btn_inspect_timeline"):
+                if match_id_input:
+                    with st.spinner("Parsing round-by-round timeline..."):
+                        try:
+                            m_tl = client.get_match_timeline(
+                                match_id_input.strip(),
+                                player=f"{game_name}#{tag_line}",
+                            )
+                            st.session_state["match_timeline_data"] = m_tl
+                        except APIClientError as exc:
+                            st.error(f"Failed to inspect match timeline: {exc}")
+                else:
+                    st.warning("Please provide a valid Match ID.")
+
+            m_tl = st.session_state.get("match_timeline_data")
+            if m_tl:
+                map_n = escape(m_tl.get("map_name", "Unknown"))
+                g_mode = m_tl.get("game_mode", "Standard")
+                st.markdown(f"### Replay on **{map_n}** ({g_mode})")
+                rounds = m_tl.get("rounds", [])
+                if rounds:
+                    round_opts = [
+                        (
+                            f"Round {r.get('round_num')}: "
+                            f"{'🟢 Won' if r.get('friendly_won') else '🔴 Lost'} "
+                            f"({str(r.get('winning_side', '')).capitalize()})"
+                        )
+                        for r in rounds
+                    ]
+                    chosen_round_label = st.selectbox(
+                        "Select Round to Inspect:",
+                        options=round_opts,
+                        key="select_round_timeline",
+                    )
+                    chosen_idx = round_opts.index(chosen_round_label)
+                    chosen_r = rounds[chosen_idx]
+
+                    col_r1, col_r2, col_r3 = st.columns(3)
+                    with col_r1:
+                        st.metric(
+                            "Win Reason",
+                            chosen_r.get("win_type", "Unknown"),
+                        )
+                    with col_r2:
+                        f_sc = chosen_r.get("friendly_score_after", 0)
+                        e_sc = chosen_r.get("enemy_score_after", 0)
+                        st.metric("Score After", f"{f_sc} - {e_sc}")
+                    with col_r3:
+                        cer = chosen_r.get("ceremony") or "None"
+                        st.metric("Ceremony", cer)
+
+                    kills = chosen_r.get("kills", [])
+                    if kills:
+                        st.markdown("##### 🎯 Kill Chronology")
+                        k_rows = []
+                        for k in kills:
+                            secs = k.get("round_time_millis", 0) // 1000
+                            time_str = f"{secs // 60}:{secs % 60:02d}"
+                            k_name = k.get("killer_name")
+                            k_team = k.get("killer_team")
+                            v_name = k.get("victim_name")
+                            v_team = k.get("victim_team")
+                            trade_badge = (
+                                f"⚡ Traded {k.get('traded_killer_name')} "
+                                f"({k.get('trade_window_millis')}ms)"
+                                if k.get("is_trade_kill")
+                                else "-"
+                            )
+                            k_rows.append(
+                                {
+                                    "Time": time_str,
+                                    "Killer": f"{k_name} ({k_team})",
+                                    "Victim": f"{v_name} ({v_team})",
+                                    "Weapon": k.get("weapon", "Unknown"),
+                                    "Headshot": (
+                                        "💥 Yes" if k.get("is_headshot") else "No"
+                                    ),
+                                    "Trade Kill": trade_badge,
+                                }
+                            )
+                        st.dataframe(pd.DataFrame(k_rows), use_container_width=True)
+
+                    plant = chosen_r.get("spike_plant")
+                    defuse = chosen_r.get("spike_defuse")
+                    if plant or defuse:
+                        st.markdown("##### 💣 Spike Events")
+                        if plant:
+                            p_sec = plant.get("round_time_millis", 0) // 1000
+                            p_site = plant.get("site") or "?"
+                            p_by = plant.get("player_name") or "Player"
+                            st.info(
+                                f"Planted at **Site {p_site}** at "
+                                f"{p_sec // 60}:{p_sec % 60:02d} by {p_by}"
+                            )
+                        if defuse:
+                            d_sec = defuse.get("round_time_millis", 0) // 1000
+                            d_succ = defuse.get("success")
+                            st_txt = (
+                                "Defused successfully" if d_succ else "Defusal attempt"
+                            )
+                            d_by = defuse.get("player_name") or "Player"
+                            st.success(
+                                f"{st_txt} at {d_sec // 60}:{d_sec % 60:02d} by {d_by}"
+                            )
+
+                sum_info = m_tl.get("summary", {})
+                takeaways = sum_info.get("tactical_takeaways", [])
+                if takeaways:
+                    st.markdown("##### 💡 Match Tactical Takeaways")
+                    for t in takeaways:
+                        st.markdown(f"- 📌 {escape(str(t))}")
 
 
 def render_coaching_report_card(report: dict[str, Any]) -> None:

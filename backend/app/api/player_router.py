@@ -11,6 +11,7 @@ from backend.app.schemas.player_schemas import (
     PlayerRankResponse,
     PlayerSyncResponse,
 )
+from backend.app.schemas.timeline_schemas import PlayerTimelineAnalyticsResponse
 from backend.app.services.player_service import (
     CompletePlayerProfile,
     PlayerService,
@@ -242,3 +243,26 @@ async def sync_player(
 ) -> PlayerSyncResponse:
     sync_result = await service.sync_player_coaching(game_name, tag_line, region=region)
     return PlayerSyncResponse(**sync_result)
+
+
+@router.get(
+    "/{game_name}/{tag_line}/timeline-analytics",
+    response_model=PlayerTimelineAnalyticsResponse,
+    summary="Get aggregated player tactical timeline analytics",
+    description=(
+        "Aggregates round replay metrics across recent matches: "
+        "Attack vs Defense win rates, trade kill efficiency, clutch "
+        "conversions, anti-eco loss frequency, and tactical leaks."
+    ),
+    responses=ERROR_RESPONSES,
+)
+async def get_player_timeline_analytics(
+    game_name: GameName,
+    tag_line: TagLine,
+    service: Service,
+    region: RegionQuery = None,
+    limit: Annotated[int, Query(ge=1, le=10)] = 5,
+) -> PlayerTimelineAnalyticsResponse:
+    return await service.get_player_timeline_analytics(
+        game_name, tag_line, region=region, limit=limit
+    )

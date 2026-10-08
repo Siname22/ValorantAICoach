@@ -253,6 +253,36 @@ class SQLPlayerStore:
                 "created_at": record.created_at.isoformat(),
             }
 
+    def get_match_record(
+        self, match_id: str, provider: str = "riot"
+    ) -> dict[str, Any] | None:
+        with Session(self.engine) as session:
+            record = session.get(MatchRecord, (provider, match_id))
+            if record is None or record.detail is None:
+                return None
+            return record.detail
+
+    def list_player_match_details(
+        self, player_id: str, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        with Session(self.engine) as session:
+            statement = (
+                select(MatchRecord)
+                .join(
+                    PlayerMatchHistory,
+                    (PlayerMatchHistory.provider == MatchRecord.provider)
+                    & (PlayerMatchHistory.match_id == MatchRecord.match_id),
+                )
+                .where(
+                    PlayerMatchHistory.player_id == player_id,
+                    MatchRecord.detail.isnot(None),
+                )
+                .order_by(PlayerMatchHistory.observed_at.desc())
+                .limit(limit)
+            )
+            records = session.execute(statement).scalars().all()
+            return [r.detail for r in records if r.detail is not None]
+
     def list_coaching_reports(
         self, player_id: str, limit: int = 10
     ) -> list[dict[str, Any]]:

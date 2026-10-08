@@ -410,3 +410,54 @@ def test_api_client_auth_and_account_linking(monkeypatch):
     assert analysis["match_id"] == "vision-123"
     assert analysis["map_name"] == "Ascent"
     assert analysis["persisted_as_match"] is True
+
+    # Replay timeline
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda *a, **kw: response(
+            200,
+            json.dumps(
+                {
+                    "match_id": "match-tl-1",
+                    "map_name": "Ascent",
+                    "game_mode": "Standard",
+                    "friendly_team": "Blue",
+                    "rounds": [],
+                    "summary": {"total_rounds": 0},
+                }
+            ),
+        ),
+    )
+    timeline = client.get_match_timeline("match-tl-1", player="TenZ#SEN")
+    assert timeline["match_id"] == "match-tl-1"
+    assert timeline["map_name"] == "Ascent"
+
+    # Player timeline analytics
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda *a, **kw: response(
+            200,
+            json.dumps(
+                {
+                    "game_name": "TenZ",
+                    "tag_line": "SEN",
+                    "matches_analyzed": 5,
+                    "total_rounds_analyzed": 105,
+                    "overall_attack_win_rate": 58.0,
+                    "overall_defense_win_rate": 52.0,
+                    "overall_trade_efficiency": 34.5,
+                    "overall_clutch_win_rate": 40.0,
+                    "clutches_won_breakdown": {"1v1": 2},
+                    "anti_eco_losses_total": 0,
+                    "retake_success_rate": 45.0,
+                    "identified_tactical_leaks": [],
+                }
+            ),
+        ),
+    )
+    analytics = client.get_player_timeline_analytics("TenZ", "SEN", limit=5)
+    assert analytics["game_name"] == "TenZ"
+    assert analytics["matches_analyzed"] == 5
+    assert analytics["overall_attack_win_rate"] == 58.0
