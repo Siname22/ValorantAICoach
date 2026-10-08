@@ -11,6 +11,7 @@ from backend import __version__
 from backend.app.api.auth_router import router as auth_router
 from backend.app.api.match_router import router as match_router
 from backend.app.api.player_router import router as player_router
+from backend.app.api.vision_router import router as vision_router
 from backend.app.core.config import get_settings
 from backend.app.dependencies.provider_deps import (
     create_player_service,
@@ -159,6 +160,7 @@ app = FastAPI(
 app.include_router(auth_router)
 app.include_router(player_router)
 app.include_router(match_router)
+app.include_router(vision_router)
 
 
 @app.exception_handler(PlayerServiceError)

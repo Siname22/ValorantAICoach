@@ -378,3 +378,35 @@ def test_api_client_auth_and_account_linking(monkeypatch):
     sync_res = client.sync_player("TenZ", "SEN", region="na")
     assert sync_res["synced"] is True
     assert sync_res["report_id"] == "rep-123"
+
+    # Analyze scoreboard
+    monkeypatch.setattr(
+        requests,
+        "post",
+        lambda *a, **kw: response(
+            200,
+            json.dumps(
+                {
+                    "match_id": "vision-123",
+                    "map_name": "Ascent",
+                    "game_mode": "Competitive",
+                    "result": "Victory",
+                    "rounds_won": 13,
+                    "rounds_lost": 8,
+                    "confidence_score": 0.95,
+                    "extractor_engine": "heuristic-ocr",
+                    "tactical_takeaways": ["Great round conversions."],
+                    "persisted_as_match": True,
+                }
+            ),
+        ),
+    )
+    analysis = client.analyze_scoreboard(
+        "synthetic-base64",
+        game_name="TenZ",
+        tag_line="SEN",
+        save_to_history=True,
+    )
+    assert analysis["match_id"] == "vision-123"
+    assert analysis["map_name"] == "Ascent"
+    assert analysis["persisted_as_match"] is True

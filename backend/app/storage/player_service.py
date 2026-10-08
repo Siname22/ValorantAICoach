@@ -301,6 +301,24 @@ class PersistentPlayerService(PlayerService):
             "details": details,
         }
 
+    async def ingest_vision_match(
+        self,
+        match: PlayerMatch,
+        game_name: str,
+        tag_line: str,
+    ) -> bool:
+        params = {"game_name": game_name, "tag_line": tag_line}
+        key = request_key("matches", params)
+        await self._storage_call(
+            self.store.put,
+            key,
+            "matches",
+            params,
+            [match.model_dump()],
+            ["vision"],
+        )
+        return True
+
     async def close(self) -> None:
         try:
             await super().close()
