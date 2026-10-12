@@ -461,3 +461,85 @@ def test_api_client_auth_and_account_linking(monkeypatch):
     assert analytics["game_name"] == "TenZ"
     assert analytics["matches_analyzed"] == 5
     assert analytics["overall_attack_win_rate"] == 58.0
+
+    # Synergy evaluation
+    monkeypatch.setattr(
+        requests,
+        "post",
+        lambda *a, **kw: response(
+            200,
+            json.dumps(
+                {
+                    "map_name": "Ascent",
+                    "synergy_score": 90.0,
+                    "tier": "S",
+                    "role_distribution": {"Duelist": 1, "Initiator": 2},
+                    "utility_coverage": {"smokes": True},
+                    "strengths": ["Meta comp"],
+                    "weaknesses": [],
+                    "tactical_advice": [],
+                }
+            ),
+        ),
+    )
+    synergy = client.evaluate_composition_synergy("Ascent", ["Sova", "Omen"])
+    assert synergy["map_name"] == "Ascent"
+    assert synergy["synergy_score"] == 90.0
+    assert synergy["tier"] == "S"
+
+    # Counter picks
+    monkeypatch.setattr(
+        requests,
+        "post",
+        lambda *a, **kw: response(
+            200,
+            json.dumps(
+                {
+                    "map_name": "Ascent",
+                    "recommendations": [
+                        {
+                            "agent_name": "KAY/O",
+                            "role": "Initiator",
+                            "recommendation_score": 92.0,
+                            "counter_targets": ["Cypher"],
+                            "counter_rationale": ["Suppression"],
+                            "map_synergy_rationale": "Meta pick",
+                            "mastery_context": None,
+                        }
+                    ],
+                    "enemy_threat_assessment": [],
+                }
+            ),
+        ),
+    )
+    cp = client.get_counter_picks("Ascent", ["Cypher"])
+    assert cp["map_name"] == "Ascent"
+    assert cp["recommendations"][0]["agent_name"] == "KAY/O"
+
+    # Player counter picks
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda *a, **kw: response(
+            200,
+            json.dumps(
+                {
+                    "map_name": "Ascent",
+                    "recommendations": [
+                        {
+                            "agent_name": "KAY/O",
+                            "role": "Initiator",
+                            "recommendation_score": 96.0,
+                            "counter_targets": ["Cypher"],
+                            "counter_rationale": ["Suppression"],
+                            "map_synergy_rationale": "Meta pick",
+                            "mastery_context": "3 match(es) with 100% win rate.",
+                        }
+                    ],
+                    "enemy_threat_assessment": [],
+                }
+            ),
+        ),
+    )
+    pcp = client.get_player_counter_picks("TenZ", "SEN", "Ascent", ["Cypher"])
+    assert pcp["recommendations"][0]["mastery_context"] is not None
