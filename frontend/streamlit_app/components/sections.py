@@ -519,12 +519,15 @@ def render_scoreboard_vision_section(
             with col_i1:
                 st.metric("Mode", analysis.get("game_mode", "Competitive"))
             with col_i2:
-                conf = analysis.get("confidence_score", 0.9) * 100
-                st.metric("Vision Confidence", f"{conf:.0f}%")
+                conf = analysis.get("confidence_score")
+                if conf is not None:
+                    st.metric("Vision Confidence", f"{conf * 100:.0f}%")
+                else:
+                    st.metric("Vision Confidence", "Uncalibrated")
             with col_i3:
                 st.metric(
                     "Extractor",
-                    analysis.get("extractor_engine", "heuristic-ocr"),
+                    analysis.get("extractor_engine", "gemini-multimodal"),
                 )
 
             takeaways = analysis.get("tactical_takeaways", [])
@@ -560,6 +563,8 @@ def render_scoreboard_vision_section(
                     "history. You can now generate coaching reports based on this "
                     "match!"
                 )
+            elif analysis.get("persistence_note"):
+                st.info(f"ℹ️ {escape(str(analysis['persistence_note']))}")
 
 
 def render_replay_timeline_section(game_name: str, tag_line: str, client: Any) -> None:

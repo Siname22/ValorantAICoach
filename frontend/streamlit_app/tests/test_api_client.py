@@ -394,7 +394,7 @@ def test_api_client_auth_and_account_linking(monkeypatch):
                     "rounds_won": 13,
                     "rounds_lost": 8,
                     "confidence_score": 0.95,
-                    "extractor_engine": "heuristic-ocr",
+                    "extractor_engine": "gemini-multimodal",
                     "tactical_takeaways": ["Great round conversions."],
                     "persisted_as_match": True,
                 }

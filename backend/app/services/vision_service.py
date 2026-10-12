@@ -1,11 +1,19 @@
+"""Scoreboard screenshot extraction.
+
+Only data actually read from the image is returned. When no vision model is
+configured, or the model output is incomplete or invalid, extraction fails
+explicitly; the service never substitutes synthetic statistics.
+"""
+
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
 import os
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from backend.app.content.catalog import resolve_agent_name, resolve_map_name
@@ -14,10 +22,12 @@ from backend.app.schemas.vision_schemas import (
     ScoreboardPlayerRow,
 )
 from backend.app.services.player_service import PlayerMatch
+from pydantic import BaseModel, Field, NonNegativeInt, ValidationError
 
 logger = logging.getLogger(__name__)
 
 MAX_IMAGE_SIZE_BYTES = 15 * 1024 * 1024  # 15 MB
+MAX_SCOREBOARD_ROWS = 10
 
 
 class VisionError(Exception):
@@ -26,6 +36,14 @@ class VisionError(Exception):
 
 class InvalidImageError(VisionError):
     """Raised when an uploaded image is invalid, corrupt, or of unsupported type."""
+
+
+class VisionUnavailableError(VisionError):
+    """Raised when no vision model is configured or reachable."""
+
+
+class VisionExtractionError(VisionError):
+    """Raised when the model output cannot be trusted as a scoreboard reading."""
 
 
 def decode_and_validate_image(image_input: str | bytes) -> tuple[bytes, str]:
@@ -72,6 +90,88 @@ def decode_and_validate_image(image_input: str | bytes) -> tuple[bytes, str]:
     return raw_bytes, mime_type
 
 
+class _ModelRow(BaseModel):
+    """Strict shape required from the model for one scoreboard row."""
+
+    player_name: str = Field(min_length=1)
+    tag_line: str | None = None
+    agent: str = Field(min_length=1)
+    team: Literal["friendly", "enemy", "blue", "red", "unknown"] = "unknown"
+    score: NonNegativeInt | None = None
+    kills: NonNegativeInt
+    deaths: NonNegativeInt
+    assists: NonNegativeInt
+    damage_per_round: float | None = Field(default=None, ge=0)
+    first_bloods: NonNegativeInt | None = None
+    plants: NonNegativeInt | None = None
+    defuses: NonNegativeInt | None = None
+
+
+class _ModelScoreboard(BaseModel):
+    """Strict shape required from the model for a whole scoreboard."""
+
+    map_name: str = Field(min_length=1)
+    game_mode: str | None = None
+    result: Literal["Victory", "Defeat", "Draw"]
+    rounds_won: NonNegativeInt
+    rounds_lost: NonNegativeInt
+    scoreboard_rows: list[_ModelRow] = Field(
+        min_length=1, max_length=MAX_SCOREBOARD_ROWS
+    )
+    confidence_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    tactical_takeaways: list[str] = Field(default_factory=list, max_length=5)
+
+
+_PROMPT = (
+    "You are reading a VALORANT end-of-match scoreboard screenshot.\n"
+    "Return JSON only with: map_name, game_mode, result (Victory, Defeat or "
+    "Draw, from the friendly team's perspective), rounds_won, rounds_lost, "
+    "scoreboard_rows and confidence_score (0-1).\n"
+    "Each scoreboard row: player_name, tag_line, agent, team ('friendly' or "
+    "'enemy'), score (ACS), kills, deaths, assists, damage_per_round, "
+    "first_bloods, plants, defuses.\n"
+    "Only report values that are visible in the image. Use null for any value "
+    "you cannot read. Never estimate or invent numbers. If the image is not a "
+    'VALORANT scoreboard, return {"error": "not_a_scoreboard"}.\n'
+    "Optionally add up to 3 tactical_takeaways that cite the visible numbers."
+)
+
+
+def _row_to_schema(row: _ModelRow) -> ScoreboardPlayerRow:
+    return ScoreboardPlayerRow(
+        player_name=row.player_name.strip(),
+        tag_line=row.tag_line.strip() if row.tag_line else None,
+        agent=resolve_agent_name(row.agent),
+        team=row.team,
+        score=row.score,
+        kills=row.kills,
+        deaths=row.deaths,
+        assists=row.assists,
+        damage_per_round=row.damage_per_round,
+        first_bloods=row.first_bloods,
+        plants=row.plants,
+        defuses=row.defuses,
+    )
+
+
+def find_target_row(
+    rows: list[ScoreboardPlayerRow],
+    game_name: str | None,
+    tag_line: str | None,
+) -> ScoreboardPlayerRow | None:
+    """Return the row matching the requested player, never a guessed substitute."""
+    if not game_name:
+        return None
+    wanted = game_name.strip().casefold()
+    candidates = [r for r in rows if r.player_name.strip().casefold() == wanted]
+    if tag_line and len(candidates) > 1:
+        wanted_tag = tag_line.strip().casefold()
+        candidates = [
+            r for r in candidates if (r.tag_line or "").strip().casefold() == wanted_tag
+        ]
+    return candidates[0] if len(candidates) == 1 else None
+
+
 class ScoreboardVisionService:
     """Service to extract structured match data from scoreboard screenshots."""
 
@@ -80,7 +180,9 @@ class ScoreboardVisionService:
         api_key: str | None = None,
         model_name: str = "gemini-2.5-flash",
     ) -> None:
-        self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
+        self.api_key = (
+            api_key if api_key is not None else os.environ.get("GEMINI_API_KEY")
+        )
         self.model_name = model_name
 
     def _get_genai_client(self) -> Any:
@@ -94,7 +196,7 @@ class ScoreboardVisionService:
             logger.warning("google-genai package not installed for vision service")
             return None
         except Exception as exc:
-            logger.warning("Failed to initialize genai client: %s", exc)
+            logger.warning("Failed to initialize genai client: %s", type(exc).__name__)
             return None
 
     async def extract_scoreboard(
@@ -104,237 +206,83 @@ class ScoreboardVisionService:
         target_game_name: str | None = None,
         target_tag_line: str | None = None,
     ) -> ScoreboardAnalysisResponse:
-        """Analyze a match scoreboard screenshot and extract structured telemetry."""
+        """Read a scoreboard screenshot; fail explicitly instead of guessing."""
         raw_bytes, mime_type = decode_and_validate_image(image_data)
 
         client = self._get_genai_client()
-        if client is not None:
-            try:
-                return await self._extract_with_gemini(
-                    client,
-                    raw_bytes,
-                    mime_type,
-                    target_game_name=target_game_name,
-                    target_tag_line=target_tag_line,
-                )
-            except Exception as err:
-                logger.warning(
-                    "Gemini vision extraction failed, using heuristic fallback: %s",
-                    err,
-                )
+        if client is None:
+            raise VisionUnavailableError(
+                "Scoreboard vision is not configured (GEMINI_API_KEY missing). "
+                "No data was extracted."
+            )
 
-        return self._extract_heuristic_fallback(
-            raw_bytes,
+        try:
+            text = await asyncio.to_thread(self._generate, client, raw_bytes, mime_type)
+        except Exception as exc:
+            logger.warning("Gemini vision request failed: %s", type(exc).__name__)
+            raise VisionUnavailableError(
+                "The vision model could not be reached. No data was extracted."
+            ) from None
+
+        return self._parse_model_output(
+            text,
             target_game_name=target_game_name,
             target_tag_line=target_tag_line,
         )
 
-    async def _extract_with_gemini(
-        self,
-        client: Any,
-        raw_bytes: bytes,
-        mime_type: str,
-        *,
-        target_game_name: str | None = None,
-        target_tag_line: str | None = None,
-    ) -> ScoreboardAnalysisResponse:
+    def _generate(self, client: Any, raw_bytes: bytes, mime_type: str) -> str:
         from google.genai import types
-
-        prompt = (
-            "You are a professional VALORANT analytics computer vision system. "
-            "Examine this end-of-match scoreboard screenshot with extreme precision.\n"
-            "Extract the following structured match details:\n"
-            "- map_name: The map played (e.g., Ascent, Bind, Haven, Split, "
-            "Sunset, Lotus, Abyss)\n"
-            "- game_mode: Game mode (Competitive, Unrated, etc.)\n"
-            "- result: Victory, Defeat, or Draw\n"
-            "- rounds_won: Rounds won by the friendly team\n"
-            "- rounds_lost: Rounds lost by the friendly team\n"
-            "- scoreboard_rows: List of all 10 players with player_name, tag_line, "
-            "agent, team ('friendly' or 'enemy'), score (ACS), kills, deaths, "
-            "assists, damage_per_round (ADR), first_bloods, plants, defuses.\n"
-            f"- target_player_stats: Extract stats for player '{target_game_name}' "
-            "if specified, or the match MVP/friendly team top player.\n"
-            "- tactical_takeaways: 3 specific, data-backed tactical coaching "
-            "recommendations based on the scoreboard numbers."
-        )
 
         image_part = types.Part.from_bytes(data=raw_bytes, mime_type=mime_type)
         response = client.models.generate_content(
             model=self.model_name,
-            contents=[prompt, image_part],
+            contents=[_PROMPT, image_part],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
             ),
         )
+        return response.text or ""
 
-        data = json.loads(response.text)
-        match_id = f"vision-{uuid4().hex[:12]}"
-        map_name = resolve_map_name(data.get("map_name", "Ascent"))
-
-        rows = []
-        for r in data.get("scoreboard_rows", []):
-            rows.append(
-                ScoreboardPlayerRow(
-                    player_name=r.get("player_name", "Player"),
-                    tag_line=r.get("tag_line"),
-                    agent=resolve_agent_name(r.get("agent", "Jett")),
-                    team=r.get("team", "friendly"),
-                    score=int(r.get("score", 200)),
-                    kills=int(r.get("kills", 0)),
-                    deaths=int(r.get("deaths", 0)),
-                    assists=int(r.get("assists", 0)),
-                    damage_per_round=(
-                        float(r["damage_per_round"])
-                        if r.get("damage_per_round") is not None
-                        else None
-                    ),
-                    first_bloods=(
-                        int(r["first_bloods"])
-                        if r.get("first_bloods") is not None
-                        else None
-                    ),
-                    plants=int(r["plants"]) if r.get("plants") is not None else None,
-                    defuses=int(r["defuses"]) if r.get("defuses") is not None else None,
-                )
-            )
-
-        target_stats = None
-        target_dict = data.get("target_player_stats")
-        if target_dict:
-            target_stats = ScoreboardPlayerRow(
-                player_name=target_dict.get(
-                    "player_name", target_game_name or "Player"
-                ),
-                tag_line=target_dict.get("tag_line", target_tag_line),
-                agent=resolve_agent_name(target_dict.get("agent", "Jett")),
-                team=target_dict.get("team", "friendly"),
-                score=int(target_dict.get("score", 220)),
-                kills=int(target_dict.get("kills", 18)),
-                deaths=int(target_dict.get("deaths", 12)),
-                assists=int(target_dict.get("assists", 4)),
-                damage_per_round=(
-                    float(target_dict["damage_per_round"])
-                    if target_dict.get("damage_per_round") is not None
-                    else None
-                ),
-            )
-        elif rows:
-            target_stats = rows[0]
-
-        return ScoreboardAnalysisResponse(
-            match_id=match_id,
-            map_name=map_name,
-            game_mode=data.get("game_mode", "Competitive"),
-            result=data.get("result", "Victory"),
-            rounds_won=int(data.get("rounds_won", 13)),
-            rounds_lost=int(data.get("rounds_lost", 9)),
-            target_player_stats=target_stats,
-            scoreboard_rows=rows,
-            confidence_score=float(data.get("confidence_score", 0.95)),
-            extractor_engine="gemini-multimodal",
-            tactical_takeaways=data.get(
-                "tactical_takeaways",
-                [
-                    "Solid combat impact with positive duel differential.",
-                    "Focus on utility spacing in post-plant situations.",
-                ],
-            ),
-            persisted_as_match=False,
-        )
-
-    def _extract_heuristic_fallback(
+    def _parse_model_output(
         self,
-        raw_bytes: bytes,
+        text: str,
         *,
-        target_game_name: str | None = None,
-        target_tag_line: str | None = None,
+        target_game_name: str | None,
+        target_tag_line: str | None,
     ) -> ScoreboardAnalysisResponse:
-        """Deterministic heuristic fallback when vision model is offline."""
-        player_name = target_game_name or "Operator"
-        tag_line = target_tag_line or "VAL"
-        match_id = f"vision-{uuid4().hex[:12]}"
+        try:
+            data = json.loads(text)
+        except (TypeError, json.JSONDecodeError):
+            raise VisionExtractionError(
+                "The vision model did not return valid JSON."
+            ) from None
+        if not isinstance(data, dict):
+            raise VisionExtractionError("The vision model returned an invalid shape.")
+        if data.get("error"):
+            raise VisionExtractionError("The image was not recognised as a scoreboard.")
+        try:
+            board = _ModelScoreboard.model_validate(data)
+        except ValidationError:
+            raise VisionExtractionError(
+                "The scoreboard could not be read completely; required values "
+                "were missing or invalid."
+            ) from None
 
-        # Deterministic simulation based on bytes length for consistent testing
-        seed = len(raw_bytes) % 10
-        maps = ["Ascent", "Bind", "Haven", "Sunset", "Lotus"]
-        map_name = maps[seed % len(maps)]
-        rounds_won = 13
-        rounds_lost = 8 + (seed % 4)
-        kills = 18 + (seed % 8)
-        deaths = 11 + (seed % 5)
-        assists = 5 + (seed % 4)
-        score = 230 + (seed * 10)
-
-        target_stats = ScoreboardPlayerRow(
-            player_name=player_name,
-            tag_line=tag_line,
-            agent="Jett",
-            team="friendly",
-            score=score,
-            kills=kills,
-            deaths=deaths,
-            assists=assists,
-            damage_per_round=152.0,
-            first_bloods=4,
-            plants=2,
-            defuses=1,
-        )
-
-        rows = [
-            target_stats,
-            ScoreboardPlayerRow(
-                player_name="Teammate1",
-                tag_line="EU1",
-                agent="Omen",
-                team="friendly",
-                score=210,
-                kills=16,
-                deaths=13,
-                assists=8,
-            ),
-            ScoreboardPlayerRow(
-                player_name="Teammate2",
-                tag_line="EU1",
-                agent="Sova",
-                team="friendly",
-                score=185,
-                kills=13,
-                deaths=14,
-                assists=11,
-            ),
-            ScoreboardPlayerRow(
-                player_name="EnemyTop",
-                tag_line="TR1",
-                agent="Reyna",
-                team="enemy",
-                score=245,
-                kills=21,
-                deaths=15,
-                assists=3,
-            ),
-        ]
-
-        takeaways = [
-            (
-                f"Strong combat impact on {map_name} with {kills} kills "
-                f"and a {round(kills / max(1, deaths), 2)} K/D ratio."
-            ),
-            "Converted 4 opening duels; maintain aggressive early-round positioning.",
-            "Round differential (+5) indicates solid team coordination on buy rounds.",
-        ]
-
+        rows = [_row_to_schema(r) for r in board.scoreboard_rows]
+        takeaways = [t.strip() for t in board.tactical_takeaways if t.strip()]
         return ScoreboardAnalysisResponse(
-            match_id=match_id,
-            map_name=map_name,
-            game_mode="Competitive",
-            result="Victory",
-            rounds_won=rounds_won,
-            rounds_lost=rounds_lost,
-            target_player_stats=target_stats,
+            match_id=f"vision-{uuid4().hex[:12]}",
+            map_name=resolve_map_name(board.map_name),
+            game_mode=board.game_mode or "Unknown",
+            result=board.result,
+            rounds_won=board.rounds_won,
+            rounds_lost=board.rounds_lost,
+            target_player_stats=find_target_row(
+                rows, target_game_name, target_tag_line
+            ),
             scoreboard_rows=rows,
-            confidence_score=0.88,
-            extractor_engine="heuristic-ocr",
+            confidence_score=board.confidence_score,
+            extractor_engine="gemini-multimodal",
             tactical_takeaways=takeaways,
             persisted_as_match=False,
         )
@@ -345,26 +293,38 @@ class ScoreboardVisionService:
         target_game_name: str,
         target_tag_line: str,
     ) -> PlayerMatch:
-        """Convert a vision-extracted scoreboard into domain PlayerMatch."""
-        stats = analysis.target_player_stats or (
-            analysis.scoreboard_rows[0] if analysis.scoreboard_rows else None
-        )
-        kills = stats.kills if stats else 0
-        deaths = stats.deaths if stats else 0
-        assists = stats.assists if stats else 0
-        agent = stats.agent if stats else "Unknown"
-        score = stats.score if stats else None
+        """Convert the requested player's extracted row into a domain match.
 
+        Raises VisionExtractionError when that player was not found on the
+        scoreboard, so another player's stats are never stored as theirs.
+        """
+        stats = analysis.target_player_stats
+        if (
+            stats is None
+            or stats.player_name.strip().casefold()
+            != target_game_name.strip().casefold()
+        ):
+            stats = find_target_row(
+                analysis.scoreboard_rows, target_game_name, target_tag_line
+            )
+        if stats is None:
+            raise VisionExtractionError(
+                f"Player '{target_game_name}#{target_tag_line}' was not found "
+                "on the scoreboard."
+            )
         return PlayerMatch(
             match_id=analysis.match_id,
             map_name=analysis.map_name,
             mode=analysis.game_mode,
+            # The screenshot does not carry the match time; this is ingestion time.
             timestamp=datetime.now(UTC).isoformat(),
             result=analysis.result,
-            kills=kills,
-            deaths=deaths,
-            assists=assists,
-            score=score,
-            agent_name=resolve_agent_name(agent),
-            provider="tracker",
+            kills=stats.kills,
+            deaths=stats.deaths,
+            assists=stats.assists,
+            # Scoreboards show ACS, not total score.
+            score=None,
+            provider_score=stats.score,
+            agent_name=resolve_agent_name(stats.agent),
+            provider="vision",
         )

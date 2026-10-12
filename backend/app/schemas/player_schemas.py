@@ -49,7 +49,7 @@ class PlayerMatchResponse(BaseModel):
         None, description="Total match score, when its meaning is confirmed"
     )
     agent_name: str = Field(..., description="Agent played in this match")
-    provider: Literal["tracker", "henrik", "riot"] | None = Field(
+    provider: Literal["tracker", "henrik", "riot", "vision"] | None = Field(
         None, description="Source of the match summary"
     )
     provider_score: int | None = Field(

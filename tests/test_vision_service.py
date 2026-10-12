@@ -10,13 +10,18 @@ from alembic.config import Config
 from backend.app.api.vision_router import get_vision_service
 from backend.app.core.config import get_settings
 from backend.app.dependencies.provider_deps import get_player_service
-from backend.app.schemas.vision_schemas import ScoreboardAnalysisResponse
+from backend.app.schemas.vision_schemas import (
+    ScoreboardAnalysisResponse,
+    ScoreboardPlayerRow,
+)
 from backend.app.services.vision_service import (
     InvalidImageError,
     ScoreboardVisionService,
+    VisionExtractionError,
+    VisionUnavailableError,
     decode_and_validate_image,
 )
-from backend.app.storage.models import MatchRecord
+from backend.app.storage.models import MatchRecord, PlayerMatchHistory
 from backend.app.storage.player_service import PersistentPlayerService
 from backend.app.storage.repository import SQLPlayerStore
 from backend.main import app
@@ -58,27 +63,22 @@ def storage_database(monkeypatch, tmp_path):
 
 
 def test_decode_and_validate_image_valid_formats():
-    # PNG raw bytes
     raw, mime = decode_and_validate_image(VALID_PNG_BYTES)
     assert raw == VALID_PNG_BYTES
     assert mime == "image/png"
 
-    # Base64 string
     raw_b64, mime_b64 = decode_and_validate_image(VALID_PNG_BASE64)
     assert raw_b64 == VALID_PNG_BYTES
     assert mime_b64 == "image/png"
 
-    # Data URL
     data_url = f"data:image/png;base64,{VALID_PNG_BASE64}"
     raw_url, mime_url = decode_and_validate_image(data_url)
     assert raw_url == VALID_PNG_BYTES
     assert mime_url == "image/png"
 
-    # JPEG
     _, mime_jpg = decode_and_validate_image(VALID_JPEG_BYTES)
     assert mime_jpg == "image/jpeg"
 
-    # WebP
     _, mime_webp = decode_and_validate_image(VALID_WEBP_BYTES)
     assert mime_webp == "image/webp"
 
@@ -99,22 +99,35 @@ def test_decode_and_validate_image_invalid_cases():
 
 
 @pytest.mark.asyncio
-async def test_extract_scoreboard_heuristic_fallback():
+async def test_extract_scoreboard_no_api_key_raises_unavailable():
     service = ScoreboardVisionService(api_key="")
-    analysis = await service.extract_scoreboard(
-        VALID_PNG_BYTES,
-        target_game_name="TenZ",
-        target_tag_line="SEN",
-    )
+    with pytest.raises(VisionUnavailableError, match="GEMINI_API_KEY missing"):
+        await service.extract_scoreboard(
+            VALID_PNG_BYTES,
+            target_game_name="TenZ",
+            target_tag_line="SEN",
+        )
 
-    assert analysis.match_id.startswith("vision-")
-    assert analysis.result == "Victory"
-    assert analysis.extractor_engine == "heuristic-ocr"
-    assert analysis.confidence_score >= 0.8
-    assert analysis.target_player_stats is not None
-    assert analysis.target_player_stats.player_name == "TenZ"
-    assert len(analysis.scoreboard_rows) == 4
-    assert len(analysis.tactical_takeaways) == 3
+
+@pytest.mark.asyncio
+async def test_extract_scoreboard_unparseable_output_raises_extraction_error(
+    monkeypatch,
+):
+    service = ScoreboardVisionService(api_key="synthetic-test-key")
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = "Sorry, I cannot read this scoreboard."
+    mock_client.models.generate_content.return_value = mock_response
+    monkeypatch.setattr(service, "_get_genai_client", lambda: mock_client)
+
+    with pytest.raises(
+        VisionExtractionError, match="The vision model did not return valid JSON"
+    ):
+        await service.extract_scoreboard(
+            VALID_PNG_BASE64,
+            target_game_name="Derke",
+            target_tag_line="FNC",
+        )
 
 
 @pytest.mark.asyncio
@@ -152,6 +165,7 @@ async def test_extract_scoreboard_gemini_multimodal_mocked(monkeypatch):
     assert analysis.target_player_stats.player_name == "Derke"
     assert analysis.target_player_stats.agent == "Jett"
     assert analysis.target_player_stats.kills == 24
+    assert analysis.target_player_stats.score == 280
 
 
 def test_convert_to_player_match():
@@ -164,34 +178,147 @@ def test_convert_to_player_match():
         rounds_won=13,
         rounds_lost=7,
         confidence_score=0.92,
-        extractor_engine="heuristic-ocr",
+        extractor_engine="gemini-multimodal",
         tactical_takeaways=["Great play."],
         persisted_as_match=False,
+        target_player_stats=ScoreboardPlayerRow(
+            player_name="TenZ",
+            tag_line="SEN",
+            agent="Jett",
+            team="friendly",
+            score=310,
+            kills=25,
+            deaths=10,
+            assists=4,
+            damage_per_round=180.0,
+        ),
     )
 
     match = service.convert_to_player_match(analysis, "TenZ", "SEN")
     assert match.match_id == "vision-test-123"
     assert match.map_name == "Ascent"
     assert match.result == "Victory"
-    assert match.provider == "tracker"
+    assert match.provider == "vision"
+    assert match.score is None
+    assert match.provider_score == 310
+    assert match.agent_name == "Jett"
+    assert match.kills == 25
+    assert match.deaths == 10
+    assert match.assists == 4
+
+
+def test_convert_to_player_match_mismatched_target_raises():
+    service = ScoreboardVisionService()
+    analysis = ScoreboardAnalysisResponse(
+        match_id="vision-test-123",
+        map_name="Ascent",
+        game_mode="Competitive",
+        result="Victory",
+        rounds_won=13,
+        rounds_lost=7,
+        extractor_engine="gemini-multimodal",
+        target_player_stats=ScoreboardPlayerRow(
+            player_name="Chronicle",
+            tag_line="FNC",
+            agent="Breach",
+            kills=10,
+            deaths=12,
+            assists=15,
+        ),
+    )
+
+    with pytest.raises(VisionExtractionError, match="was not found on the scoreboard"):
+        service.convert_to_player_match(analysis, "TenZ", "SEN")
 
 
 def test_api_analyze_scoreboard_endpoint():
-    with TestClient(app) as client:
-        res = client.post(
-            "/vision/scoreboard/analyze",
-            json={
-                "image_base64": VALID_PNG_BASE64,
-                "game_name": "TenZ",
-                "tag_line": "SEN",
-                "save_to_history": False,
-            },
+    mock_svc = MagicMock(spec=ScoreboardVisionService)
+    mock_svc.extract_scoreboard = AsyncMock(
+        return_value=ScoreboardAnalysisResponse(
+            match_id="vision-mock-123",
+            map_name="Ascent",
+            game_mode="Competitive",
+            result="Victory",
+            rounds_won=13,
+            rounds_lost=7,
+            extractor_engine="gemini-multimodal",
+            target_player_stats=ScoreboardPlayerRow(
+                player_name="TenZ",
+                tag_line="SEN",
+                agent="Jett",
+                team="friendly",
+                score=300,
+                kills=20,
+                deaths=10,
+                assists=5,
+            ),
         )
-        assert res.status_code == 200
-        data = res.json()
-        assert data["match_id"].startswith("vision-")
-        assert data["extractor_engine"] == "heuristic-ocr"
-        assert data["target_player_stats"]["player_name"] == "TenZ"
+    )
+    app.dependency_overrides[get_vision_service] = lambda: mock_svc
+    try:
+        with TestClient(app) as client:
+            res = client.post(
+                "/vision/scoreboard/analyze",
+                json={
+                    "image_base64": VALID_PNG_BASE64,
+                    "game_name": "TenZ",
+                    "tag_line": "SEN",
+                    "save_to_history": False,
+                },
+            )
+            assert res.status_code == 200
+            data = res.json()
+            assert data["match_id"] == "vision-mock-123"
+            assert data["extractor_engine"] == "gemini-multimodal"
+            assert data["target_player_stats"]["player_name"] == "TenZ"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_api_analyze_scoreboard_unavailable_status():
+    mock_svc = MagicMock(spec=ScoreboardVisionService)
+    mock_svc.extract_scoreboard = AsyncMock(
+        side_effect=VisionUnavailableError(
+            "Scoreboard vision is not configured (GEMINI_API_KEY missing)."
+        )
+    )
+    app.dependency_overrides[get_vision_service] = lambda: mock_svc
+    try:
+        with TestClient(app) as client:
+            res = client.post(
+                "/vision/scoreboard/analyze",
+                json={
+                    "image_base64": VALID_PNG_BASE64,
+                    "game_name": "TenZ",
+                    "tag_line": "SEN",
+                },
+            )
+            assert res.status_code == 503
+            assert "GEMINI_API_KEY missing" in res.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_api_analyze_scoreboard_extraction_error_status():
+    mock_svc = MagicMock(spec=ScoreboardVisionService)
+    mock_svc.extract_scoreboard = AsyncMock(
+        side_effect=VisionExtractionError("Image was unreadable")
+    )
+    app.dependency_overrides[get_vision_service] = lambda: mock_svc
+    try:
+        with TestClient(app) as client:
+            res = client.post(
+                "/vision/scoreboard/analyze",
+                json={
+                    "image_base64": VALID_PNG_BASE64,
+                    "game_name": "TenZ",
+                    "tag_line": "SEN",
+                },
+            )
+            assert res.status_code == 422
+            assert "Image was unreadable" in res.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_api_analyze_scoreboard_invalid_image_fails():
@@ -209,34 +336,84 @@ def test_api_analyze_scoreboard_invalid_image_fails():
 
 
 def test_api_upload_scoreboard_file():
-    with TestClient(app) as client:
-        res = client.post(
-            "/vision/scoreboard/upload",
-            files={"file": ("scoreboard.png", VALID_PNG_BYTES, "image/png")},
-            data={
-                "game_name": "Boaster",
-                "tag_line": "FNC",
-                "save_to_history": "false",
-            },
+    mock_svc = MagicMock(spec=ScoreboardVisionService)
+    mock_svc.extract_scoreboard = AsyncMock(
+        return_value=ScoreboardAnalysisResponse(
+            match_id="vision-mock-456",
+            map_name="Lotus",
+            game_mode="Competitive",
+            result="Victory",
+            rounds_won=13,
+            rounds_lost=9,
+            extractor_engine="gemini-multimodal",
+            target_player_stats=ScoreboardPlayerRow(
+                player_name="Boaster",
+                tag_line="FNC",
+                agent="Omen",
+                score=195,
+                kills=14,
+                deaths=13,
+                assists=12,
+            ),
         )
-        assert res.status_code == 200
-        data = res.json()
-        assert data["target_player_stats"]["player_name"] == "Boaster"
+    )
+    app.dependency_overrides[get_vision_service] = lambda: mock_svc
+    try:
+        with TestClient(app) as client:
+            res = client.post(
+                "/vision/scoreboard/upload",
+                files={"file": ("scoreboard.png", VALID_PNG_BYTES, "image/png")},
+                data={
+                    "game_name": "Boaster",
+                    "tag_line": "FNC",
+                    "save_to_history": "false",
+                },
+            )
+            assert res.status_code == 200
+            data = res.json()
+            assert data["target_player_stats"]["player_name"] == "Boaster"
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_api_player_scoreboard_convenience_endpoint():
-    with TestClient(app) as client:
-        res = client.post(
-            "/players/Chronicle/FNC/scoreboard",
-            json={
-                "image_base64": VALID_PNG_BASE64,
-                "save_to_history": False,
-            },
+    mock_svc = MagicMock(spec=ScoreboardVisionService)
+    mock_svc.extract_scoreboard = AsyncMock(
+        return_value=ScoreboardAnalysisResponse(
+            match_id="vision-mock-789",
+            map_name="Bind",
+            game_mode="Competitive",
+            result="Victory",
+            rounds_won=13,
+            rounds_lost=11,
+            extractor_engine="gemini-multimodal",
+            target_player_stats=ScoreboardPlayerRow(
+                player_name="Chronicle",
+                tag_line="FNC",
+                agent="Breach",
+                score=230,
+                kills=18,
+                deaths=14,
+                assists=9,
+            ),
         )
-        assert res.status_code == 200
-        data = res.json()
-        assert data["target_player_stats"]["player_name"] == "Chronicle"
-        assert data["target_player_stats"]["tag_line"] == "FNC"
+    )
+    app.dependency_overrides[get_vision_service] = lambda: mock_svc
+    try:
+        with TestClient(app) as client:
+            res = client.post(
+                "/players/Chronicle/FNC/scoreboard",
+                json={
+                    "image_base64": VALID_PNG_BASE64,
+                    "save_to_history": False,
+                },
+            )
+            assert res.status_code == 200
+            data = res.json()
+            assert data["target_player_stats"]["player_name"] == "Chronicle"
+            assert data["target_player_stats"]["tag_line"] == "FNC"
+    finally:
+        app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio
@@ -255,6 +432,27 @@ async def test_vision_match_persisted_to_storage(storage_database):
 
         app.dependency_overrides[get_player_service] = lambda: service
         vision_svc = ScoreboardVisionService()
+        mock_analysis = ScoreboardAnalysisResponse(
+            match_id="vision-aspas-101",
+            map_name="Ascent",
+            game_mode="Competitive",
+            result="Victory",
+            rounds_won=13,
+            rounds_lost=8,
+            extractor_engine="gemini-multimodal",
+            target_player_stats=ScoreboardPlayerRow(
+                player_name="Aspas",
+                tag_line="LEV",
+                agent="Jett",
+                team="friendly",
+                score=340,
+                kills=26,
+                deaths=11,
+                assists=3,
+                damage_per_round=192.0,
+            ),
+        )
+        vision_svc.extract_scoreboard = AsyncMock(return_value=mock_analysis)
         app.dependency_overrides[get_vision_service] = lambda: vision_svc
 
         with TestClient(app) as client:
@@ -272,11 +470,24 @@ async def test_vision_match_persisted_to_storage(storage_database):
         # Verify DB directly has the MatchRecord
         with Session(engine) as session:
             match_row = session.scalar(
-                select(MatchRecord).where(MatchRecord.match_id == data["match_id"])
+                select(MatchRecord).where(MatchRecord.match_id == "vision-aspas-101")
             )
             assert match_row is not None
-            assert match_row.map_name in ["Ascent", "Bind", "Haven", "Sunset", "Lotus"]
-            assert match_row.provider == "tracker"
+            assert match_row.map_name == "Ascent"
+            assert match_row.provider == "vision"
+
+            history_row = session.scalar(
+                select(PlayerMatchHistory).where(
+                    PlayerMatchHistory.match_id == "vision-aspas-101"
+                )
+            )
+            assert history_row is not None
+            assert history_row.payload["provider"] == "vision"
+            assert history_row.payload["score"] is None
+            assert history_row.payload["provider_score"] == 340
+            assert history_row.payload["kills"] == 26
+            assert history_row.payload["deaths"] == 11
+            assert history_row.payload["assists"] == 3
 
     finally:
         app.dependency_overrides.clear()

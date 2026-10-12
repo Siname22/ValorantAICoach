@@ -76,7 +76,7 @@ class PlayerMatch(BaseModel):
     assists: int
     score: int | None = None
     agent_name: str
-    provider: Literal["tracker", "henrik", "riot"] | None = None
+    provider: Literal["tracker", "henrik", "riot", "vision"] | None = None
     provider_score: int | None = None
 
 

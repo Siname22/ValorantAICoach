@@ -14,7 +14,7 @@ class ScoreboardPlayerRow(BaseModel):
     team: Literal["friendly", "enemy", "blue", "red", "unknown"] = Field(
         "unknown", description="Team assignment on scoreboard"
     )
-    score: int = Field(0, description="Average Combat Score (ACS) or total score")
+    score: int | None = Field(None, description="Average Combat Score (ACS), if read")
     kills: int = Field(..., description="Kills count")
     deaths: int = Field(..., description="Deaths count")
     assists: int = Field(..., description="Assists count")
@@ -62,11 +62,14 @@ class ScoreboardAnalysisResponse(BaseModel):
     scoreboard_rows: list[ScoreboardPlayerRow] = Field(
         default_factory=list, description="All parsed player rows on the scoreboard"
     )
-    confidence_score: float = Field(
-        ..., ge=0.0, le=1.0, description="Extraction confidence score"
+    confidence_score: float | None = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Model self-reported confidence (uncalibrated), if provided",
     )
     extractor_engine: str = Field(
-        ..., description="Engine used (e.g., gemini-multimodal, heuristic-ocr)"
+        ..., description="Engine used to read the image (gemini-multimodal)"
     )
     tactical_takeaways: list[str] = Field(
         default_factory=list,
@@ -74,4 +77,7 @@ class ScoreboardAnalysisResponse(BaseModel):
     )
     persisted_as_match: bool = Field(
         False, description="Whether the match was saved into player match history"
+    )
+    persistence_note: str | None = Field(
+        None, description="Why a requested save was skipped, if it was"
     )
