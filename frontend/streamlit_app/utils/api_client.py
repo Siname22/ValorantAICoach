@@ -333,6 +333,55 @@ class APIClient:
             f"{quote(tag_line, safe='')}/timeline-analytics{query}"
         )
 
+    def evaluate_composition_synergy(
+        self,
+        map_name: str,
+        allied_agents: list[str],
+        enemy_agents: list[str] | None = None,
+    ) -> dict[str, Any]:
+        return self._post(
+            "/recommendations/composition/synergy",
+            {
+                "map_name": map_name,
+                "allied_agents": allied_agents,
+                "enemy_agents": enemy_agents or [],
+            },
+        )
+
+    def get_counter_picks(
+        self,
+        map_name: str,
+        enemy_agents: list[str],
+        allied_agents: list[str] | None = None,
+    ) -> dict[str, Any]:
+        return self._post(
+            "/recommendations/counter-picks",
+            {
+                "map_name": map_name,
+                "enemy_agents": enemy_agents,
+                "allied_agents": allied_agents or [],
+            },
+        )
+
+    def get_player_counter_picks(
+        self,
+        game_name: str,
+        tag_line: str,
+        map_name: str,
+        enemy_agents: list[str] | None = None,
+        allied_agents: list[str] | None = None,
+    ) -> dict[str, Any]:
+        params = [f"map_name={quote(map_name, safe='')}"]
+        for e in enemy_agents or []:
+            params.append(f"enemy_agents={quote(e, safe='')}")
+        for a in allied_agents or []:
+            params.append(f"allied_agents={quote(a, safe='')}")
+        query = f"?{'&'.join(params)}"
+        return self._request(
+            f"/players/{quote(game_name, safe='')}/"
+            f"{quote(tag_line, safe='')}/counter-picks{query}"
+        )
+
 
 def get_api_client() -> APIClient:
     return APIClient()

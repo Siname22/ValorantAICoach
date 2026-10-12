@@ -322,6 +322,9 @@ def render_player_search_page() -> None:
     render_player_progression_section(result["game_name"], result["tag_line"], client)
     render_scoreboard_vision_section(result["game_name"], result["tag_line"], client)
     render_replay_timeline_section(result["game_name"], result["tag_line"], client)
+    render_team_synergy_and_counter_picks_section(
+        result["game_name"], result["tag_line"], client
+    )
 
     with st.expander("📜 Historical Coaching Reports", expanded=False):
         if st.button("Fetch Report History", key="btn_fetch_history"):
@@ -749,6 +752,250 @@ def render_replay_timeline_section(game_name: str, tag_line: str, client: Any) -
                     st.markdown("##### 💡 Match Tactical Takeaways")
                     for t in takeaways:
                         st.markdown(f"- 📌 {escape(str(t))}")
+
+
+VALORANT_MAPS = [
+    "Ascent",
+    "Bind",
+    "Haven",
+    "Split",
+    "Lotus",
+    "Sunset",
+    "Breeze",
+    "Icebox",
+    "Abyss",
+    "Fracture",
+    "Pearl",
+]
+
+VALORANT_AGENTS = [
+    "Astra",
+    "Breach",
+    "Brimstone",
+    "Chamber",
+    "Clove",
+    "Cypher",
+    "Deadlock",
+    "Fade",
+    "Gekko",
+    "Harbor",
+    "Iso",
+    "Jett",
+    "KAY/O",
+    "Killjoy",
+    "Neon",
+    "Omen",
+    "Phoenix",
+    "Raze",
+    "Reyna",
+    "Sage",
+    "Skye",
+    "Sova",
+    "Tejo",
+    "Viper",
+    "Vyse",
+    "Yoru",
+]
+
+
+def render_team_synergy_and_counter_picks_section(
+    game_name: str, tag_line: str, client: Any
+) -> None:
+    """Render interactive Team Synergy & Counter-Pick Assistant."""
+    with st.expander("🎯 Team Synergy & Counter-Pick Assistant", expanded=False):
+        tab_synergy, tab_counter = st.tabs(
+            ["⚔️ Team Synergy Calculator", "🛡️ Counter-Pick Recommendations"]
+        )
+
+        with tab_synergy:
+            st.markdown(
+                "Evaluate role distribution, essential tactical utility coverage, "
+                "and competitive map affinity for your team composition."
+            )
+            col_m, col_al = st.columns([1, 2])
+            with col_m:
+                selected_map = st.selectbox(
+                    "Map",
+                    options=VALORANT_MAPS,
+                    key="sb_synergy_map",
+                )
+            with col_al:
+                allied_picks = st.multiselect(
+                    "Allied Agents (1 to 5)",
+                    options=VALORANT_AGENTS,
+                    default=["Sova", "Omen", "Killjoy"],
+                    max_selections=5,
+                    key="ms_synergy_allies",
+                )
+
+            enemy_picks = st.multiselect(
+                "Enemy Agents (Optional, up to 5)",
+                options=VALORANT_AGENTS,
+                max_selections=5,
+                key="ms_synergy_enemies",
+            )
+
+            if st.button("Evaluate Composition Synergy", key="btn_eval_synergy"):
+                if not allied_picks:
+                    st.warning("Please select at least one allied agent.")
+                else:
+                    with st.spinner("Analyzing utility coverage and map affinity..."):
+                        try:
+                            syn = client.evaluate_composition_synergy(
+                                selected_map, allied_picks, enemy_picks
+                            )
+                            st.session_state["synergy_result"] = syn
+                        except APIClientError as exc:
+                            st.error(f"Failed to evaluate synergy: {exc}")
+
+            syn = st.session_state.get("synergy_result")
+            if syn:
+                st.markdown("---")
+                score = syn.get("synergy_score", 0.0)
+                tier = syn.get("tier", "B")
+                tier_color = (
+                    "🟢" if tier in ["S", "A"] else ("🟡" if tier == "B" else "🔴")
+                )
+
+                col_s1, col_s2 = st.columns(2)
+                with col_s1:
+                    st.metric("Synergy Score", f"{score:.1f} / 100")
+                with col_s2:
+                    st.metric("Composition Tier", f"{tier_color} Tier {tier}")
+
+                # Roles breakdown
+                roles = syn.get("role_distribution", {})
+                col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+                with col_r1:
+                    st.metric("Duelists", roles.get("Duelist", 0))
+                with col_r2:
+                    st.metric("Initiators", roles.get("Initiator", 0))
+                with col_r3:
+                    st.metric("Controllers", roles.get("Controller", 0))
+                with col_r4:
+                    st.metric("Sentinels", roles.get("Sentinel", 0))
+
+                # Utility coverage checklist
+                cov = syn.get("utility_coverage", {})
+                st.markdown("##### 🛠️ Tactical Utility Coverage")
+                col_u1, col_u2, col_u3, col_u4, col_u5 = st.columns(5)
+                with col_u1:
+                    st.markdown(f"**Smokes:** {'✅' if cov.get('smokes') else '❌'}")
+                with col_u2:
+                    st.markdown(f"**Flashes:** {'✅' if cov.get('flashes') else '❌'}")
+                with col_u3:
+                    st.markdown(f"**Recon:** {'✅' if cov.get('recon_info') else '❌'}")
+                with col_u4:
+                    st.markdown(
+                        f"**Anchor:** {'✅' if cov.get('sentinel_anchor') else '❌'}"
+                    )
+                with col_u5:
+                    st.markdown(
+                        f"**Entry:** {'✅' if cov.get('entry_duelist') else '❌'}"
+                    )
+
+                strengths = syn.get("strengths", [])
+                weaknesses = syn.get("weaknesses", [])
+                advice = syn.get("tactical_advice", [])
+
+                col_st, col_wk = st.columns(2)
+                with col_st:
+                    if strengths:
+                        st.markdown("##### 🟢 Strengths")
+                        for s in strengths:
+                            st.markdown(f"- {escape(str(s))}")
+                with col_wk:
+                    if weaknesses:
+                        st.markdown("##### 🔴 Weaknesses")
+                        for w in weaknesses:
+                            st.markdown(f"- {escape(str(w))}")
+
+                if advice:
+                    st.markdown("##### 💡 Strategic Advice")
+                    for a in advice:
+                        st.markdown(f"- 🎯 {escape(str(a))}")
+
+        with tab_counter:
+            st.markdown(
+                "Receive agent recommendations to counter the opposing lineup, "
+                "personalized with your historical agent win rate and playstyle."
+            )
+            col_cm, col_ce = st.columns([1, 2])
+            with col_cm:
+                cp_map = st.selectbox("Map", options=VALORANT_MAPS, key="sb_cp_map")
+            with col_ce:
+                cp_enemies = st.multiselect(
+                    "Enemy Agents to Counter (1 to 5)",
+                    options=VALORANT_AGENTS,
+                    default=["Cypher", "Jett"],
+                    max_selections=5,
+                    key="ms_cp_enemies",
+                )
+
+            cp_allies = st.multiselect(
+                "Allied Agents Already Locked (Optional)",
+                options=VALORANT_AGENTS,
+                max_selections=4,
+                key="ms_cp_allies",
+            )
+
+            if st.button(
+                "Get Counter-Pick Recommendations", key="btn_get_counter_picks"
+            ):
+                if not cp_enemies:
+                    st.warning("Please select at least one enemy agent to counter.")
+                else:
+                    with st.spinner(
+                        "Calculating counter-utility and player mastery..."
+                    ):
+                        try:
+                            cp_res = client.get_player_counter_picks(
+                                game_name, tag_line, cp_map, cp_enemies, cp_allies
+                            )
+                            st.session_state["counter_picks_result"] = cp_res
+                        except APIClientError as exc:
+                            st.error(f"Failed to fetch counter-picks: {exc}")
+
+            cp_res = st.session_state.get("counter_picks_result")
+            if cp_res:
+                st.markdown("---")
+                threats = cp_res.get("enemy_threat_assessment", [])
+                if threats:
+                    st.markdown("##### ⚠️ Opposing Lineup Threats")
+                    for th in threats:
+                        st.markdown(f"- 🚨 {escape(str(th))}")
+
+                recs = cp_res.get("recommendations", [])
+                if recs:
+                    st.markdown("##### 🏆 Top Ranked Counter-Picks")
+                    for idx, rec in enumerate(recs, start=1):
+                        name = rec.get("agent_name", "Unknown")
+                        role = rec.get("role", "Unknown")
+                        rec_score = rec.get("recommendation_score", 0.0)
+                        targets = rec.get("counter_targets", [])
+                        rats = rec.get("counter_rationale", [])
+                        map_rat = rec.get("map_synergy_rationale", "")
+                        mastery = rec.get("mastery_context")
+
+                        with st.container():
+                            st.markdown(
+                                f"### #{idx} **{escape(name)}** ({escape(role)}) — "
+                                f"Match Fitness: **{rec_score:.0f}/100**"
+                            )
+                            if targets:
+                                st.markdown(
+                                    f"🎯 **Counters:** "
+                                    f"{', '.join(escape(t) for t in targets)}"
+                                )
+                                for r in rats:
+                                    st.markdown(f"  - ⚡ {escape(str(r))}")
+                            if map_rat:
+                                st.markdown(
+                                    f"🗺️ **Map & Team Synergy:** {escape(map_rat)}"
+                                )
+                            if mastery:
+                                st.info(f"📊 **Your History:** {escape(mastery)}")
+                            st.markdown("---")
 
 
 def render_coaching_report_card(report: dict[str, Any]) -> None:
