@@ -1,0 +1,4655 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ValorantAICoach",
+    "description": "Professional Valorant AI Coach API providing aggregated data from multiple providers (Riot, Henrik, Tracker).",
+    "contact": {
+      "name": "Valorant AI Coach Team",
+      "url": "https://github.com/Siname22/ValorantAICoach"
+    },
+    "license": {
+      "name": "Proprietary"
+    },
+    "version": "0.4.0"
+  },
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Register a new user account",
+        "description": "Create a new user with an email and secure hashed password.",
+        "operationId": "register_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserRegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Authenticate and receive JWT access token",
+        "description": "Authenticate with email and password to receive a bearer access token.",
+        "operationId": "login_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Get current authenticated user profile",
+        "description": "Return profile details for the currently authenticated user.",
+        "operationId": "get_me_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/auth/me/accounts": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "List all player identities linked to current user",
+        "description": "Retrieve all Riot player identities linked to the authenticated user.",
+        "operationId": "list_linked_accounts_auth_me_accounts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LinkedPlayerAccountResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Linked Accounts Auth Me Accounts Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Link a Valorant player identity to current user",
+        "description": "Link a Riot/Valorant in-game identity (name#tag) to the user's account.",
+        "operationId": "link_player_account_auth_me_accounts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkPlayerAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkedPlayerAccountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/auth/me/accounts/{account_id}": {
+      "delete": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Remove a linked player identity",
+        "description": "Unlink a player identity from the authenticated user.",
+        "operationId": "delete_linked_account_auth_me_accounts__account_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "title": "Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete Linked Account Auth Me Accounts  Account Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/players/{game_name}/{tag_line}": {
+      "get": {
+        "tags": [
+          "players"
+        ],
+        "summary": "Get complete player profile",
+        "operationId": "get_player_profile_players__game_name___tag_line__get",
+        "parameters": [
+          {
+            "name": "game_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": ".*\\S.*",
+              "title": "Game Name"
+            }
+          },
+          {
+            "name": "tag_line",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16,
+              "pattern": ".*\\S.*",
+              "title": "Tag Line"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayerProfileResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found by all applicable providers"
+          },
+          "502": {
+            "description": "Player data could not be processed"
+          },
+          "503": {
+            "description": "No supported provider is configured or available"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/players/{game_name}/{tag_line}/rank": {
+      "get": {
+        "tags": [
+          "players"
+        ],
+        "summary": "Get player rank",
+        "description": "Current rank from Tracker or Henrik; Riot does not expose player RR.",
+        "operationId": "get_player_rank_players__game_name___tag_line__rank_get",
+        "parameters": [
+          {
+            "name": "game_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": ".*\\S.*",
+              "title": "Game Name"
+            }
+          },
+          {
+            "name": "tag_line",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16,
+              "pattern": ".*\\S.*",
+              "title": "Tag Line"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "eu",
+                    "na",
+                    "ap",
+                    "kr",
+                    "br",
+                    "latam"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Henrik region override; otherwise resolved from the account",
+              "title": "Region"
+            },
+            "description": "Henrik region override; otherwise resolved from the account"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayerRankResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found by all applicable providers"
+          },
+          "502": {
+            "description": "Player data could not be processed"
+          },
+          "503": {
+            "description": "No supported provider is configured or available"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/players/{game_name}/{tag_line}/matches": {
+      "get": {
+        "tags": [
+          "players"
+        ],
+        "summary": "Get recent matches",
+        "operationId": "get_player_matches_players__game_name___tag_line__matches_get",
+        "parameters": [
+          {
+            "name": "game_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": ".*\\S.*",
+              "title": "Game Name"
+            }
+          },
+          {
+            "name": "tag_line",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16,
+              "pattern": ".*\\S.*",
+              "title": "Tag Line"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "eu",
+                    "na",
+                    "ap",
+                    "kr",
+                    "br",
+                    "latam"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Henrik region override; otherwise resolved from the account",
+              "title": "Region"
+            },
+            "description": "Henrik region override; otherwise resolved from the account"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayerMatchesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found by all applicable providers"
+          },
+          "502": {
+            "description": "Player data could not be processed"
+          },
+          "503": {
+            "description": "No supported provider is configured or available"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/players/{game_name}/{tag_line}/stats": {
+      "get": {
+        "tags": [
+          "players"
+        ],
+        "summary": "Get Player Stats",
+        "operationId": "get_player_stats_players__game_name___tag_line__stats_get",
+        "parameters": [
+          {
+            "name": "game_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": ".*\\S.*",
+              "title": "Game Name"
+            }
+          },
+          {
+            "name": "tag_line",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16,
+              "pattern": ".*\\S.*",
+              "title": "Tag Line"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayerStatsOverview"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found by all applicable providers"
+          },
+          "502": {
+            "description": "Player data could not be processed"
+          },
+          "503": {
+            "description": "No supported provider is configured or available"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/players/{game_name}/{tag_line}/overview": {
+      "get": {
+        "tags": [
+          "players"
+        ],
+        "summary": "Get Player Overview",
+        "operationId": "get_player_overview_players__game_name___tag_line__overview_get",
+        "parameters": [
+          {
+            "name": "game_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": ".*\\S.*",
+              "title": "Game Name"
+            }
+          },
+          {
+            "name": "tag_line",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16,
+              "pattern": ".*\\S.*",
+              "title": "Tag Line"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompletePlayerProfile"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found by all applicable providers"
+          },
+          "502": {
+            "description": "Player data could not be processed"
+          },
+          "503": {
+            "description": "No supported provider is configured or available"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/players/{game_name}/{tag_line}/reports": {
+      "post": {
+        "tags": [
+          "players"
+        ],
+        "summary": "Generate grounded AI coaching report",
+        "description": "Analyzes recent matches across combat, economy, and role execution using the specialized multi-agent orchestrator.",
+        "operationId": "generate_coaching_report_players__game_name___tag_line__reports_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": ".*\\S.*",
+              "title": "Game Name"
+            }
+          },
+          {
+            "name": "tag_line",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16,
+              "pattern": ".*\\S.*",
+              "title": "Tag Line"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "eu",
+                    "na",
+                    "ap",
+                    "kr",
+                    "br",
+                    "latam"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Henrik region override; otherwise resolved from the account",
+              "title": "Region"
+            },
+            "description": "Henrik region override; otherwise resolved from the account"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 1,
+              "default": 5,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachingReportResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found by all applicable providers"
+          },
+          "502": {
+            "description": "Player data could not be processed"
+          },
+          "503": {
+            "description": "No supported provider is configured or available"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "players"
+        ],
+        "summary": "List saved coaching reports",
+        "operationId": "list_coaching_reports_players__game_name___tag_line__reports_get",
+        "parameters": [
+          {
+            "name": "game_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": ".*\\S.*",
+              "title": "Game Name"
+            }
+          },
+          {
+            "name": "tag_line",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16,
+              "pattern": ".*\\S.*",
+              "title": "Tag Line"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachingReportsListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found by all applicable providers"
+          },
+          "502": {
+            "description": "Player data could not be processed"
+          },
+          "503": {
+            "description": "No supported provider is configured or available"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/players/{game_name}/{tag_line}/reports/{report_id}": {
+      "get": {
+        "tags": [
+          "players"
+        ],
+        "summary": "Get specific coaching report",
+        "operationId": "get_coaching_report_players__game_name___tag_line__reports__report_id__get",
+        "parameters": [
+          {
+            "name": "game_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": ".*\\S.*",
+              "title": "Game Name"
+            }
+          },
+          {
+            "name": "tag_line",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16,
+              "pattern": ".*\\S.*",
+              "title": "Tag Line"
+            }
+          },
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "title": "Report Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachingReportResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Report not found"
+          },
+          "502": {
+            "description": "Player data could not be processed"
+          },
+          "503": {
+            "description": "No supported provider is configured or available"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/players/{game_name}/{tag_line}/cache": {
+      "delete": {
+        "tags": [
+          "players"
+        ],
+        "summary": "Invalidate player cached data",
+        "description": "Clears stored snapshots for the specified player, forcing subsequent queries to fetch fresh data.",
+        "operationId": "invalidate_player_cache_players__game_name___tag_line__cache_delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": ".*\\S.*",
+              "title": "Game Name"
+            }
+          },
+          {
+            "name": "tag_line",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16,
+              "pattern": ".*\\S.*",
+              "title": "Tag Line"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Invalidate Player Cache Players  Game Name   Tag Line  Cache Delete"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found by all applicable providers"
+          },
+          "502": {
+            "description": "Player data could not be processed"
+          },
+          "503": {
+            "description": "No supported provider is configured or available"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/players/{game_name}/{tag_line}/progression": {
+      "get": {
+        "tags": [
+          "players"
+        ],
+        "summary": "Get long-term player progression and trajectory",
+        "description": "Analyzes rolling trends across match history, evaluates previous coaching reports to distinguish resolved weaknesses from current bottlenecks, and provides per-agent performance trajectories.",
+        "operationId": "get_player_progression_players__game_name___tag_line__progression_get",
+        "parameters": [
+          {
+            "name": "game_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": ".*\\S.*",
+              "title": "Game Name"
+            }
+          },
+          {
+            "name": "tag_line",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16,
+              "pattern": ".*\\S.*",
+              "title": "Tag Line"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayerProgressionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found by all applicable providers"
+          },
+          "502": {
+            "description": "Player data could not be processed"
+          },
+          "503": {
+            "description": "No supported provider is configured or available"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/players/{game_name}/{tag_line}/sync": {
+      "post": {
+        "tags": [
+          "players"
+        ],
+        "summary": "Synchronize latest matches and coaching reports",
+        "description": "Forces a fresh fetch of matches for the player and automatically generates a new multi-agent coaching report if new matches were recorded.",
+        "operationId": "sync_player_players__game_name___tag_line__sync_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": ".*\\S.*",
+              "title": "Game Name"
+            }
+          },
+          {
+            "name": "tag_line",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16,
+              "pattern": ".*\\S.*",
+              "title": "Tag Line"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "eu",
+                    "na",
+                    "ap",
+                    "kr",
+                    "br",
+                    "latam"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Henrik region override; otherwise resolved from the account",
+              "title": "Region"
+            },
+            "description": "Henrik region override; otherwise resolved from the account"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayerSyncResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found by all applicable providers"
+          },
+          "502": {
+            "description": "Player data could not be processed"
+          },
+          "503": {
+            "description": "No supported provider is configured or available"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/players/{game_name}/{tag_line}/timeline-analytics": {
+      "get": {
+        "tags": [
+          "players"
+        ],
+        "summary": "Get aggregated player tactical timeline analytics",
+        "description": "Aggregates round replay metrics across recent matches: Attack vs Defense win rates, trade kill efficiency, clutch conversions, anti-eco loss frequency, and tactical leaks.",
+        "operationId": "get_player_timeline_analytics_players__game_name___tag_line__timeline_analytics_get",
+        "parameters": [
+          {
+            "name": "game_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": ".*\\S.*",
+              "title": "Game Name"
+            }
+          },
+          {
+            "name": "tag_line",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16,
+              "pattern": ".*\\S.*",
+              "title": "Tag Line"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "eu",
+                    "na",
+                    "ap",
+                    "kr",
+                    "br",
+                    "latam"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Henrik region override; otherwise resolved from the account",
+              "title": "Region"
+            },
+            "description": "Henrik region override; otherwise resolved from the account"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 1,
+              "default": 5,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayerTimelineAnalyticsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found by all applicable providers"
+          },
+          "502": {
+            "description": "Player data could not be processed"
+          },
+          "503": {
+            "description": "No supported provider is configured or available"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/matches/{match_id}": {
+      "get": {
+        "tags": [
+          "matches"
+        ],
+        "summary": "Get Riot match details",
+        "description": "Returns the full Riot match payload, using the configured Riot shard.",
+        "operationId": "get_match_details_matches__match_id__get",
+        "parameters": [
+          {
+            "name": "match_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": ".*\\S.*",
+              "title": "Match Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Match Details Matches  Match Id  Get"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Match not found"
+          },
+          "503": {
+            "description": "Riot provider is not configured or available"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/matches/{match_id}/timeline": {
+      "get": {
+        "tags": [
+          "matches"
+        ],
+        "summary": "Get match round-by-round replay timeline",
+        "description": "Analyzes the match round-by-round: kill events, trade kills, Spike plants/defuses, economies, clutches, anti-eco throws, and tactical takeaways.",
+        "operationId": "get_match_timeline_matches__match_id__timeline_get",
+        "parameters": [
+          {
+            "name": "match_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": ".*\\S.*",
+              "title": "Match Id"
+            }
+          },
+          {
+            "name": "player",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Player PUUID or name to orient friendly team analysis",
+              "title": "Player"
+            },
+            "description": "Player PUUID or name to orient friendly team analysis"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchTimelineResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Match not found"
+          },
+          "503": {
+            "description": "Riot provider or storage is not configured or available"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vision/scoreboard/analyze": {
+      "post": {
+        "tags": [
+          "vision"
+        ],
+        "summary": "Read a match scoreboard screenshot with a vision model",
+        "description": "Extracts match result, rounds and visible player rows from a VALORANT scoreboard image. Fails explicitly when the image cannot be read; no values are estimated.",
+        "operationId": "analyze_scoreboard_vision_scoreboard_analyze_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScoreboardIngestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreboardAnalysisResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or unsupported image"
+          },
+          "422": {
+            "description": "The image could not be read as a complete scoreboard"
+          },
+          "503": {
+            "description": "No vision model is configured or reachable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/vision/scoreboard/upload": {
+      "post": {
+        "tags": [
+          "vision"
+        ],
+        "summary": "Upload match scoreboard image file directly",
+        "operationId": "upload_scoreboard_file_vision_scoreboard_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_scoreboard_file_vision_scoreboard_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreboardAnalysisResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or unsupported image"
+          },
+          "422": {
+            "description": "The image could not be read as a complete scoreboard"
+          },
+          "503": {
+            "description": "No vision model is configured or reachable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/players/{game_name}/{tag_line}/scoreboard": {
+      "post": {
+        "tags": [
+          "vision"
+        ],
+        "summary": "Read and ingest a scoreboard screenshot for a specific player",
+        "operationId": "ingest_player_scoreboard_players__game_name___tag_line__scoreboard_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": ".*\\S.*",
+              "title": "Game Name"
+            }
+          },
+          {
+            "name": "tag_line",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16,
+              "pattern": ".*\\S.*",
+              "title": "Tag Line"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScoreboardIngestRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreboardAnalysisResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or unsupported image"
+          },
+          "422": {
+            "description": "The image could not be read as a complete scoreboard"
+          },
+          "503": {
+            "description": "No vision model is configured or reachable"
+          }
+        }
+      }
+    },
+    "/recommendations/composition/synergy": {
+      "post": {
+        "tags": [
+          "recommendations"
+        ],
+        "summary": "Evaluate team composition synergy",
+        "description": "Analyze role balance, utility coverage, and map affinity for a 1-5 agent composition.",
+        "operationId": "evaluate_composition_synergy_endpoint_recommendations_composition_synergy_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompositionSynergyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompositionSynergyResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recommendations/counter-picks": {
+      "post": {
+        "tags": [
+          "recommendations"
+        ],
+        "summary": "Recommend agent counter-picks",
+        "description": "Rank agent selections based on ability to counter enemy picks and map suitability.",
+        "operationId": "recommend_counter_picks_endpoint_recommendations_counter_picks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CounterPickRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CounterPickResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/players/{game_name}/{tag_line}/counter-picks": {
+      "get": {
+        "tags": [
+          "recommendations"
+        ],
+        "summary": "Get personalized agent counter-pick recommendations",
+        "description": "Recommend counter-picks personalized with the player's historical mastery on each agent.",
+        "operationId": "get_player_counter_picks_endpoint_players__game_name___tag_line__counter_picks_get",
+        "parameters": [
+          {
+            "name": "game_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Game Name"
+            }
+          },
+          {
+            "name": "tag_line",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tag Line"
+            }
+          },
+          {
+            "name": "map_name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Map name (e.g. Ascent, Bind)",
+              "title": "Map Name"
+            },
+            "description": "Map name (e.g. Ascent, Bind)"
+          },
+          {
+            "name": "enemy_agents",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "List of enemy agents to counter",
+              "default": [],
+              "title": "Enemy Agents"
+            },
+            "description": "List of enemy agents to counter"
+          },
+          {
+            "name": "allied_agents",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "List of agents already picked by allies",
+              "default": [],
+              "title": "Allied Agents"
+            },
+            "description": "List of agents already picked by allies"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CounterPickResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Root endpoint",
+        "description": "Returns basic application information.",
+        "operationId": "read_root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Read Root  Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Health check",
+        "description": "Returns the health status of the application and its data providers.",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/live": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Liveness Check",
+        "description": "Check the application process without querying external providers.",
+        "operationId": "liveness_check_health_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Readiness check",
+        "description": "Returns readiness status of database and upstream providers.",
+        "operationId": "readiness_check_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/cache/prune": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Prune expired cache",
+        "description": "Deletes expired snapshot cache entries from persistence. Requires admin.",
+        "operationId": "prune_cache_system_cache_prune_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CachePruneResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/system/coaching/sync-tracked": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Synchronize all tracked player accounts",
+        "description": "Forces a coaching sync across all active primary linked player accounts. Requires admin.",
+        "operationId": "sync_tracked_coaching_system_coaching_sync_tracked_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Sync Tracked Coaching System Coaching Sync Tracked Post"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AgentCounterRecommendation": {
+        "properties": {
+          "agent_name": {
+            "type": "string",
+            "title": "Agent Name",
+            "description": "Canonical agent display name"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "description": "Agent role (Duelist, Initiator, Controller, Sentinel)"
+          },
+          "recommendation_score": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Recommendation Score",
+            "description": "Overall fitness score combining counter capability and map affinity"
+          },
+          "counter_targets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Counter Targets",
+            "description": "Enemy agents this pick effectively counters"
+          },
+          "counter_rationale": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Counter Rationale",
+            "description": "Detailed tactical explanations for why this pick counters enemies"
+          },
+          "map_synergy_rationale": {
+            "type": "string",
+            "title": "Map Synergy Rationale",
+            "description": "Why this agent fits the specific map and allied composition"
+          },
+          "mastery_context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mastery Context",
+            "description": "Player-specific historical performance context if available"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent_name",
+          "role",
+          "recommendation_score",
+          "map_synergy_rationale"
+        ],
+        "title": "AgentCounterRecommendation",
+        "description": "Individual agent recommendation with counter rationales and synergy fit."
+      },
+      "AgentPerformanceSummary": {
+        "properties": {
+          "matches_played": {
+            "type": "integer",
+            "title": "Matches Played",
+            "description": "Matches played with this agent"
+          },
+          "win_pct": {
+            "type": "number",
+            "title": "Win Pct",
+            "description": "Win rate percentage"
+          },
+          "avg_kd": {
+            "type": "number",
+            "title": "Avg Kd",
+            "description": "Average K/D ratio"
+          }
+        },
+        "type": "object",
+        "required": [
+          "matches_played",
+          "win_pct",
+          "avg_kd"
+        ],
+        "title": "AgentPerformanceSummary",
+        "description": "Aggregated performance for a specific agent."
+      },
+      "Body_upload_scoreboard_file_vision_scoreboard_upload_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "Scoreboard image file"
+          },
+          "game_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Name"
+          },
+          "tag_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tag Line"
+          },
+          "save_to_history": {
+            "type": "boolean",
+            "title": "Save To History",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_scoreboard_file_vision_scoreboard_upload_post"
+      },
+      "CachePruneResponse": {
+        "properties": {
+          "pruned_count": {
+            "type": "integer",
+            "title": "Pruned Count",
+            "description": "Number of expired cache records removed",
+            "examples": [
+              0
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "pruned_count"
+        ],
+        "title": "CachePruneResponse",
+        "description": "Result of cache pruning operation."
+      },
+      "CoachingReportResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique report identifier"
+          },
+          "player_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Player Id",
+            "description": "Internal player identifier"
+          },
+          "schema_version": {
+            "type": "integer",
+            "title": "Schema Version",
+            "description": "Schema format version",
+            "default": 1
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Generating agent or provider",
+            "default": "orchestrator"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload",
+            "description": "Full structured coaching plan"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Evidence",
+            "description": "Grounding evidence"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At",
+            "description": "Report generation timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "payload"
+        ],
+        "title": "CoachingReportResponse",
+        "description": "Grounded AI coaching report for a player."
+      },
+      "CoachingReportsListResponse": {
+        "properties": {
+          "reports": {
+            "items": {
+              "$ref": "#/components/schemas/CoachingReportResponse"
+            },
+            "type": "array",
+            "title": "Reports",
+            "description": "List of saved coaching reports"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Total reports returned"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reports",
+          "count"
+        ],
+        "title": "CoachingReportsListResponse",
+        "description": "List of historical coaching reports for a player."
+      },
+      "CompletePlayerProfile": {
+        "properties": {
+          "identity": {
+            "$ref": "#/components/schemas/PlayerIdentity"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayerRank"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayerStatsOverview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recent_matches": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PlayerMatch"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recent Matches"
+          },
+          "unavailable_sections": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unavailable Sections"
+          }
+        },
+        "type": "object",
+        "required": [
+          "identity"
+        ],
+        "title": "CompletePlayerProfile",
+        "description": "Aggregated player profile across identity, rank, stats, and matches."
+      },
+      "CompositionSynergyRequest": {
+        "properties": {
+          "map_name": {
+            "type": "string",
+            "title": "Map Name",
+            "description": "Map name (e.g. Ascent, Bind, Haven, Lotus)"
+          },
+          "allied_agents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Allied Agents",
+            "description": "List of allied agents selected (1 to 5 agents)"
+          },
+          "enemy_agents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Enemy Agents",
+            "description": "Optional list of known enemy agents (up to 5 agents)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "map_name",
+          "allied_agents"
+        ],
+        "title": "CompositionSynergyRequest",
+        "description": "Request payload to analyze team composition synergy on a map."
+      },
+      "CompositionSynergyResponse": {
+        "properties": {
+          "map_name": {
+            "type": "string",
+            "title": "Map Name",
+            "description": "Canonical map display name"
+          },
+          "synergy_score": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Synergy Score",
+            "description": "Overall team synergy score between 0 and 100"
+          },
+          "tier": {
+            "type": "string",
+            "enum": [
+              "S",
+              "A",
+              "B",
+              "C",
+              "D"
+            ],
+            "title": "Tier",
+            "description": "Composition tier grade on the given map"
+          },
+          "role_distribution": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Role Distribution",
+            "description": "Count of agents per role (Duelist, Initiator, Controller, Sentinel)"
+          },
+          "utility_coverage": {
+            "$ref": "#/components/schemas/UtilityCoverage",
+            "description": "Status of essential tactical utilities"
+          },
+          "strengths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Strengths",
+            "description": "Tactical strengths of the lineup"
+          },
+          "weaknesses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Weaknesses",
+            "description": "Tactical vulnerabilities or missing utility"
+          },
+          "tactical_advice": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tactical Advice",
+            "description": "Strategic recommendations for playing this comp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "map_name",
+          "synergy_score",
+          "tier",
+          "role_distribution",
+          "utility_coverage"
+        ],
+        "title": "CompositionSynergyResponse",
+        "description": "Detailed synergy rating and utility analysis for a composition."
+      },
+      "CounterPickRequest": {
+        "properties": {
+          "map_name": {
+            "type": "string",
+            "title": "Map Name",
+            "description": "Map name (e.g. Ascent, Bind, Haven)"
+          },
+          "allied_agents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Allied Agents",
+            "description": "Allied agents already locked in (0 to 4 agents)"
+          },
+          "enemy_agents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Enemy Agents",
+            "description": "Known enemy agents to counter (1 to 5 agents)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "map_name",
+          "enemy_agents"
+        ],
+        "title": "CounterPickRequest",
+        "description": "Request payload to find best counter-pick agents."
+      },
+      "CounterPickResponse": {
+        "properties": {
+          "map_name": {
+            "type": "string",
+            "title": "Map Name",
+            "description": "Canonical map display name"
+          },
+          "recommendations": {
+            "items": {
+              "$ref": "#/components/schemas/AgentCounterRecommendation"
+            },
+            "type": "array",
+            "title": "Recommendations",
+            "description": "Ranked list of top recommended agents to pick"
+          },
+          "enemy_threat_assessment": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Enemy Threat Assessment",
+            "description": "Key tactical threats posed by the enemy composition"
+          }
+        },
+        "type": "object",
+        "required": [
+          "map_name",
+          "recommendations"
+        ],
+        "title": "CounterPickResponse",
+        "description": "Ranked recommendations of counter-pick agents against the opposing lineup."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Overall health status",
+            "examples": [
+              "ok"
+            ]
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "Application version",
+            "examples": [
+              "0.4.0"
+            ]
+          },
+          "providers": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providers",
+            "description": "Status of individual data providers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "version"
+        ],
+        "title": "HealthResponse",
+        "description": "Application health status."
+      },
+      "KillEvent": {
+        "properties": {
+          "kill_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Kill Index"
+          },
+          "round_time_millis": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Round Time Millis"
+          },
+          "game_time_millis": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Time Millis"
+          },
+          "killer_puuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Killer Puuid"
+          },
+          "killer_name": {
+            "type": "string",
+            "title": "Killer Name"
+          },
+          "killer_team": {
+            "type": "string",
+            "title": "Killer Team"
+          },
+          "victim_puuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Victim Puuid"
+          },
+          "victim_name": {
+            "type": "string",
+            "title": "Victim Name"
+          },
+          "victim_team": {
+            "type": "string",
+            "title": "Victim Team"
+          },
+          "assistants": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Assistants"
+          },
+          "weapon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weapon"
+          },
+          "is_headshot": {
+            "type": "boolean",
+            "title": "Is Headshot",
+            "default": false
+          },
+          "is_trade_kill": {
+            "type": "boolean",
+            "title": "Is Trade Kill",
+            "default": false
+          },
+          "traded_killer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Traded Killer Name"
+          },
+          "trade_window_millis": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trade Window Millis"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kill_index",
+          "round_time_millis",
+          "killer_name",
+          "killer_team",
+          "victim_name",
+          "victim_team"
+        ],
+        "title": "KillEvent",
+        "description": "Chronological kill event in a round."
+      },
+      "LinkPlayerAccountRequest": {
+        "properties": {
+          "game_name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Game Name",
+            "description": "In-game name"
+          },
+          "tag_line": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Tag Line",
+            "description": "Tag line (e.g. EU1)"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region",
+            "description": "Optional region (e.g. eu, na, latam)"
+          },
+          "is_primary": {
+            "type": "boolean",
+            "title": "Is Primary",
+            "description": "Whether this should be set as the user's primary identity",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_name",
+          "tag_line"
+        ],
+        "title": "LinkPlayerAccountRequest",
+        "description": "Request to link a Valorant player identity to the authenticated user."
+      },
+      "LinkedPlayerAccountResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique link identifier"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "Associated user ID"
+          },
+          "game_name": {
+            "type": "string",
+            "title": "Game Name",
+            "description": "In-game name"
+          },
+          "tag_line": {
+            "type": "string",
+            "title": "Tag Line",
+            "description": "Tag line"
+          },
+          "puuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Puuid",
+            "description": "Riot unique identifier if resolved"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region",
+            "description": "Player region"
+          },
+          "is_primary": {
+            "type": "boolean",
+            "title": "Is Primary",
+            "description": "Whether this is the user's primary identity"
+          },
+          "linked_at": {
+            "type": "string",
+            "title": "Linked At",
+            "description": "Timestamp when account was linked in ISO 8601 UTC format"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At",
+            "description": "Timestamp of last automated coaching sync in ISO 8601 UTC format"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "game_name",
+          "tag_line",
+          "is_primary",
+          "linked_at"
+        ],
+        "title": "LinkedPlayerAccountResponse",
+        "description": "Details of a linked Riot/Valorant player identity."
+      },
+      "MatchTimelineResponse": {
+        "properties": {
+          "match_id": {
+            "type": "string",
+            "title": "Match Id"
+          },
+          "map_name": {
+            "type": "string",
+            "title": "Map Name"
+          },
+          "game_mode": {
+            "type": "string",
+            "title": "Game Mode",
+            "default": "Standard"
+          },
+          "friendly_team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Friendly Team"
+          },
+          "rounds": {
+            "items": {
+              "$ref": "#/components/schemas/RoundTimeline"
+            },
+            "type": "array",
+            "title": "Rounds"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/TimelineTacticalSummary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "match_id",
+          "map_name",
+          "summary"
+        ],
+        "title": "MatchTimelineResponse",
+        "description": "Full round-by-round timeline and tactical analysis of a match."
+      },
+      "MetricDataPoint": {
+        "properties": {
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Timestamp",
+            "description": "Match timestamp"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value",
+            "description": "Metric value at this point in time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timestamp",
+          "value"
+        ],
+        "title": "MetricDataPoint",
+        "description": "Single historical metric measurement."
+      },
+      "PlayerIdentity": {
+        "properties": {
+          "puuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Puuid"
+          },
+          "game_name": {
+            "type": "string",
+            "title": "Game Name"
+          },
+          "tag_line": {
+            "type": "string",
+            "title": "Tag Line"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "account_level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Level"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "tracker",
+                  "henrik",
+                  "riot"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_name",
+          "tag_line"
+        ],
+        "title": "PlayerIdentity",
+        "description": "Provider-backed identity, shared by flat and aggregated profiles."
+      },
+      "PlayerMatch": {
+        "properties": {
+          "match_id": {
+            "type": "string",
+            "title": "Match Id"
+          },
+          "map_name": {
+            "type": "string",
+            "title": "Map Name"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Timestamp"
+          },
+          "result": {
+            "type": "string",
+            "title": "Result"
+          },
+          "kills": {
+            "type": "integer",
+            "title": "Kills"
+          },
+          "deaths": {
+            "type": "integer",
+            "title": "Deaths"
+          },
+          "assists": {
+            "type": "integer",
+            "title": "Assists"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "agent_name": {
+            "type": "string",
+            "title": "Agent Name"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "tracker",
+                  "henrik",
+                  "riot",
+                  "vision"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "provider_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "match_id",
+          "map_name",
+          "mode",
+          "timestamp",
+          "result",
+          "kills",
+          "deaths",
+          "assists",
+          "agent_name"
+        ],
+        "title": "PlayerMatch",
+        "description": "Unified domain model for an individual player match."
+      },
+      "PlayerMatchResponse": {
+        "properties": {
+          "match_id": {
+            "type": "string",
+            "title": "Match Id",
+            "description": "Unique match identifier"
+          },
+          "map_name": {
+            "type": "string",
+            "title": "Map Name",
+            "description": "Name of the map played"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "Game mode (e.g., Competitive)"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Timestamp",
+            "description": "Provider timestamp: Riot milliseconds or ISO date"
+          },
+          "result": {
+            "type": "string",
+            "title": "Result",
+            "description": "Match outcome (e.g., Victory, Defeat)"
+          },
+          "kills": {
+            "type": "integer",
+            "title": "Kills",
+            "description": "Number of kills"
+          },
+          "deaths": {
+            "type": "integer",
+            "title": "Deaths",
+            "description": "Number of deaths"
+          },
+          "assists": {
+            "type": "integer",
+            "title": "Assists",
+            "description": "Number of assists"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score",
+            "description": "Total match score, when its meaning is confirmed"
+          },
+          "agent_name": {
+            "type": "string",
+            "title": "Agent Name",
+            "description": "Agent played in this match"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "tracker",
+                  "henrik",
+                  "riot",
+                  "vision"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider",
+            "description": "Source of the match summary"
+          },
+          "provider_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Score",
+            "description": "Original provider score when it cannot be treated as total score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "match_id",
+          "map_name",
+          "mode",
+          "timestamp",
+          "result",
+          "kills",
+          "deaths",
+          "assists",
+          "agent_name"
+        ],
+        "title": "PlayerMatchResponse",
+        "description": "Summary of a single player match."
+      },
+      "PlayerMatchesResponse": {
+        "properties": {
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/PlayerMatchResponse"
+            },
+            "type": "array",
+            "title": "Matches",
+            "description": "List of recent match summaries"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Total number of matches returned"
+          }
+        },
+        "type": "object",
+        "required": [
+          "matches",
+          "count"
+        ],
+        "title": "PlayerMatchesResponse",
+        "description": "List of recent matches for a player."
+      },
+      "PlayerProfileResponse": {
+        "properties": {
+          "puuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Puuid",
+            "description": "Riot's unique player identifier"
+          },
+          "game_name": {
+            "type": "string",
+            "title": "Game Name",
+            "description": "Player's in-game name",
+            "examples": [
+              "Player"
+            ]
+          },
+          "tag_line": {
+            "type": "string",
+            "title": "Tag Line",
+            "description": "Player's tag line",
+            "examples": [
+              "EU1"
+            ]
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region",
+            "description": "Account region (e.g., na, eu, latam)"
+          },
+          "account_level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Level",
+            "description": "Player's account level"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url",
+            "description": "URL to the player's avatar image"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "tracker",
+                  "henrik",
+                  "riot"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "rank_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank Name",
+            "description": "Current rank tier name"
+          },
+          "rank_tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank Tier",
+            "description": "Internal rank tier value"
+          },
+          "rank_icon_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank Icon Url",
+            "description": "URL to the rank icon image"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_name",
+          "tag_line"
+        ],
+        "title": "PlayerProfileResponse",
+        "description": "Unified player profile information."
+      },
+      "PlayerProgressionMetric": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Metric label"
+          },
+          "current": {
+            "type": "number",
+            "title": "Current",
+            "description": "Current value from recent matches"
+          },
+          "historical_avg": {
+            "type": "number",
+            "title": "Historical Avg",
+            "description": "Historical average across all analyzed matches"
+          },
+          "trend": {
+            "type": "string",
+            "enum": [
+              "improving",
+              "declining",
+              "stable"
+            ],
+            "title": "Trend",
+            "description": "Directional trend"
+          },
+          "change_pct": {
+            "type": "number",
+            "title": "Change Pct",
+            "description": "Percentage change from baseline to recent"
+          },
+          "data_points": {
+            "items": {
+              "$ref": "#/components/schemas/MetricDataPoint"
+            },
+            "type": "array",
+            "title": "Data Points",
+            "description": "Historical data points for plotting"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "current",
+          "historical_avg",
+          "trend",
+          "change_pct"
+        ],
+        "title": "PlayerProgressionMetric",
+        "description": "Trajectory tracking for a key performance indicator."
+      },
+      "PlayerProgressionResponse": {
+        "properties": {
+          "game_name": {
+            "type": "string",
+            "title": "Game Name",
+            "description": "Player in-game name"
+          },
+          "tag_line": {
+            "type": "string",
+            "title": "Tag Line",
+            "description": "Player tag line"
+          },
+          "total_matches_analyzed": {
+            "type": "integer",
+            "title": "Total Matches Analyzed",
+            "description": "Number of matches analyzed"
+          },
+          "total_reports_generated": {
+            "type": "integer",
+            "title": "Total Reports Generated",
+            "description": "Historical coaching reports count"
+          },
+          "kd_metric": {
+            "$ref": "#/components/schemas/PlayerProgressionMetric"
+          },
+          "headshot_metric": {
+            "$ref": "#/components/schemas/PlayerProgressionMetric"
+          },
+          "win_rate_metric": {
+            "$ref": "#/components/schemas/PlayerProgressionMetric"
+          },
+          "resolved_focus_areas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Resolved Focus Areas",
+            "description": "Weaknesses from previous reports that show measurable improvement"
+          },
+          "active_focus_areas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Active Focus Areas",
+            "description": "Current areas requiring coaching intervention"
+          },
+          "agent_trends": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AgentPerformanceSummary"
+            },
+            "type": "object",
+            "title": "Agent Trends",
+            "description": "Per-agent performance breakdowns"
+          },
+          "trajectory_narrative": {
+            "type": "string",
+            "title": "Trajectory Narrative",
+            "description": "Executive summary of the player's long-term evolution"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_name",
+          "tag_line",
+          "total_matches_analyzed",
+          "total_reports_generated",
+          "kd_metric",
+          "headshot_metric",
+          "win_rate_metric",
+          "trajectory_narrative"
+        ],
+        "title": "PlayerProgressionResponse",
+        "description": "Long-term trajectory and progression analysis for a player."
+      },
+      "PlayerRank": {
+        "properties": {
+          "tier_name": {
+            "type": "string",
+            "title": "Tier Name"
+          },
+          "rank_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank Name"
+          },
+          "rank_icon_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank Icon Url"
+          },
+          "points": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Points"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "tracker",
+                  "henrik"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tier_name"
+        ],
+        "title": "PlayerRank",
+        "description": "Unified domain model for a player's competitive rank."
+      },
+      "PlayerRankResponse": {
+        "properties": {
+          "tier_name": {
+            "type": "string",
+            "title": "Tier Name",
+            "description": "Name of the rank tier",
+            "examples": [
+              "Diamond 1"
+            ]
+          },
+          "rank_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank Name",
+            "description": "Detailed rank name"
+          },
+          "rank_icon_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank Icon Url",
+            "description": "URL to the rank icon image"
+          },
+          "points": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Points",
+            "description": "Ranked rating points"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "tracker",
+                  "henrik"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tier_name"
+        ],
+        "title": "PlayerRankResponse",
+        "description": "Player's competitive rank details."
+      },
+      "PlayerRoundEconomy": {
+        "properties": {
+          "puuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Puuid"
+          },
+          "player_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Player Name"
+          },
+          "loadout_value": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Loadout Value",
+            "default": 0
+          },
+          "weapon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weapon"
+          },
+          "armor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Armor"
+          },
+          "remaining_credits": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Remaining Credits",
+            "default": 0
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "eco",
+              "semi-eco",
+              "semi-buy",
+              "full-buy",
+              "bonus"
+            ],
+            "title": "Category",
+            "default": "eco"
+          }
+        },
+        "type": "object",
+        "title": "PlayerRoundEconomy",
+        "description": "Economic state of a player in a specific round."
+      },
+      "PlayerStatsOverview": {
+        "properties": {
+          "kills": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Kills"
+          },
+          "deaths": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Deaths"
+          },
+          "assists": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Assists"
+          },
+          "kd_ratio": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Kd Ratio"
+          },
+          "win_pct": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Win Pct"
+          },
+          "headshot_pct": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Headshot Pct"
+          },
+          "matches_played": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matches Played"
+          },
+          "damage_per_round": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Damage Per Round"
+          },
+          "source": {
+            "type": "string",
+            "const": "tracker",
+            "title": "Source",
+            "default": "tracker"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kills",
+          "deaths",
+          "assists",
+          "kd_ratio",
+          "win_pct",
+          "headshot_pct"
+        ],
+        "title": "PlayerStatsOverview",
+        "description": "Overview of lifetime player performance statistics."
+      },
+      "PlayerSyncResponse": {
+        "properties": {
+          "synced": {
+            "type": "boolean",
+            "title": "Synced",
+            "description": "Whether sync completed successfully"
+          },
+          "game_name": {
+            "type": "string",
+            "title": "Game Name",
+            "description": "Player name"
+          },
+          "tag_line": {
+            "type": "string",
+            "title": "Tag Line",
+            "description": "Player tag"
+          },
+          "new_report_generated": {
+            "type": "boolean",
+            "title": "New Report Generated",
+            "description": "Whether a new coaching report was generated"
+          },
+          "report_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Id",
+            "description": "Generated report ID if applicable"
+          },
+          "matches_synced": {
+            "type": "integer",
+            "title": "Matches Synced",
+            "description": "Number of matches refreshed"
+          },
+          "synced_at": {
+            "type": "string",
+            "title": "Synced At",
+            "description": "Timestamp of sync in ISO 8601 UTC format"
+          }
+        },
+        "type": "object",
+        "required": [
+          "synced",
+          "game_name",
+          "tag_line",
+          "new_report_generated",
+          "matches_synced",
+          "synced_at"
+        ],
+        "title": "PlayerSyncResponse",
+        "description": "Result of an on-demand or scheduled coaching sync."
+      },
+      "PlayerTimelineAnalyticsResponse": {
+        "properties": {
+          "game_name": {
+            "type": "string",
+            "title": "Game Name"
+          },
+          "tag_line": {
+            "type": "string",
+            "title": "Tag Line"
+          },
+          "matches_analyzed": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Matches Analyzed"
+          },
+          "total_rounds_analyzed": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Rounds Analyzed"
+          },
+          "overall_attack_win_rate": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Overall Attack Win Rate",
+            "default": 0.0
+          },
+          "overall_defense_win_rate": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Overall Defense Win Rate",
+            "default": 0.0
+          },
+          "overall_trade_efficiency": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Overall Trade Efficiency",
+            "default": 0.0
+          },
+          "overall_clutch_win_rate": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Overall Clutch Win Rate",
+            "default": 0.0
+          },
+          "clutches_won_breakdown": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Clutches Won Breakdown"
+          },
+          "anti_eco_losses_total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Anti Eco Losses Total",
+            "default": 0
+          },
+          "retake_success_rate": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Retake Success Rate",
+            "default": 0.0
+          },
+          "identified_tactical_leaks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Identified Tactical Leaks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_name",
+          "tag_line",
+          "matches_analyzed",
+          "total_rounds_analyzed"
+        ],
+        "title": "PlayerTimelineAnalyticsResponse",
+        "description": "Cross-match timeline analysis identifying tactical trends and leaks."
+      },
+      "ReadinessResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Readiness status (ready, degraded, unhealthy)",
+            "examples": [
+              "ready"
+            ]
+          },
+          "database": {
+            "type": "string",
+            "title": "Database",
+            "description": "Database connection status",
+            "examples": [
+              "connected"
+            ]
+          },
+          "providers_configured": {
+            "type": "integer",
+            "title": "Providers Configured",
+            "description": "Number of configured upstream providers",
+            "examples": [
+              3
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "database",
+          "providers_configured"
+        ],
+        "title": "ReadinessResponse",
+        "description": "Application readiness status."
+      },
+      "RoundTimeline": {
+        "properties": {
+          "round_num": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Round Num"
+          },
+          "winning_team": {
+            "type": "string",
+            "title": "Winning Team"
+          },
+          "winning_side": {
+            "type": "string",
+            "enum": [
+              "attack",
+              "defense",
+              "unknown"
+            ],
+            "title": "Winning Side"
+          },
+          "win_type": {
+            "type": "string",
+            "enum": [
+              "Eliminated",
+              "Bomb defused",
+              "Bomb detonated",
+              "Time out",
+              "Surrender",
+              "Unknown"
+            ],
+            "title": "Win Type"
+          },
+          "friendly_won": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Friendly Won"
+          },
+          "ceremony": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ceremony"
+          },
+          "is_clutch": {
+            "type": "boolean",
+            "title": "Is Clutch",
+            "default": false
+          },
+          "clutch_player": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clutch Player"
+          },
+          "clutch_opponents": {
+            "type": "integer",
+            "title": "Clutch Opponents",
+            "default": 0
+          },
+          "clutch_won": {
+            "type": "boolean",
+            "title": "Clutch Won",
+            "default": false
+          },
+          "is_thrifty": {
+            "type": "boolean",
+            "title": "Is Thrifty",
+            "default": false
+          },
+          "is_anti_eco_loss": {
+            "type": "boolean",
+            "title": "Is Anti Eco Loss",
+            "default": false
+          },
+          "first_blood": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KillEvent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "first_death": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KillEvent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "spike_plant": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SpikeEvent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "spike_defuse": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SpikeEvent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retake_situation": {
+            "type": "boolean",
+            "title": "Retake Situation",
+            "default": false
+          },
+          "retake_successful": {
+            "type": "boolean",
+            "title": "Retake Successful",
+            "default": false
+          },
+          "kills": {
+            "items": {
+              "$ref": "#/components/schemas/KillEvent"
+            },
+            "type": "array",
+            "title": "Kills"
+          },
+          "player_economies": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PlayerRoundEconomy"
+            },
+            "type": "object",
+            "title": "Player Economies"
+          },
+          "team_loadouts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Team Loadouts"
+          },
+          "friendly_score_after": {
+            "type": "integer",
+            "title": "Friendly Score After",
+            "default": 0
+          },
+          "enemy_score_after": {
+            "type": "integer",
+            "title": "Enemy Score After",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "round_num",
+          "winning_team",
+          "winning_side",
+          "win_type"
+        ],
+        "title": "RoundTimeline",
+        "description": "Structured breakdown of events and economy for a single round."
+      },
+      "ScoreboardAnalysisResponse": {
+        "properties": {
+          "match_id": {
+            "type": "string",
+            "title": "Match Id",
+            "description": "Generated or synthetic match ID"
+          },
+          "map_name": {
+            "type": "string",
+            "title": "Map Name",
+            "description": "Map played (e.g., Ascent, Bind, Haven)"
+          },
+          "game_mode": {
+            "type": "string",
+            "title": "Game Mode",
+            "description": "Game mode played",
+            "default": "Competitive"
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "Victory",
+              "Defeat",
+              "Draw",
+              "Unknown"
+            ],
+            "title": "Result",
+            "description": "Match outcome"
+          },
+          "rounds_won": {
+            "type": "integer",
+            "title": "Rounds Won",
+            "description": "Rounds won by target player team"
+          },
+          "rounds_lost": {
+            "type": "integer",
+            "title": "Rounds Lost",
+            "description": "Rounds lost by target player team"
+          },
+          "target_player_stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScoreboardPlayerRow"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Extracted stats for the target player"
+          },
+          "scoreboard_rows": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreboardPlayerRow"
+            },
+            "type": "array",
+            "title": "Scoreboard Rows",
+            "description": "All parsed player rows on the scoreboard"
+          },
+          "confidence_score": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence Score",
+            "description": "Model self-reported confidence (uncalibrated), if provided"
+          },
+          "extractor_engine": {
+            "type": "string",
+            "title": "Extractor Engine",
+            "description": "Engine used to read the image (gemini-multimodal)"
+          },
+          "tactical_takeaways": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tactical Takeaways",
+            "description": "Quick tactical takeaways derived from the scoreboard"
+          },
+          "persisted_as_match": {
+            "type": "boolean",
+            "title": "Persisted As Match",
+            "description": "Whether the match was saved into player match history",
+            "default": false
+          },
+          "persistence_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Persistence Note",
+            "description": "Why a requested save was skipped, if it was"
+          }
+        },
+        "type": "object",
+        "required": [
+          "match_id",
+          "map_name",
+          "result",
+          "rounds_won",
+          "rounds_lost",
+          "extractor_engine"
+        ],
+        "title": "ScoreboardAnalysisResponse",
+        "description": "Structured extraction of a Valorant match scoreboard."
+      },
+      "ScoreboardIngestRequest": {
+        "properties": {
+          "image_base64": {
+            "type": "string",
+            "title": "Image Base64",
+            "description": "Base64-encoded image string or data URL (PNG, JPEG, WebP)"
+          },
+          "game_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Name",
+            "description": "Optional target player name to highlight"
+          },
+          "tag_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tag Line",
+            "description": "Optional target player tag to highlight"
+          },
+          "save_to_history": {
+            "type": "boolean",
+            "title": "Save To History",
+            "description": "Whether to persist the extracted match into database history",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "image_base64"
+        ],
+        "title": "ScoreboardIngestRequest",
+        "description": "Payload to analyze a match scoreboard image."
+      },
+      "ScoreboardPlayerRow": {
+        "properties": {
+          "player_name": {
+            "type": "string",
+            "title": "Player Name",
+            "description": "Player in-game display name"
+          },
+          "tag_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tag Line",
+            "description": "Tagline if visible or extracted"
+          },
+          "agent": {
+            "type": "string",
+            "title": "Agent",
+            "description": "Agent name played"
+          },
+          "team": {
+            "type": "string",
+            "enum": [
+              "friendly",
+              "enemy",
+              "blue",
+              "red",
+              "unknown"
+            ],
+            "title": "Team",
+            "description": "Team assignment on scoreboard",
+            "default": "unknown"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score",
+            "description": "Average Combat Score (ACS), if read"
+          },
+          "kills": {
+            "type": "integer",
+            "title": "Kills",
+            "description": "Kills count"
+          },
+          "deaths": {
+            "type": "integer",
+            "title": "Deaths",
+            "description": "Deaths count"
+          },
+          "assists": {
+            "type": "integer",
+            "title": "Assists",
+            "description": "Assists count"
+          },
+          "damage_per_round": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Damage Per Round",
+            "description": "Average damage per round (ADR)"
+          },
+          "first_bloods": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Bloods",
+            "description": "First bloods count"
+          },
+          "plants": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plants",
+            "description": "Spike plants count"
+          },
+          "defuses": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defuses",
+            "description": "Spike defuses count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "player_name",
+          "agent",
+          "kills",
+          "deaths",
+          "assists"
+        ],
+        "title": "ScoreboardPlayerRow",
+        "description": "Extracted row representing a player in the match scoreboard."
+      },
+      "SpikeEvent": {
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "enum": [
+              "plant",
+              "defuse"
+            ],
+            "title": "Event Type"
+          },
+          "round_time_millis": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Round Time Millis"
+          },
+          "site": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site"
+          },
+          "player_puuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Player Puuid"
+          },
+          "player_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Player Name"
+          },
+          "player_team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Player Team"
+          },
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_type",
+          "round_time_millis"
+        ],
+        "title": "SpikeEvent",
+        "description": "Spike plant or defusal event in a round."
+      },
+      "TimelineTacticalSummary": {
+        "properties": {
+          "total_rounds": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Rounds"
+          },
+          "attack_rounds_won": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Attack Rounds Won",
+            "default": 0
+          },
+          "attack_rounds_total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Attack Rounds Total",
+            "default": 0
+          },
+          "attack_win_rate": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Attack Win Rate",
+            "default": 0.0
+          },
+          "defense_rounds_won": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Defense Rounds Won",
+            "default": 0
+          },
+          "defense_rounds_total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Defense Rounds Total",
+            "default": 0
+          },
+          "defense_win_rate": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Defense Win Rate",
+            "default": 0.0
+          },
+          "first_bloods_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "First Bloods Count",
+            "default": 0
+          },
+          "first_deaths_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "First Deaths Count",
+            "default": 0
+          },
+          "first_blood_conversion_rate": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "First Blood Conversion Rate",
+            "default": 0.0
+          },
+          "trade_kills_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Trade Kills Count",
+            "default": 0
+          },
+          "trade_efficiency_rate": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Trade Efficiency Rate",
+            "default": 0.0
+          },
+          "clutch_attempts": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Clutch Attempts",
+            "default": 0
+          },
+          "clutch_wins": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Clutch Wins",
+            "default": 0
+          },
+          "clutch_win_rate": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Clutch Win Rate",
+            "default": 0.0
+          },
+          "anti_eco_losses": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Anti Eco Losses",
+            "default": 0
+          },
+          "thrifty_wins": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Thrifty Wins",
+            "default": 0
+          },
+          "retake_attempts": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Retake Attempts",
+            "default": 0
+          },
+          "retake_successes": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Retake Successes",
+            "default": 0
+          },
+          "retake_success_rate": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Retake Success Rate",
+            "default": 0.0
+          },
+          "tactical_takeaways": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tactical Takeaways"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_rounds"
+        ],
+        "title": "TimelineTacticalSummary",
+        "description": "Aggregated tactical metrics derived from the match timeline."
+      },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token",
+            "description": "JWT bearer access token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "description": "Token scheme",
+            "default": "bearer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token"
+        ],
+        "title": "TokenResponse",
+        "description": "OAuth2-compatible Bearer token response."
+      },
+      "UserLoginRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$",
+            "title": "Email",
+            "description": "User email address"
+          },
+          "password": {
+            "type": "string",
+            "title": "Password",
+            "description": "User password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "UserLoginRequest",
+        "description": "Payload for authenticating a user."
+      },
+      "UserRegisterRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$",
+            "title": "Email",
+            "description": "User's unique email address"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "title": "Password",
+            "description": "User's password (minimum 8 characters)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "UserRegisterRequest",
+        "description": "Payload for registering a new user."
+      },
+      "UserResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique user identifier"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "User email address"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "description": "Whether the user account is active"
+          },
+          "is_admin": {
+            "type": "boolean",
+            "title": "Is Admin",
+            "description": "Whether the user has administrator privileges",
+            "default": false
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "description": "Account creation timestamp in ISO 8601 UTC format"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "is_active",
+          "created_at"
+        ],
+        "title": "UserResponse",
+        "description": "Public user profile."
+      },
+      "UtilityCoverage": {
+        "properties": {
+          "smokes": {
+            "type": "boolean",
+            "title": "Smokes",
+            "description": "Team has reliable smoke utility for executing and blocking vision"
+          },
+          "flashes": {
+            "type": "boolean",
+            "title": "Flashes",
+            "description": "Team has blinding utility to clear tight angles or contest duels"
+          },
+          "recon_info": {
+            "type": "boolean",
+            "title": "Recon Info",
+            "description": "Team has information gathering utility to reveal enemy positions"
+          },
+          "sentinel_anchor": {
+            "type": "boolean",
+            "title": "Sentinel Anchor",
+            "description": "Team has defensive stall/anchor utility to hold sites and watch flanks"
+          },
+          "entry_duelist": {
+            "type": "boolean",
+            "title": "Entry Duelist",
+            "description": "Team has aggressive space-taking or movement entry utility"
+          }
+        },
+        "type": "object",
+        "required": [
+          "smokes",
+          "flashes",
+          "recon_info",
+          "sentinel_anchor",
+          "entry_duelist"
+        ],
+        "title": "UtilityCoverage",
+        "description": "Evaluation of essential tactical utility coverage in a team composition."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "auth",
+      "description": "User authentication, JWT tokens, and player account linking."
+    },
+    {
+      "name": "matches",
+      "description": "Full match details from the Riot API."
+    },
+    {
+      "name": "players",
+      "description": "Operations with Valorant players, including profiles, ranks, and match history."
+    },
+    {
+      "name": "system",
+      "description": "System health and status operations."
+    }
+  ]
+}

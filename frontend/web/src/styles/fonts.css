@@ -1,0 +1,49 @@
+/**
+ * Local font declarations for Chakra Petch and IBM Plex Sans.
+ * Zero external CDN dependencies in production (self-hosted).
+ */
+
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local("Chakra Petch SemiBold"), local("ChakraPetch-SemiBold"),
+       url("/assets/fonts/chakra-petch-v11-latin-600.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local("Chakra Petch Bold"), local("ChakraPetch-Bold"),
+       url("/assets/fonts/chakra-petch-v11-latin-700.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local("IBM Plex Sans"), local("IBMPlexSans"),
+       url("/assets/fonts/ibm-plex-sans-v19-latin-regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: local("IBM Plex Sans Medium"), local("IBMPlexSans-Medium"),
+       url("/assets/fonts/ibm-plex-sans-v19-latin-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local("IBM Plex Sans SemiBold"), local("IBMPlexSans-SemiBold"),
+       url("/assets/fonts/ibm-plex-sans-v19-latin-600.woff2") format("woff2");
+}
