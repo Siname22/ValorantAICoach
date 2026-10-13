@@ -1,11 +1,12 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 import { BentoCardComponent } from '../../shared/ui/bento-card/bento-card.component';
 import { I18N_ES } from '../../core/i18n/es';
 import { TokenService } from '../../core/auth/token.service';
 import { ApiClientService } from '../../core/api/api-client.service';
-import { UserResponse } from '../../core/api/api-models';
+import { LinkedAccountResponse, UserResponse } from '../../core/api/api-models';
 
 @Component({
   selector: 'app-account',
@@ -16,28 +17,113 @@ import { UserResponse } from '../../core/api/api-models';
       <app-bento-card span="full" customId="account-title">
         <h1 id="account-title" class="page-title">{{ i18n.nav.account }}</h1>
         <p class="page-subtitle">
-          Gestiona tu perfil, credenciales de acceso y preferencias de análisis táctico.
+          Gestiona tu perfil, credenciales de acceso y cuentas de Riot Games vinculadas.
         </p>
       </app-bento-card>
 
       @if (tokenService.hasToken()) {
         <!-- User Profile Card -->
-        <app-bento-card span="full" title="Sesión Activa" subtitle="Información de tu cuenta">
+        <app-bento-card span="full" title="Sesión Activa" subtitle="Información de tu cuenta de usuario">
           <div class="profile-card">
             @if (user()) {
               <div class="profile-details">
                 <p><strong>Usuario:</strong> {{ user()?.username }}</p>
                 <p><strong>Email:</strong> {{ user()?.email }}</p>
                 <p><strong>Rol:</strong> {{ user()?.is_admin ? 'Administrador' : 'Jugador' }}</p>
-                <p><strong>Riot ID vinculado:</strong> {{ user()?.riot_id || 'Ninguno' }}</p>
+                <p><strong>Riot ID principal:</strong> {{ user()?.riot_id || 'Ninguno vinculado' }}</p>
               </div>
             } @else {
-              <p>Cargando detalles de la cuenta...</p>
+              <p>Cargando información del perfil...</p>
             }
 
             <button type="button" class="btn-primary logout-btn" (click)="onLogout()">
               {{ i18n.auth.logout }}
             </button>
+          </div>
+        </app-bento-card>
+
+        <!-- Linked Riot Accounts Card -->
+        <app-bento-card span="full" title="Cuentas Riot Vinculadas" subtitle="Tus perfiles de jugador asociados">
+          <div class="linked-accounts-section">
+            @if (linkedAccounts().length > 0) {
+              <ul class="accounts-list" role="list">
+                @for (acc of linkedAccounts(); track acc.id) {
+                  <li class="account-item">
+                    <div class="account-item-info">
+                      <span class="account-name">{{ acc.game_name }}#{{ acc.tag_line }}</span>
+                      @if (acc.is_primary) {
+                        <span class="badge-primary">Principal</span>
+                      }
+                    </div>
+                    <button
+                      type="button"
+                      class="btn-unlink"
+                      (click)="unlinkAccount(acc.id)"
+                      [disabled]="actionLoading()"
+                      [attr.aria-label]="'Desvincular ' + acc.game_name + '#' + acc.tag_line"
+                    >
+                      Desvincular
+                    </button>
+                  </li>
+                }
+              </ul>
+            } @else {
+              <p class="no-accounts">No tienes cuentas Riot vinculadas actualmente.</p>
+            }
+
+            <!-- Form to Link a new Riot Account -->
+            <form class="link-form" (ngSubmit)="linkNewAccount()">
+              <h2 class="link-form-title">Vincular nuevo Riot ID</h2>
+              <div class="form-row">
+                <div class="input-field">
+                  <label for="link-game-name" class="input-label">Nombre en el juego</label>
+                  <input
+                    id="link-game-name"
+                    name="gameName"
+                    type="text"
+                    [(ngModel)]="linkGameName"
+                    class="form-input"
+                    placeholder="Ej. TenZ"
+                    required
+                  />
+                </div>
+                <div class="input-field">
+                  <label for="link-tag-line" class="input-label">Lema (Tag)</label>
+                  <input
+                    id="link-tag-line"
+                    name="tagLine"
+                    type="text"
+                    [(ngModel)]="linkTagLine"
+                    class="form-input"
+                    placeholder="Ej. 0001"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div class="checkbox-field">
+                <input
+                  id="link-is-primary"
+                  name="isPrimary"
+                  type="checkbox"
+                  [(ngModel)]="linkIsPrimary"
+                  class="form-checkbox"
+                />
+                <label for="link-is-primary" class="checkbox-label">Establecer como cuenta principal</label>
+              </div>
+
+              @if (linkError()) {
+                <p class="error-msg" role="alert" aria-live="polite">{{ linkError() }}</p>
+              }
+
+              @if (linkSuccess()) {
+                <p class="success-msg" role="status" aria-live="polite">{{ linkSuccess() }}</p>
+              }
+
+              <button type="submit" class="btn-primary" [disabled]="actionLoading()">
+                {{ actionLoading() ? 'Vinculando...' : 'Vincular Riot ID' }}
+              </button>
+            </form>
           </div>
         </app-bento-card>
       } @else {
@@ -71,7 +157,13 @@ import { UserResponse } from '../../core/api/api-models';
               </button>
             </div>
 
-            <form id="panel-auth" role="tabpanel" [attr.aria-labelledby]="isRegisterMode() ? 'tab-register' : 'tab-login'" (ngSubmit)="onSubmit()" class="auth-form">
+            <form
+              id="panel-auth"
+              role="tabpanel"
+              [attr.aria-labelledby]="isRegisterMode() ? 'tab-register' : 'tab-login'"
+              (ngSubmit)="onSubmit()"
+              class="auth-form"
+            >
               <div class="input-field">
                 <label for="auth-username" class="input-label">{{ i18n.auth.username }}</label>
                 <input
@@ -161,6 +253,108 @@ import { UserResponse } from '../../core/api/api-models';
       align-self: flex-start;
       margin-top: 12px;
     }
+    .linked-accounts-section {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .accounts-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .account-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: var(--color-bg-page);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+    }
+    .account-item-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .account-name {
+      font-family: var(--font-heading);
+      font-weight: 600;
+      font-size: 16px;
+    }
+    .badge-primary {
+      background-color: var(--color-primary);
+      color: var(--color-bg-page);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: var(--radius-xs);
+    }
+    .btn-unlink {
+      background: transparent;
+      border: 1px solid var(--color-loss);
+      color: var(--color-loss);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: var(--radius-xs);
+      cursor: pointer;
+      min-height: 44px;
+      transition: background-color var(--transition-fast), color var(--transition-fast);
+    }
+    .btn-unlink:hover {
+      background-color: rgba(255, 138, 148, 0.1);
+    }
+    .btn-unlink:focus-visible {
+      outline: 3px solid var(--color-focus);
+      outline-offset: 3px;
+    }
+    .no-accounts {
+      color: var(--color-text-secondary);
+      font-size: 14px;
+    }
+    .link-form {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--color-border);
+    }
+    .link-form-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--color-text);
+      margin: 0;
+    }
+    .form-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .form-row .input-field {
+      flex: 1;
+      min-width: 200px;
+    }
+    .checkbox-field {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 44px;
+    }
+    .form-checkbox {
+      width: 20px;
+      height: 20px;
+      accent-color: var(--color-primary);
+      cursor: pointer;
+    }
+    .checkbox-label {
+      font-size: 14px;
+      cursor: pointer;
+    }
     .auth-grid {
       max-width: 500px;
     }
@@ -223,24 +417,34 @@ import { UserResponse } from '../../core/api/api-models';
   `],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class AccountComponent {
+export class AccountComponent implements OnInit {
   readonly tokenService = inject(TokenService);
   private readonly api = inject(ApiClientService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   readonly i18n = I18N_ES;
 
   readonly isRegisterMode = signal(false);
   readonly loading = signal(false);
+  readonly actionLoading = signal(false);
   readonly errorMessage = signal('');
   readonly successMessage = signal('');
+  readonly linkError = signal('');
+  readonly linkSuccess = signal('');
   readonly user = signal<UserResponse | null>(null);
+  readonly linkedAccounts = signal<LinkedAccountResponse[]>([]);
 
   username = '';
   email = '';
   password = '';
 
-  constructor() {
+  linkGameName = '';
+  linkTagLine = '';
+  linkIsPrimary = true;
+
+  ngOnInit(): void {
     if (this.tokenService.hasToken()) {
-      this.loadCurrentUser();
+      this.loadUserData();
     }
   }
 
@@ -250,10 +454,20 @@ export class AccountComponent {
     this.successMessage.set('');
   }
 
-  loadCurrentUser(): void {
+  loadUserData(): void {
     this.api.getAuthMe().subscribe({
-      next: (u) => this.user.set(u),
+      next: (u) => {
+        this.user.set(u);
+        this.loadLinkedAccounts();
+      },
       error: () => this.tokenService.clearToken()
+    });
+  }
+
+  loadLinkedAccounts(): void {
+    this.api.getLinkedAccounts().subscribe({
+      next: (accs) => this.linkedAccounts.set(accs),
+      error: () => {}
     });
   }
 
@@ -286,7 +500,13 @@ export class AccountComponent {
         next: (token) => {
           this.loading.set(false);
           this.tokenService.setToken(token.access_token);
-          this.loadCurrentUser();
+          this.loadUserData();
+
+          // Redirect if returnUrl was passed
+          const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+          if (returnUrl) {
+            this.router.navigateByUrl(returnUrl);
+          }
         },
         error: (err: { error?: { detail?: string } }) => {
           this.loading.set(false);
@@ -296,8 +516,52 @@ export class AccountComponent {
     }
   }
 
+  linkNewAccount(): void {
+    if (!this.linkGameName.trim() || !this.linkTagLine.trim()) {
+      this.linkError.set('Introduce tanto el nombre como el lema.');
+      return;
+    }
+
+    this.actionLoading.set(true);
+    this.linkError.set('');
+    this.linkSuccess.set('');
+
+    this.api.linkAccount({
+      game_name: this.linkGameName.trim(),
+      tag_line: this.linkTagLine.trim(),
+      is_primary: this.linkIsPrimary
+    }).subscribe({
+      next: () => {
+        this.actionLoading.set(false);
+        this.linkSuccess.set('Cuenta vinculada correctamente.');
+        this.linkGameName = '';
+        this.linkTagLine = '';
+        this.loadUserData();
+      },
+      error: (err: { error?: { detail?: string } }) => {
+        this.actionLoading.set(false);
+        this.linkError.set(err?.error?.detail || 'Error al vincular cuenta.');
+      }
+    });
+  }
+
+  unlinkAccount(accountId: string): void {
+    this.actionLoading.set(true);
+    this.api.unlinkAccount(accountId).subscribe({
+      next: () => {
+        this.actionLoading.set(false);
+        this.loadUserData();
+      },
+      error: (err: { error?: { detail?: string } }) => {
+        this.actionLoading.set(false);
+        this.linkError.set(err?.error?.detail || 'Error al desvincular cuenta.');
+      }
+    });
+  }
+
   onLogout(): void {
     this.tokenService.clearToken();
     this.user.set(null);
+    this.linkedAccounts.set([]);
   }
 }
