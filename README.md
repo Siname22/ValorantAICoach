@@ -6,10 +6,10 @@
 
 [![Python](https://img.shields.io/badge/Python-3.12%20%7C%203.13-blue)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688)](https://fastapi.tiangolo.com/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.39+-FF4B4B)](https://streamlit.io/)
+[![Angular](https://img.shields.io/badge/Angular-19-DD0031)](https://angular.dev/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
 [![Tests](https://img.shields.io/badge/Tests-Passing-success)](https://pytest.org/)
-[![Resilience](https://img.shields.io/badge/Gemini%20Resilience-Verified-brightgreen)](https://ai.google.dev/)
+[![WCAG](https://img.shields.io/badge/A11y-WCAG%202.2%20AA-brightgreen)](https://www.w3.org/WAI/standards-guidelines/wcag/)
 [![Release](https://img.shields.io/badge/Release-v1.0.0-blueviolet)](https://github.com/Siname22/ValorantAICoach/releases)
 [![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Ruff](https://img.shields.io/badge/linter-ruff-red)](https://github.com/astral-sh/ruff)
@@ -24,9 +24,9 @@
 - **Unified Multi-Provider Aggregation**: Transparent fallback across Tracker.gg, HenrikDev, and Riot Games APIs with automatic circuit breaking and error isolation.
 - **Enterprise Persistence**: Production PostgreSQL 16 database managed via Alembic migrations, supporting atomic snapshot caching, player histories, coaching reports, and user identities.
 - **User Authentication & Linked Accounts**: Secure PBKDF2-HMAC-SHA256 password hashing, cryptographically signed HS256 JWT access tokens, and multi-identity Riot player account linking with primary profile selection.
-- **Backend & Frontend Isolation**: Headless FastAPI service and interactive Streamlit UI run in fully decoupled containers with independent dependencies and virtual environments.
+- **Backend & Frontend Isolation**: Headless FastAPI service and modern Angular 19 HUD Bento SPA run in fully decoupled containers with independent dependencies and environments.
 - **Grounded Multi-Agent Coaching**: Specialized agents evaluate player telemetry (Aim, Economy, Positioning, Agent Utility) and compile structured, evidence-backed recommendations.
-- **Resilient AI Coach**: Integrated Google Gemini assistant powered by the official SDK with an automatic 3-model fallback chain (`gemini-2.5-flash` &rarr; `gemini-2.5-flash-lite` &rarr; `gemini-3.5-flash`), exponential backoff, and 81/81 resilience validations.
+- **Resilient AI Vision & Coach**: Integrated Google Gemini assistant powered by the official SDK for scoreboard screenshot analysis, multi-agent reporting, and tactical guidance.
 - **Team Synergy & Counter-Pick Engine**: Tactical composition evaluation providing squad archetype synergy scores, utility coverage breakdown, and opponent-tailored counter-pick guidance.
 - **Production Hardened & Audited**: Robust security headers (CSP, HSTS, frame protection, MIME sniffing protection), configurable CORS, request body size limits against DoS, and non-root Docker execution.
 
@@ -38,8 +38,8 @@ The platform enforces strict separation of concerns across service boundaries:
 
 ```text
                         ┌─────────────────────────────────────────┐
-                        │      Streamlit Frontend (Port 8501)     │
-                        │   (Isolated Container & Dependencies)   │
+                        │     Angular HUD Bento SPA (Port 8080)   │
+                        │   (Nginx Container / WCAG 2.2 AA)       │
                         └────────────────────┬────────────────────┘
                                              │ HTTP REST
                                              ▼
@@ -63,9 +63,9 @@ The platform enforces strict separation of concerns across service boundaries:
 ```
 
 ### Architectural Guarantees
-1. **Frontend Isolation**: The frontend communicates with the backend solely over HTTP via `APIClient`. It maintains zero direct database or internal service bindings.
-2. **Container Separation**: `docker/backend.Dockerfile` and `docker/frontend.Dockerfile` build isolated images with separate virtual environments (`backend_venv`, `frontend_venv`), eliminating dependency pollution.
-3. **Test Isolation**: Backend unit tests do not require Streamlit or GUI libraries. Frontend test suites run independently, and optional dependencies use guard checks (`pytest.importorskip`).
+1. **Frontend Isolation**: The frontend communicates with the backend solely over HTTP via the generated TypeScript OpenAPI client. It maintains zero direct database or internal service bindings.
+2. **Container Separation**: `docker/backend.Dockerfile` and `docker/frontend.Dockerfile` build isolated images (Python 3.12 backend and Node 22/Nginx 1.27 SPA frontend), eliminating dependency pollution.
+3. **Test Isolation**: Backend unit tests run with zero frontend dependencies. Frontend testing and static builds run independently in the Angular workspace.
 4. **Data Privacy & Sanitization**: Error handlers and health probes strictly sanitize outputs. Sensitive keys and raw upstream payloads are never logged or leaked.
 
 ---
@@ -119,15 +119,15 @@ Located in `agents/`, the analysis engine operates using dedicated analytical ag
 - **role_coach**: Provides role execution insights tailored to agent classes (Duelist, Initiator, Controller, Sentinel).
 - **report_writer**: Synthesizes natural-language feedback, evidence tables, and targeted training routines.
 
-### Resilient Gemini AI Coach
-Located in `frontend/streamlit_app/utils/gemini_client.py`, the AI coach delivers conversational guidance with production-grade fault tolerance:
+### Resilient Gemini AI Integration
+The AI engine integrates Google Gemini with production-grade fault tolerance:
 - **Automatic Multi-Model Failover Chain**:
   ```text
   gemini-2.5-flash (Primary) ──[Fail]──> gemini-2.5-flash-lite (Fast) ──[Fail]──> gemini-3.5-flash (Fallback)
   ```
 - **Exponential Backoff**: Automatic retry schedule (1s, 2s) on transient errors (HTTP 429, 500, 502, 503, 504, connection timeouts).
 - **Graceful Error Masking**: User-friendly messaging without leaking HTTP status codes, tracebacks, or credentials.
-- **Strict Verification**: Verified by automated resilience tests covering all failure conditions.
+- **Multimodal Scoreboard Vision**: Vision OCR processing of in-game match screenshots with structured JSON output and schema validation.
 
 ---
 
@@ -136,21 +136,27 @@ Located in `frontend/streamlit_app/utils/gemini_client.py`, the AI coach deliver
 The repository maintains strict test coverage, formatting, and linting standards:
 
 - Comprehensive regression test suites covering API routes, security, persistence, vision, and agents.
-- Dedicated Gemini AI resilience test suite with simulated network, quota, and authentication failures.
 - 100% Ruff and Black compliance with strict 88-character line limits.
+- Full TypeScript strict typing and WCAG 2.2 AA accessibility validation in Angular.
 
-### Running the Test Suite
+### Running the Backend Test Suite
 
 ```bash
-# Run backend and frontend test suite
-uv run --frozen --extra frontend pytest -q tests frontend/streamlit_app/tests
-
-# Run Gemini resilience test suite
-uv run --frozen --extra frontend python frontend/streamlit_app/tests/test_gemini_resilience.py
+# Run backend regression tests
+uv run pytest -q tests
 
 # Check code formatting and linting
-uv run --frozen --extra frontend ruff check .
-uv run --frozen --extra frontend black --check .
+uv run ruff check .
+uv run black --check .
+```
+
+### Running the Frontend Angular Application
+
+```bash
+cd frontend/web
+npm install
+npm run build
+npm start
 ```
 
 ---
@@ -159,6 +165,7 @@ uv run --frozen --extra frontend black --check .
 
 ### Prerequisites
 - **Python 3.12+**
+- **Node.js 22+** & **npm**
 - **uv** (recommended package and project manager)
 - **Docker & Docker Compose** (for containerized deployment)
 
@@ -197,9 +204,9 @@ docker compose up --build
 
 - **Backend API**: [http://localhost:8000](http://localhost:8000)
 - **API Documentation (Swagger)**: [http://localhost:8000/docs](http://localhost:8000/docs)
-- **Frontend Dashboard**: [http://localhost:8501](http://localhost:8501)
+- **Frontend Dashboard (Angular HUD Bento)**: [http://localhost:8080](http://localhost:8080)
 
-### 3. Run Locally with `uv`
+### 3. Run Locally with `uv` and `npm`
 
 #### Start PostgreSQL & Run Migrations:
 ```bash
@@ -212,9 +219,11 @@ uv run alembic upgrade head
 uv run uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-#### Start Streamlit Frontend:
+#### Start Angular HUD Bento Frontend:
 ```bash
-uv run --extra frontend streamlit run frontend/streamlit_app/app.py --server.port 8501
+cd frontend/web
+npm install
+npm start
 ```
 
 ---
@@ -237,11 +246,11 @@ ValorantAICoach/
 │   └── providers/              # External API SDKs (Riot, Henrik, Tracker)
 ├── database/                   # Alembic database migration scripts
 ├── docker/                     # Dedicated Dockerfiles for backend and frontend
-├── frontend/                   # Interactive Streamlit web application
-│   └── streamlit_app/
-│       ├── components/         # Reusable UI widgets
-│       ├── utils/              # APIClient, Gemini resilient coach, formatters
-│       └── tests/              # Frontend unit and resilience tests
+├── frontend/                   # Frontend SPA client
+│   └── web/                    # Angular 19 HUD Bento SPA (WCAG 2.2 AA, signals)
+│       ├── src/app/core/       # API client generated from OpenAPI, auth, tokens
+│       ├── src/app/features/   # Dashboard, Search, Reports, Matches, Vision
+│       └── src/app/shared/     # Bento cards, HUD navigation, SVG radar charts
 ├── tests/                      # Backend, auth, provider, persistence, and system tests
 ├── docker-compose.yml          # Multi-container orchestration
 └── pyproject.toml              # UV / Python dependency management
@@ -256,7 +265,7 @@ ValorantAICoach/
 - [x] Automatic snapshot cache expiration and prune endpoint
 - [x] Readiness (`/health/ready`) and liveness (`/health/live`) probes
 - [x] Multi-agent analytical framework (Tactical, Economy, Aim, Agent-specific)
-- [x] Streamlit web dashboard with interactive charts and match viewer
+- [x] Angular 19 HUD Bento SPA with WCAG 2.2 AA accessibility
 - [x] Interactive Multi-Agent Coaching Report cards and history browser
 - [x] Resilient Gemini AI chatbot with 3-model failover and backoff
 - [x] Container and dependency isolation (Backend vs Frontend)

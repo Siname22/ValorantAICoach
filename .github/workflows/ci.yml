@@ -33,17 +33,13 @@ jobs:
           python-version: ${{ matrix.python }}
           enable-cache: true
       - name: Install locked dependencies
-        run: uv sync --locked --extra frontend
-      - name: Backend and frontend regression tests
-        run: uv run --no-sync pytest -q tests frontend/streamlit_app/tests
-      - name: Gemini resilience (no live API)
-        run: uv run --no-sync python frontend/streamlit_app/tests/test_gemini_resilience.py
-      - name: Frontend dependency and page import checks
-        run: uv run --no-sync python frontend/streamlit_app/verify_deployment.py
+        run: uv sync --locked
+      - name: Backend regression tests
+        run: uv run --no-sync pytest -q tests
       - name: Lint
         run: uv run --no-sync ruff check .
       - name: Format
-        run: uv run --no-sync black --workers 1 --check backend tests agents frontend database integration_tests
+        run: uv run --no-sync black --workers 1 --check backend tests agents database integration_tests
 
   postgres-storage:
     name: PostgreSQL 16 storage
@@ -121,7 +117,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build Angular HUD Bento image
-        run: docker build --progress=plain -f docker/frontend-web.Dockerfile -t valorant-coach-web:test .
+        run: docker build --progress=plain -f docker/frontend.Dockerfile -t valorant-coach-web:test .
       - name: Verify Nginx serving index.html
         shell: bash
         run: |
