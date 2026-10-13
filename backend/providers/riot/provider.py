@@ -5,7 +5,7 @@ from urllib.parse import quote
 from pydantic import ValidationError
 
 from backend.providers.base.models import ProviderHealth, ProviderStatus
-from backend.providers.base.provider import BaseProvider
+from backend.providers.base.player_data_provider import BasePlayerDataProvider
 
 from .client import RiotHTTPClient
 from .config import RiotConfig
@@ -15,7 +15,7 @@ from .models import Match, MatchPlayerStats, Player, Rank
 logger = logging.getLogger(__name__)
 
 
-class RiotProvider(BaseProvider):
+class RiotProvider(BasePlayerDataProvider):
     """
     Implementation of Riot API provider for Valorant player data.
     Inherits from BaseProvider and utilizes BaseHTTPClient for communication.

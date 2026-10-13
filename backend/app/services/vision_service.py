@@ -22,6 +22,7 @@ from backend.app.schemas.vision_schemas import (
     ScoreboardPlayerRow,
 )
 from backend.app.services.player_service import PlayerMatch
+from backend.providers.llm import BaseLLMProvider, GeminiLLMProvider
 from pydantic import BaseModel, Field, NonNegativeInt, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -179,13 +180,19 @@ class ScoreboardVisionService:
         self,
         api_key: str | None = None,
         model_name: str = "gemini-2.5-flash",
+        llm_provider: BaseLLMProvider | None = None,
     ) -> None:
         self.api_key = (
             api_key if api_key is not None else os.environ.get("GEMINI_API_KEY")
         )
         self.model_name = model_name
+        self.llm_provider = llm_provider or GeminiLLMProvider(
+            api_key=self.api_key, default_model=model_name
+        )
 
     def _get_genai_client(self) -> Any:
+        if isinstance(self.llm_provider, GeminiLLMProvider):
+            return self.llm_provider._get_client()
         if not self.api_key or not self.api_key.strip():
             return None
         try:

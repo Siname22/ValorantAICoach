@@ -1,5 +1,6 @@
 from typing import Any
 
+from backend.providers.base.player_data_provider import BasePlayerDataProvider
 from backend.providers.riot.exceptions import RiotError, RiotNotFoundError
 from backend.providers.riot.models import Match, Player, Rank
 from backend.providers.riot.provider import RiotProvider
@@ -44,16 +45,15 @@ class RiotPlayerStatsTool(BaseTool):
     async def execute(
         self, game_name: str, tag_line: str, **kwargs: Any
     ) -> dict[str, Any]:
-        riot_provider: RiotProvider = container.resolve(RiotProvider)
+        try:
+            provider: BasePlayerDataProvider = container.resolve(BasePlayerDataProvider)
+        except KeyError:
+            provider = container.resolve(RiotProvider)
 
         try:
-            player: Player = await riot_provider.get_player_by_riot_id(
-                game_name, tag_line
-            )
-            rank: Rank = await riot_provider.get_player_rank(player.puuid)
-            matches: list[Match] = await riot_provider.get_player_match_history(
-                player.puuid
-            )
+            player: Player = await provider.get_player_by_riot_id(game_name, tag_line)
+            rank: Rank = await provider.get_player_rank(player.puuid)
+            matches: list[Match] = await provider.get_player_match_history(player.puuid)
 
             return {
                 "player": player.model_dump(),

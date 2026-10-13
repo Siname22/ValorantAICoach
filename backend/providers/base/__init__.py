@@ -17,10 +17,12 @@ from .models import (
     RateLimit,
     RequestMetadata,
 )
+from .player_data_provider import BasePlayerDataProvider
 from .provider import BaseProvider
 
 __all__ = [
     "BaseProvider",
+    "BasePlayerDataProvider",
     "BaseHTTPClient",
     "ProviderConfig",
     "ProviderError",
