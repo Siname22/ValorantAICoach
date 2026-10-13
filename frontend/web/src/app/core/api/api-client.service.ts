@@ -45,24 +45,40 @@ export class ApiClientService {
   }
 
   // 2. Player Profile and Match telemetry
-  getPlayer(gameName: string, tagLine: string): Observable<Models.PlayerProfile> {
+  getPlayer(
+    gameName: string,
+    tagLine: string,
+    region?: string
+  ): Observable<Models.PlayerProfile> {
+    let params = new HttpParams();
+    if (region) params = params.set('region', region);
     return this.http.get<Models.PlayerProfile>(
-      `${this.baseUrl}/players/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`
+      `${this.baseUrl}/players/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`,
+      { params }
     );
   }
 
-  getPlayerRank(gameName: string, tagLine: string): Observable<Models.PlayerRank> {
+  getPlayerRank(
+    gameName: string,
+    tagLine: string,
+    region?: string
+  ): Observable<Models.PlayerRank> {
+    let params = new HttpParams();
+    if (region) params = params.set('region', region);
     return this.http.get<Models.PlayerRank>(
-      `${this.baseUrl}/players/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}/rank`
+      `${this.baseUrl}/players/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}/rank`,
+      { params }
     );
   }
 
   getPlayerMatches(
     gameName: string,
     tagLine: string,
-    limit: number = 5
+    limit: number = 5,
+    region?: string
   ): Observable<{ matches: Models.PlayerMatch[]; count: number }> {
-    const params = new HttpParams().set('limit', limit.toString());
+    let params = new HttpParams().set('limit', limit.toString());
+    if (region) params = params.set('region', region);
     return this.http.get<{ matches: Models.PlayerMatch[]; count: number }>(
       `${this.baseUrl}/players/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}/matches`,
       { params }
@@ -80,10 +96,15 @@ export class ApiClientService {
 
   getPlayerOverview(
     gameName: string,
-    tagLine: string
+    tagLine: string,
+    region?: string,
+    limit: number = 10
   ): Observable<Models.CompletePlayerProfile> {
+    let params = new HttpParams().set('limit', limit.toString());
+    if (region) params = params.set('region', region);
     return this.http.get<Models.CompletePlayerProfile>(
-      `${this.baseUrl}/players/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}/overview`
+      `${this.baseUrl}/players/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}/overview`,
+      { params }
     );
   }
 
@@ -91,9 +112,11 @@ export class ApiClientService {
   getCoachingReports(
     gameName: string,
     tagLine: string,
-    limit: number = 5
+    limit: number = 5,
+    region?: string
   ): Observable<{ reports: Models.CoachingReportSummary[]; count: number }> {
-    const params = new HttpParams().set('limit', limit.toString());
+    let params = new HttpParams().set('limit', limit.toString());
+    if (region) params = params.set('region', region);
     return this.http.get<{ reports: Models.CoachingReportSummary[]; count: number }>(
       `${this.baseUrl}/players/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}/reports`,
       { params }
@@ -103,9 +126,11 @@ export class ApiClientService {
   generateCoachingReport(
     gameName: string,
     tagLine: string,
-    limit: number = 5
+    limit: number = 5,
+    region?: string
   ): Observable<Models.CoachingReportDetailResponse> {
-    const params = new HttpParams().set('limit', limit.toString());
+    let params = new HttpParams().set('limit', limit.toString());
+    if (region) params = params.set('region', region);
     return this.http.post<Models.CoachingReportDetailResponse>(
       `${this.baseUrl}/players/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}/reports`,
       {},
@@ -134,19 +159,22 @@ export class ApiClientService {
 
   syncPlayer(
     gameName: string,
-    tagLine: string
+    tagLine: string,
+    region?: string
   ): Observable<{
     status: string;
     new_report_generated: boolean;
     report_id?: string;
   }> {
+    let params = new HttpParams();
+    if (region) params = params.set('region', region);
     const url =
       `${this.baseUrl}/players/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}/sync`;
     return this.http.post<{
       status: string;
       new_report_generated: boolean;
       report_id?: string;
-    }>(url, {});
+    }>(url, {}, { params });
   }
 
   // 4. Timeline & Economy Analytics

@@ -44,6 +44,26 @@ import {
               <span id="search-hint" class="sr-only">Introduce tu nombre de invocador y lema separados por almohadilla (ej. TenZ#0001).</span>
             </div>
 
+            <div class="input-field region-field">
+              <label for="region-select" class="input-label">
+                {{ i18n.hero.regionLabel }}
+              </label>
+              <select
+                id="region-select"
+                name="region"
+                [(ngModel)]="selectedRegion"
+                class="region-select"
+                [attr.aria-label]="i18n.hero.regionAriaLabel"
+              >
+                <option value="eu">EU (Europa)</option>
+                <option value="na">NA (Norteamérica)</option>
+                <option value="ap">AP (Asia-Pacífico)</option>
+                <option value="kr">KR (Corea)</option>
+                <option value="latam">LATAM (Latinoamérica)</option>
+                <option value="br">BR (Brasil)</option>
+              </select>
+            </div>
+
             <button type="submit" class="btn-primary hero-btn" [disabled]="loading()">
               {{ loading() ? i18n.hero.searching : i18n.hero.searchButton }}
             </button>
@@ -344,13 +364,19 @@ import {
       gap: 6px;
     }
 
+    .region-field {
+      flex: 0 1 180px;
+      min-width: 140px;
+    }
+
     .input-label {
       font-size: 13px;
       font-weight: 600;
       color: var(--color-text-secondary);
     }
 
-    .search-input {
+    .search-input,
+    .region-select {
       background-color: var(--color-bg-page);
       border: 1px solid var(--color-border-input);
       border-radius: var(--radius-control);
@@ -358,10 +384,19 @@ import {
       color: var(--color-text-primary);
       min-height: var(--min-touch-target);
       transition: border-color var(--transition-fast);
+      font-family: inherit;
+      font-size: 14px;
     }
 
-    .search-input:focus-visible {
+    .region-select {
+      cursor: pointer;
+    }
+
+    .search-input:focus-visible,
+    .region-select:focus-visible {
       border-color: var(--color-focus);
+      outline: 2px solid var(--color-focus);
+      outline-offset: 2px;
     }
 
     .hero-btn {
@@ -568,6 +603,7 @@ export class SummaryComponent {
   private readonly api = inject(ApiClientService);
 
   searchQuery = 'TenZ#0001';
+  selectedRegion = 'eu';
   readonly loading = signal(false);
   readonly syncing = signal(false);
   readonly errorMessage = signal<string | null>(null);
@@ -600,12 +636,13 @@ export class SummaryComponent {
     this.loading.set(true);
 
     const [gameName, tagLine] = trimmed.split('#');
-    this.api.getPlayer(gameName, tagLine).subscribe({
+    this.api.getPlayer(gameName, tagLine, this.selectedRegion).subscribe({
       next: (profile: PlayerProfile) => {
         this.playerProfile.set(profile);
-        this.loadRecentMatches(gameName, tagLine);
+        const effectiveRegion = this.selectedRegion || profile.region;
+        this.loadRecentMatches(gameName, tagLine, effectiveRegion);
         this.loadStats(gameName, tagLine);
-        this.loadCoachingReport(gameName, tagLine);
+        this.loadCoachingReport(gameName, tagLine, effectiveRegion);
       },
       error: () => {
         this.loading.set(false);
@@ -621,11 +658,12 @@ export class SummaryComponent {
     this.syncing.set(true);
     this.syncMessage.set(null);
 
-    this.api.syncPlayer(profile.game_name, profile.tag_line).subscribe({
+    const effectiveRegion = this.selectedRegion || profile.region;
+    this.api.syncPlayer(profile.game_name, profile.tag_line, effectiveRegion).subscribe({
       next: (_res: { status: string; new_report_generated: boolean; report_id?: string }) => {
         this.syncing.set(false);
         this.syncMessage.set('Sincronización completada exitosamente.');
-        this.loadRecentMatches(profile.game_name, profile.tag_line);
+        this.loadRecentMatches(profile.game_name, profile.tag_line, effectiveRegion);
         this.loadStats(profile.game_name, profile.tag_line);
       },
       error: (err: { error?: { detail?: string } }) => {
@@ -635,8 +673,8 @@ export class SummaryComponent {
     });
   }
 
-  private loadRecentMatches(gameName: string, tagLine: string): void {
-    this.api.getPlayerMatches(gameName, tagLine, 5).subscribe({
+  private loadRecentMatches(gameName: string, tagLine: string, region?: string): void {
+    this.api.getPlayerMatches(gameName, tagLine, 5, region).subscribe({
       next: (res: { matches: PlayerMatch[]; count: number }) => {
         this.matches.set(res.matches || []);
         this.loading.set(false);
@@ -654,8 +692,8 @@ export class SummaryComponent {
     });
   }
 
-  private loadCoachingReport(gameName: string, tagLine: string): void {
-    this.api.getCoachingReports(gameName, tagLine, 1).subscribe({
+  private loadCoachingReport(gameName: string, tagLine: string, region?: string): void {
+    this.api.getCoachingReports(gameName, tagLine, 1, region).subscribe({
       next: (res: { reports: CoachingReportSummary[]; count: number }) => {
         if (res.reports && res.reports.length > 0) {
           const report = res.reports[0];

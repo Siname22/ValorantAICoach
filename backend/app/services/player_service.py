@@ -80,13 +80,14 @@ class PlayerService:
         )
 
     async def get_complete_player_profile(
-        self, game_name: str, tag_line: str
+        self, game_name: str, tag_line: str, *, region: str | None = None
     ) -> PlayerProfile:
-        profile = await self.get_player(game_name, tag_line)
+        profile = await self.get_player(game_name, tag_line, region=region)
+        effective_region = region or profile.region
         if not profile.rank_name:
             try:
                 rank = await self.get_rank(
-                    game_name, tag_line, puuid=profile.puuid, region=profile.region
+                    game_name, tag_line, puuid=profile.puuid, region=effective_region
                 )
                 profile.rank_name = rank.tier_name
                 profile.rank_icon_url = rank.rank_icon_url
@@ -94,7 +95,9 @@ class PlayerService:
                 logger.debug("Rank enrichment unavailable")
         return profile
 
-    async def get_player(self, game_name: str, tag_line: str) -> PlayerProfile:
+    async def get_player(
+        self, game_name: str, tag_line: str, *, region: str | None = None
+    ) -> PlayerProfile:
         errors: list[Exception] = []
         if self.tracker is not None:
             try:
@@ -113,6 +116,7 @@ class PlayerService:
                 return PlayerProfile(
                     game_name=game_name,
                     tag_line=tag_line,
+                    region=region,
                     avatar_url=data.identity.avatar_url,
                     rank_name=rank_name,
                     rank_icon_url=rank_icon,
@@ -128,7 +132,7 @@ class PlayerService:
                     puuid=data.puuid,
                     game_name=data.name,
                     tag_line=data.tag,
-                    region=data.region,
+                    region=region or data.region,
                     account_level=data.account_level,
                     source="henrik",
                 )
@@ -142,7 +146,7 @@ class PlayerService:
                     puuid=data.puuid,
                     game_name=data.game_name,
                     tag_line=data.tag_line,
-                    region=data.region,
+                    region=region or data.region,
                     account_level=data.account_level,
                     source="riot",
                 )
@@ -152,9 +156,9 @@ class PlayerService:
         self._raise_failure(errors, "Player")
 
     async def get_player_identity(
-        self, game_name: str, tag_line: str
+        self, game_name: str, tag_line: str, *, region: str | None = None
     ) -> PlayerIdentity:
-        profile = await self.get_player(game_name, tag_line)
+        profile = await self.get_player(game_name, tag_line, region=region)
         return PlayerIdentity.model_validate(profile.model_dump())
 
     async def get_stats_overview(
@@ -189,17 +193,23 @@ class PlayerService:
         self._raise_failure(errors, "Lifetime statistics")
 
     async def get_player_overview(
-        self, game_name: str, tag_line: str, *, limit: int = 10
+        self,
+        game_name: str,
+        tag_line: str,
+        *,
+        region: str | None = None,
+        limit: int = 10,
     ) -> CompletePlayerProfile:
-        identity = await self.get_player_identity(game_name, tag_line)
+        identity = await self.get_player_identity(game_name, tag_line, region=region)
+        effective_region = region or identity.region
         results = await asyncio.gather(
-            self.get_rank(game_name, tag_line, region=identity.region),
+            self.get_rank(game_name, tag_line, region=effective_region),
             self.get_stats_overview(game_name, tag_line),
             self.get_recent_matches(
                 game_name,
                 tag_line,
                 puuid=identity.puuid,
-                region=identity.region,
+                region=effective_region,
                 limit=limit,
             ),
             return_exceptions=True,
@@ -224,8 +234,13 @@ class PlayerService:
     ) -> str:
         if region:
             return region
-        account = await self.henrik.get_account(game_name, tag_line)
-        return account.region
+        if self.henrik is not None:
+            try:
+                account = await self.henrik.get_account(game_name, tag_line)
+                return account.region
+            except Exception:
+                pass
+        return "eu"
 
     async def get_rank(
         self,

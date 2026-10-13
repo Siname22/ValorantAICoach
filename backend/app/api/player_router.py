@@ -48,8 +48,11 @@ async def get_player_profile(
     game_name: GameName,
     tag_line: TagLine,
     service: Service,
+    region: RegionQuery = None,
 ) -> PlayerProfileResponse:
-    profile = await service.get_complete_player_profile(game_name, tag_line)
+    profile = await service.get_complete_player_profile(
+        game_name, tag_line, region=region
+    )
     return PlayerProfileResponse(**profile.model_dump())
 
 
@@ -112,9 +115,12 @@ async def get_player_overview(
     game_name: GameName,
     tag_line: TagLine,
     service: Service,
+    region: RegionQuery = None,
     limit: Annotated[int, Query(ge=1, le=20)] = 10,
 ) -> CompletePlayerProfile:
-    return await service.get_player_overview(game_name, tag_line, limit=limit)
+    return await service.get_player_overview(
+        game_name, tag_line, region=region, limit=limit
+    )
 
 
 @router.post(

@@ -77,13 +77,17 @@ class PersistentPlayerService(PlayerService):
             )
             return value
 
-    async def get_player(self, game_name: str, tag_line: str) -> PlayerProfile:
+    async def get_player(
+        self, game_name: str, tag_line: str, *, region: str | None = None
+    ) -> PlayerProfile:
         fetch = super().get_player
         return await self._cached(
             "profile",
-            {"game_name": game_name, "tag_line": tag_line},
+            {"game_name": game_name, "tag_line": tag_line, "region": region},
             TypeAdapter(PlayerProfile),
-            lambda: self._model_result(lambda: fetch(game_name, tag_line)),
+            lambda: self._model_result(
+                lambda: fetch(game_name, tag_line, region=region)
+            ),
         )
 
     async def get_rank(

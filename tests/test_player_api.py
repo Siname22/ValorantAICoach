@@ -182,3 +182,15 @@ def test_blank_player_name_is_rejected(client, mock_player_service):
     response = client.get("/players/%20/EU1")
     assert response.status_code == 422
     mock_player_service.get_complete_player_profile.assert_not_awaited()
+
+
+def test_get_player_profile_with_region(client, mock_player_service):
+    mock_player_service.get_complete_player_profile.return_value = PlayerProfile(
+        game_name="TenZ", tag_line="0505", region="na"
+    )
+    response = client.get("/players/TenZ/0505?region=na")
+    assert response.status_code == 200
+    assert response.json()["region"] == "na"
+    mock_player_service.get_complete_player_profile.assert_awaited_once_with(
+        "TenZ", "0505", region="na"
+    )
