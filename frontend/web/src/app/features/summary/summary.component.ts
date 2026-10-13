@@ -4,7 +4,13 @@ import { FormsModule } from '@angular/forms';
 import { BentoCardComponent } from '../../shared/ui/bento-card/bento-card.component';
 import { I18N_ES } from '../../core/i18n/es';
 import { ApiClientService } from '../../core/api/api-client.service';
-import { PlayerProfile, PlayerMatch, PlayerStatsOverview } from '../../core/api/api-models';
+import {
+  PlayerProfile,
+  PlayerMatch,
+  PlayerStatsOverview,
+  CoachingReportSummary,
+  PlayerTimelineAnalyticsResponse,
+} from '../../core/api/api-models';
 
 @Component({
   selector: 'app-summary',
@@ -36,17 +42,35 @@ import { PlayerProfile, PlayerMatch, PlayerStatsOverview } from '../../core/api/
                 aria-describedby="search-hint"
                 required
               />
-              <span id="search-hint" class="sr-only">Introduce tu nombre de invocador y lema separados por almohadilla.</span>
+              <span id="search-hint" class="sr-only">Introduce tu nombre de invocador y lema separados por almohadilla (ej. TenZ#0001).</span>
             </div>
 
             <button type="submit" class="btn-primary hero-btn" [disabled]="loading()">
               {{ loading() ? i18n.hero.searching : i18n.hero.searchButton }}
             </button>
+
+            @if (playerProfile()) {
+              <button
+                type="button"
+                class="btn-sync"
+                (click)="onSync()"
+                [disabled]="syncing()"
+                aria-label="Sincronizar partidas recientes desde Riot"
+              >
+                {{ syncing() ? 'Sincronizando...' : '↻ Sincronizar' }}
+              </button>
+            }
           </form>
 
           @if (errorMessage()) {
             <p class="search-error" role="alert" aria-live="polite">
               {{ errorMessage() }}
+            </p>
+          }
+
+          @if (syncMessage()) {
+            <p class="sync-status" role="status" aria-live="polite">
+              {{ syncMessage() }}
             </p>
           }
         </div>
@@ -59,8 +83,8 @@ import { PlayerProfile, PlayerMatch, PlayerStatsOverview } from '../../core/api/
         [subtitle]="i18n.bento.acsCard.subtitle"
       >
         <div class="metric-display">
-          <span class="featured-number">{{ stats() ? (stats()!.kd_ratio * 180 | number:'1.0-0') : '231' }}</span>
-          <div class="metric-diff" aria-label="Diferencia de rendimiento">
+          <span class="featured-number">{{ calculatedAcs() }}</span>
+          <div class="metric-diff" aria-label="Diferencia frente a la media anterior">
             <span class="diff-tag positive">{{ i18n.bento.acsCard.diffPositive }} (+18.4)</span>
           </div>
         </div>
@@ -71,49 +95,113 @@ import { PlayerProfile, PlayerMatch, PlayerStatsOverview } from '../../core/api/
         [title]="i18n.bento.planCard.title"
         [subtitle]="i18n.bento.planCard.subtitle"
       >
-        <ol class="plan-list" aria-label="Pasos de mejora recomendados">
-          <li class="plan-item">
-            <strong>Disciplina en Ronda 3:</strong> Guardar créditos tras derrota para asegurar compra completa en ronda 4.
-          </li>
-          <li class="plan-item">
-            <strong>Distancia de intercambio (<3s):</strong> Mantén línea de visión con el iniciador en B Main.
-          </li>
-          <li class="plan-item">
-            <strong>Conservación de Ultimates:</strong> Evita usar habilidades definitivas en superioridad 4v1 o 5v2.
-          </li>
-        </ol>
+        @if (latestPlanItems().length > 0) {
+          <ol class="plan-list" aria-label="Pasos de mejora recomendados por el coach">
+            @for (item of latestPlanItems(); track item.title) {
+              <li class="plan-item">
+                <strong>{{ item.title }}:</strong> {{ item.description }}
+              </li>
+            }
+          </ol>
+        } @else {
+          <ol class="plan-list" aria-label="Pasos de mejora recomendados">
+            <li class="plan-item">
+              <strong>Disciplina en Ronda 3:</strong> Guardar créditos tras derrota para asegurar compra completa en ronda 4.
+            </li>
+            <li class="plan-item">
+              <strong>Distancia de intercambio (&lt;3s):</strong> Mantén línea de visión con el iniciador en B Main.
+            </li>
+            <li class="plan-item">
+              <strong>Conservación de Ultimates:</strong> Evita usar habilidades definitivas en situaciones 4v1 o 5v2.
+            </li>
+          </ol>
+        }
       </app-bento-card>
 
-      <!-- 4. Economía por Ronda (Line chart SVG + visible textual description) -->
+      <!-- 4. Economía por Ronda (Ambas vistas: Tendencia y Ronda a ronda) -->
       <app-bento-card
         [title]="i18n.bento.economyCard.title"
         [subtitle]="i18n.bento.economyCard.subtitle"
       >
         <div class="economy-container">
-          <!-- Accessible SVG Chart (aria-hidden because visible text provides full alternative) -->
-          <svg
-            class="economy-chart-svg"
-            viewBox="0 0 300 80"
-            aria-hidden="true"
-            focusable="false"
-          >
-            <polyline
-              fill="none"
-              stroke="var(--color-action-primary)"
-              stroke-width="3"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              points="10,65 50,45 90,60 130,20 170,25 210,55 250,15 290,20"
-            />
-            <circle cx="10" cy="65" r="4" fill="var(--color-action-primary)" />
-            <circle cx="130" cy="20" r="4" fill="var(--color-action-primary)" />
-            <circle cx="250" cy="15" r="4" fill="var(--color-action-primary)" />
-          </svg>
+          <div class="economy-view-switch" role="tablist" aria-label="Modo de visualización económica">
+            <button
+              type="button"
+              role="tab"
+              [attr.aria-selected]="economyMode() === 'trend'"
+              id="tab-econ-trend"
+              aria-controls="panel-econ-chart"
+              class="econ-tab-btn"
+              [class.active]="economyMode() === 'trend'"
+              (click)="economyMode.set('trend')"
+            >
+              Tendencia Global
+            </button>
+            <button
+              type="button"
+              role="tab"
+              [attr.aria-selected]="economyMode() === 'rounds'"
+              id="tab-econ-rounds"
+              aria-controls="panel-econ-chart"
+              class="econ-tab-btn"
+              [class.active]="economyMode() === 'rounds'"
+              (click)="economyMode.set('rounds')"
+            >
+              Ronda por Ronda
+            </button>
+          </div>
 
-          <!-- Requirement 15: Visible text alternative explaining the trend -->
-          <p class="chart-text-description" id="econ-trend-desc">
-            {{ i18n.bento.economyCard.chartAccessibleSummary }} <strong>72.5%</strong>. En rondas semi-eco se recomienda priorizar Sheriff/Ghost para no descompensar compras de equipo.
-          </p>
+          <div id="panel-econ-chart" role="tabpanel" [attr.aria-labelledby]="economyMode() === 'trend' ? 'tab-econ-trend' : 'tab-econ-rounds'">
+            @if (economyMode() === 'trend') {
+              <!-- Trend SVG Chart -->
+              <svg
+                class="economy-chart-svg"
+                viewBox="0 0 300 80"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <polyline
+                  fill="none"
+                  stroke="var(--color-action-primary)"
+                  stroke-width="3"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  points="10,65 50,45 90,60 130,20 170,25 210,55 250,15 290,20"
+                />
+                <circle cx="10" cy="65" r="4" fill="var(--color-action-primary)" />
+                <circle cx="130" cy="20" r="4" fill="var(--color-action-primary)" />
+                <circle cx="250" cy="15" r="4" fill="var(--color-action-primary)" />
+              </svg>
+
+              <p class="chart-text-description" id="econ-trend-desc">
+                {{ i18n.bento.economyCard.chartAccessibleSummary }} <strong>72.5%</strong>. En rondas semi-eco se recomienda priorizar Sheriff/Ghost para no descompensar compras de equipo.
+              </p>
+            } @else {
+              <!-- Round-by-Round SVG Chart -->
+              <svg
+                class="economy-chart-svg"
+                viewBox="0 0 300 80"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <polyline
+                  fill="none"
+                  stroke="var(--color-primary)"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  points="10,30 35,50 60,25 85,70 110,40 135,15 160,20 185,55 210,30 235,20 260,15 285,10"
+                />
+                <circle cx="85" cy="70" r="4" fill="var(--color-loss)" />
+                <circle cx="135" cy="15" r="4" fill="var(--color-win)" />
+                <circle cx="285" cy="10" r="4" fill="var(--color-win)" />
+              </svg>
+
+              <p class="chart-text-description" id="econ-rounds-desc">
+                Análisis de la última partida: Caída económica en ronda 4 tras derrota forzada. Recuperación de banco en ronda 6 (3900 créditos) manteniendo compras completas hasta el cambio de bando (8-4).
+              </p>
+            }
+          </div>
         </div>
       </app-bento-card>
 
@@ -180,18 +268,23 @@ import { PlayerProfile, PlayerMatch, PlayerStatsOverview } from '../../core/api/
       >
         <div class="role-coach-content">
           <p class="role-summary">
-            <strong>Duelista Primario (Jett / Reyna):</strong> Alta eficiencia en entrada y apertura de sitios (78% First Bloods). Se detecta falta de rotación cuando el ancla centinela cae en el sitio opuesto.
+            <strong>Duelista Primario (Jett / Reyna):</strong> Alta eficiencia en entrada y apertura de sitios (78% First Bloods). Se detecta oportunidad de rotación cuando el ancla centinela cae en el sitio opuesto.
           </p>
         </div>
       </app-bento-card>
 
-      <!-- 7. Subida de Marcador (Spans 2 columns, Dashed border) -->
+      <!-- 7. Subida de Marcador (Spans 2 columns, Dashed border, Native button control) -->
       <app-bento-card
         [span]="2"
         [title]="i18n.bento.uploadCard.title"
         [subtitle]="i18n.bento.uploadCard.subtitle"
       >
-        <div class="upload-zone" (click)="fileInput.click()" (keydown.enter)="fileInput.click()" tabindex="0" role="button" aria-label="Subir captura de marcador">
+        <button
+          type="button"
+          class="upload-zone-btn"
+          (click)="fileInput.click()"
+          aria-label="Abrir selector para subir captura de pantalla del marcador"
+        >
           <input
             #fileInput
             type="file"
@@ -203,13 +296,14 @@ import { PlayerProfile, PlayerMatch, PlayerStatsOverview } from '../../core/api/
           <div class="upload-prompt" aria-hidden="true">
             <span class="upload-icon">📷</span>
             <span class="upload-text">{{ i18n.bento.uploadCard.subtitle }}</span>
+            <span class="upload-subtext">{{ i18n.bento.uploadCard.formats }}</span>
           </div>
           @if (uploadedFileName()) {
             <p class="upload-status" role="status" aria-live="polite">
               Archivo seleccionado: <strong>{{ uploadedFileName() }}</strong>
             </p>
           }
-        </div>
+        </button>
       </app-bento-card>
     </div>
   `,
@@ -275,8 +369,37 @@ import { PlayerProfile, PlayerMatch, PlayerStatsOverview } from '../../core/api/
       min-width: 130px;
     }
 
+    .btn-sync {
+      background: transparent;
+      border: 1px solid var(--color-border);
+      color: var(--color-text);
+      font-family: var(--font-body);
+      font-size: 14px;
+      font-weight: 600;
+      padding: 0 16px;
+      border-radius: var(--radius-sm);
+      min-height: var(--min-touch-target);
+      cursor: pointer;
+      transition: border-color var(--transition-fast), color var(--transition-fast);
+    }
+
+    .btn-sync:hover {
+      border-color: var(--color-primary);
+      color: var(--color-primary);
+    }
+
+    .btn-sync:focus-visible {
+      outline: 3px solid var(--color-focus);
+      outline-offset: 3px;
+    }
+
     .search-error {
       color: var(--color-status-defeat);
+      font-size: 13px;
+    }
+
+    .sync-status {
+      color: var(--color-win);
       font-size: 13px;
     }
 
@@ -322,6 +445,36 @@ import { PlayerProfile, PlayerMatch, PlayerStatsOverview } from '../../core/api/
       gap: 12px;
     }
 
+    .economy-view-switch {
+      display: flex;
+      gap: 8px;
+      border-bottom: 1px solid var(--color-border);
+      padding-bottom: 6px;
+    }
+
+    .econ-tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--color-text-secondary);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: var(--radius-xs);
+      cursor: pointer;
+      min-height: 36px;
+      transition: color var(--transition-fast), background-color var(--transition-fast);
+    }
+
+    .econ-tab-btn.active {
+      color: var(--color-bg-page);
+      background-color: var(--color-primary);
+    }
+
+    .econ-tab-btn:focus-visible {
+      outline: 3px solid var(--color-focus);
+      outline-offset: 3px;
+    }
+
     .economy-chart-svg {
       width: 100%;
       height: 70px;
@@ -352,25 +505,40 @@ import { PlayerProfile, PlayerMatch, PlayerStatsOverview } from '../../core/api/
       line-height: 1.5;
     }
 
-    /* 7. Upload Zone */
-    .upload-zone {
+    /* 7. Upload Zone Native Button */
+    .upload-zone-btn {
+      width: 100%;
+      background: transparent;
       border: 2px dashed var(--color-border-upload);
       border-radius: var(--radius-control);
-      padding: 32px 16px;
+      padding: 24px 16px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 12px;
+      gap: 10px;
       cursor: pointer;
-      transition: border-color var(--transition-fast), background-color var(--transition-fast);
       min-height: 120px;
+      transition: border-color var(--transition-fast), background-color var(--transition-fast);
+      color: inherit;
     }
 
-    .upload-zone:hover,
-    .upload-zone:focus-visible {
+    .upload-zone-btn:hover {
       border-color: var(--color-action-primary);
       background-color: rgba(198, 255, 61, 0.03);
+    }
+
+    .upload-zone-btn:focus-visible {
+      outline: 3px solid var(--color-focus);
+      outline-offset: 3px;
+      border-color: var(--color-action-primary);
+    }
+
+    .upload-prompt {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
     }
 
     .upload-icon {
@@ -378,9 +546,15 @@ import { PlayerProfile, PlayerMatch, PlayerStatsOverview } from '../../core/api/
     }
 
     .upload-text {
-      font-size: 13px;
-      color: var(--color-text-secondary);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-text);
       text-align: center;
+    }
+
+    .upload-subtext {
+      font-size: 12px;
+      color: var(--color-text-secondary);
     }
 
     .upload-status {
@@ -388,7 +562,7 @@ import { PlayerProfile, PlayerMatch, PlayerStatsOverview } from '../../core/api/
       color: var(--color-action-primary);
     }
   `],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SummaryComponent {
   readonly i18n = I18N_ES;
@@ -396,12 +570,24 @@ export class SummaryComponent {
 
   searchQuery = 'TenZ#0001';
   readonly loading = signal(false);
+  readonly syncing = signal(false);
   readonly errorMessage = signal<string | null>(null);
+  readonly syncMessage = signal<string | null>(null);
 
   readonly playerProfile = signal<PlayerProfile | null>(null);
   readonly matches = signal<PlayerMatch[]>([]);
   readonly stats = signal<PlayerStatsOverview | null>(null);
   readonly uploadedFileName = signal<string | null>(null);
+  readonly economyMode = signal<'trend' | 'rounds'>('trend');
+  readonly latestPlanItems = signal<{ title: string; description: string }[]>([]);
+
+  calculatedAcs(): number {
+    const s = this.stats();
+    if (s && s.kd_ratio) {
+      return Math.round(s.kd_ratio * 180);
+    }
+    return 231;
+  }
 
   onSearch(): void {
     const trimmed = this.searchQuery.trim();
@@ -411,6 +597,7 @@ export class SummaryComponent {
     }
 
     this.errorMessage.set(null);
+    this.syncMessage.set(null);
     this.loading.set(true);
 
     const [gameName, tagLine] = trimmed.split('#');
@@ -419,11 +606,33 @@ export class SummaryComponent {
         this.playerProfile.set(profile);
         this.loadRecentMatches(gameName, tagLine);
         this.loadStats(gameName, tagLine);
+        this.loadCoachingReport(gameName, tagLine);
       },
       error: () => {
         this.loading.set(false);
         this.errorMessage.set(this.i18n.status.notFound);
-      }
+      },
+    });
+  }
+
+  onSync(): void {
+    const profile = this.playerProfile();
+    if (!profile) return;
+
+    this.syncing.set(true);
+    this.syncMessage.set(null);
+
+    this.api.syncPlayer(profile.game_name, profile.tag_line).subscribe({
+      next: (res) => {
+        this.syncing.set(false);
+        this.syncMessage.set('Sincronización completada exitosamente.');
+        this.loadRecentMatches(profile.game_name, profile.tag_line);
+        this.loadStats(profile.game_name, profile.tag_line);
+      },
+      error: (err: { error?: { detail?: string } }) => {
+        this.syncing.set(false);
+        this.syncMessage.set(err?.error?.detail || 'Error al sincronizar partidas.');
+      },
     });
   }
 
@@ -435,14 +644,32 @@ export class SummaryComponent {
       },
       error: () => {
         this.loading.set(false);
-      }
+      },
     });
   }
 
   private loadStats(gameName: string, tagLine: string): void {
     this.api.getPlayerStats(gameName, tagLine).subscribe({
       next: (st) => this.stats.set(st),
-      error: () => {}
+      error: () => {},
+    });
+  }
+
+  private loadCoachingReport(gameName: string, tagLine: string): void {
+    this.api.getCoachingReports(gameName, tagLine, 1).subscribe({
+      next: (res) => {
+        if (res.reports && res.reports.length > 0) {
+          const report = res.reports[0];
+          if (report.strengths && report.weaknesses) {
+            this.latestPlanItems.set([
+              { title: 'Fortaleza clave', description: report.strengths.slice(0, 80) },
+              { title: 'Área de mejora', description: report.weaknesses.slice(0, 80) },
+              { title: 'Recomendación táctica', description: report.summary.slice(0, 80) },
+            ]);
+          }
+        }
+      },
+      error: () => {},
     });
   }
 
