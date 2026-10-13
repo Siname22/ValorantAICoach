@@ -11,6 +11,7 @@ from sqlalchemy import (
     String,
     Text,
     false,
+    true,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
@@ -123,10 +124,10 @@ class UserRecord(Base):
         String(255), unique=True, index=True, nullable=False
     )
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    is_admin: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default=false(), nullable=False
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
     )
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime())
 
 
@@ -143,7 +144,9 @@ class LinkedAccountRecord(Base):
     tag_line: Mapped[str] = mapped_column(String(16), nullable=False)
     puuid: Mapped[str | None] = mapped_column(Text, nullable=True)
     region: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_primary: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
     linked_at: Mapped[datetime] = mapped_column(UTCDateTime())
     last_synced_at: Mapped[datetime | None] = mapped_column(
         UTCDateTime(), nullable=True, default=None
