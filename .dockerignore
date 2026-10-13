@@ -15,10 +15,14 @@ postgres-data/
 logs/
 *.log
 
-# Not part of the backend image
-# NOTE: agents/ is intentionally NOT ignored: the backend will execute
-# the AI agents directly, so they belong in future backend images.
-frontend/
+# Frontend build artifacts and node_modules
+frontend/web/node_modules/
+frontend/web/dist/
+frontend/web/.angular/
+frontend/web/tests-results/
+frontend/web/playwright-report/
+frontend/streamlit_app/.streamlit/
+
 scraper/
 docs/
 tests/
