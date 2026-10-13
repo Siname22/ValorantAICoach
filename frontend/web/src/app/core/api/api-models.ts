@@ -133,7 +133,7 @@ export interface LinkedPlayerAccountResponse {
 
 export interface MatchTimelineResponse {
   match_id: string;
-  map_name: string;
+  map_name?: string;
   game_mode?: string;
   friendly_team?: string | unknown;
   rounds?: RoundTimeline[];

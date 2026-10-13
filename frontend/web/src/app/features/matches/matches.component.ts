@@ -325,6 +325,7 @@ export class MatchesComponent implements OnInit {
         // Fallback demo timeline data
         this.selectedTimeline.set({
           match_id: matchId,
+          map_name: 'Ascent',
           total_rounds: 5,
           rounds: [
             {
