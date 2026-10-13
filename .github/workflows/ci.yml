@@ -127,6 +127,7 @@ jobs:
         run: |
           docker run -d --name coach-web-smoke -p 127.0.0.1:8080:80 valorant-coach-web:test
           trap 'docker logs coach-web-smoke; docker rm -f coach-web-smoke' EXIT
-          curl --fail --retry 10 --retry-delay 1 http://127.0.0.1:8080/health
-          curl -s http://127.0.0.1:8080/ | grep -q 'Mejora tu próxima partida'
+          sleep 2
+          curl --fail --retry 20 --retry-delay 1 --retry-all-errors --connect-timeout 2 --max-time 5 http://127.0.0.1:8080/health
+          curl --fail --retry 20 --retry-delay 1 --retry-all-errors -s http://127.0.0.1:8080/ | grep -q 'Mejora tu próxima partida'
 
