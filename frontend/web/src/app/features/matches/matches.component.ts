@@ -314,18 +314,63 @@ export class MatchesComponent implements OnInit {
   inspectTimeline(matchId: string): void {
     this.selectedMatchId.set(matchId);
     this.api.getMatchTimeline(matchId).subscribe({
-      next: (tl) => this.selectedTimeline.set(tl),
+      next: (tl: MatchTimelineResponse) => this.selectedTimeline.set(tl),
       error: () => {
         // Fallback demo timeline data
         this.selectedTimeline.set({
           match_id: matchId,
           total_rounds: 5,
           rounds: [
-            { round_number: 1, result: 'Won', loadout_value: 800, spent_credits: 700 },
-            { round_number: 2, result: 'Won', loadout_value: 3200, spent_credits: 2400 },
-            { round_number: 3, result: 'Lost', loadout_value: 4100, spent_credits: 3900 },
-            { round_number: 4, result: 'Lost', loadout_value: 1900, spent_credits: 1400 },
-            { round_number: 5, result: 'Won', loadout_value: 4500, spent_credits: 3800 },
+            {
+              round_num: 1,
+              round_number: 1,
+              result: 'Won',
+              winning_team: 'Team A',
+              winning_side: 'attack',
+              win_type: 'Eliminated',
+              loadout_value: 800,
+              spent_credits: 700,
+            },
+            {
+              round_num: 2,
+              round_number: 2,
+              result: 'Won',
+              winning_team: 'Team A',
+              winning_side: 'attack',
+              win_type: 'Eliminated',
+              loadout_value: 3200,
+              spent_credits: 2400,
+            },
+            {
+              round_num: 3,
+              round_number: 3,
+              result: 'Lost',
+              winning_team: 'Team B',
+              winning_side: 'attack',
+              win_type: 'Eliminated',
+              loadout_value: 4100,
+              spent_credits: 3900,
+            },
+            {
+              round_num: 4,
+              round_number: 4,
+              result: 'Lost',
+              winning_team: 'Team B',
+              winning_side: 'attack',
+              win_type: 'Eliminated',
+              loadout_value: 1900,
+              spent_credits: 1400,
+            },
+            {
+              round_num: 5,
+              round_number: 5,
+              result: 'Won',
+              winning_team: 'Team A',
+              winning_side: 'attack',
+              win_type: 'Eliminated',
+              loadout_value: 4500,
+              spent_credits: 3800,
+            },
           ],
         });
       },

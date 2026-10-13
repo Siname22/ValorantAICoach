@@ -602,7 +602,7 @@ export class SummaryComponent {
 
     const [gameName, tagLine] = trimmed.split('#');
     this.api.getPlayer(gameName, tagLine).subscribe({
-      next: (profile) => {
+      next: (profile: PlayerProfile) => {
         this.playerProfile.set(profile);
         this.loadRecentMatches(gameName, tagLine);
         this.loadStats(gameName, tagLine);
@@ -623,7 +623,7 @@ export class SummaryComponent {
     this.syncMessage.set(null);
 
     this.api.syncPlayer(profile.game_name, profile.tag_line).subscribe({
-      next: (res) => {
+      next: (_res: { status: string; new_report_generated: boolean; report_id?: string }) => {
         this.syncing.set(false);
         this.syncMessage.set('Sincronización completada exitosamente.');
         this.loadRecentMatches(profile.game_name, profile.tag_line);
@@ -638,7 +638,7 @@ export class SummaryComponent {
 
   private loadRecentMatches(gameName: string, tagLine: string): void {
     this.api.getPlayerMatches(gameName, tagLine, 5).subscribe({
-      next: (res) => {
+      next: (res: { matches: PlayerMatch[]; count: number }) => {
         this.matches.set(res.matches || []);
         this.loading.set(false);
       },
@@ -650,14 +650,14 @@ export class SummaryComponent {
 
   private loadStats(gameName: string, tagLine: string): void {
     this.api.getPlayerStats(gameName, tagLine).subscribe({
-      next: (st) => this.stats.set(st),
+      next: (st: PlayerStatsOverview) => this.stats.set(st),
       error: () => {},
     });
   }
 
   private loadCoachingReport(gameName: string, tagLine: string): void {
     this.api.getCoachingReports(gameName, tagLine, 1).subscribe({
-      next: (res) => {
+      next: (res: { reports: CoachingReportSummary[]; count: number }) => {
         if (res.reports && res.reports.length > 0) {
           const report = res.reports[0];
           if (report.strengths && report.weaknesses) {

@@ -76,10 +76,32 @@ for name, schema in schemas.items():
         for prop_name, prop_def in props.items():
             optional = "" if prop_name in required else "?"
             models_lines.append(f"  {prop_name}{optional}: {resolve_type(prop_def)};")
+        if name == "PlayerMatch":
+            models_lines.append("  headshots?: number;")
+            models_lines.append("  created_at?: string;")
+        elif name == "RoundTimeline":
+            models_lines.append("  round_number?: number;")
+            models_lines.append("  result?: 'Won' | 'Lost' | string;")
+            models_lines.append("  loadout_value?: number;")
+            models_lines.append("  spent_credits?: number;")
+        elif name == "UserResponse":
+            models_lines.append("  username?: string;")
+            models_lines.append("  riot_id?: string;")
         models_lines.append("}\n")
     elif "enum" in schema:
         enum_types = " | ".join(f"'{v}'" for v in schema["enum"])
         models_lines.append(f"export type {name} = {enum_types};\n")
+
+models_lines.append("""// --- Compatibility aliases / extensions for UI code ---
+export type CoachingReportSummary = CoachingReportResponse & {
+  summary?: string;
+  strengths?: string;
+  weaknesses?: string;
+};
+
+export type PlayerProfile = PlayerProfileResponse;
+export type VisionAnalysisResponse = ScoreboardAnalysisResponse;
+""")
 
 models_path = OUTPUT_DIR / "api-models.ts"
 models_path.write_text("\n".join(models_lines), encoding="utf-8")
@@ -290,6 +312,45 @@ export class ApiClientService {
     return this.http.post<Models.CounterPickResponse>(
       `${this.baseUrl}/recommendations/counter-picks`,
       body
+    );
+  }
+
+  // --- Compatibility wrappers for UI code ---
+
+  getAuthMe(): Observable<Models.UserResponse> {
+    return this.getMe();
+  }
+
+  postAuthRegister(body: {
+    username?: string;
+    email?: string;
+    password?: string;
+  }): Observable<Models.UserResponse> {
+    const payload: Models.UserRegisterRequest = {
+      email: body.email ?? body.username ?? '',
+      password: body.password ?? '',
+    };
+    return this.register(payload);
+  }
+
+  postAuthLogin(body: {
+    username?: string;
+    email?: string;
+    password?: string;
+  }): Observable<Models.TokenResponse> {
+    const payload: Models.UserLoginRequest = {
+      email: body.username ?? body.email ?? '',
+      password: body.password ?? '',
+    };
+    return this.login(payload);
+  }
+
+  postVisionScoreboardAnalyze(
+    formData: FormData
+  ): Observable<Models.ScoreboardAnalysisResponse> {
+    return this.http.post<Models.ScoreboardAnalysisResponse>(
+      `${this.baseUrl}/vision/scoreboard/upload`,
+      formData
     );
   }
 }

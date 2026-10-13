@@ -65,7 +65,16 @@ describe('MatchesComponent', () => {
         match_id: 'match-101',
         total_rounds: 1,
         rounds: [
-          { round_number: 1, result: 'Won', loadout_value: 800, spent_credits: 700 },
+          {
+            round_num: 1,
+            round_number: 1,
+            winning_team: 'Team A',
+            winning_side: 'attack',
+            win_type: 'Eliminated',
+            result: 'Won',
+            loadout_value: 800,
+            spent_credits: 700,
+          },
         ],
       })
     );

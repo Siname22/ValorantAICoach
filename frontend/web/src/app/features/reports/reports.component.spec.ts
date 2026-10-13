@@ -58,6 +58,7 @@ describe('ReportsComponent', () => {
         report: {
           id: 'new-report-1',
           player_id: 'p-1',
+          payload: {},
           summary: 'Nuevo análisis táctico completado.',
           strengths: 'First bloods sólidos.',
           weaknesses: 'Compras desfasadas.',

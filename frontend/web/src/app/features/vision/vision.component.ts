@@ -231,7 +231,7 @@ export class VisionComponent {
     formData.append('file', file);
 
     this.api.postVisionScoreboardAnalyze(formData).subscribe({
-      next: (res) => {
+      next: (res: VisionAnalysisResponse) => {
         this.loading.set(false);
         this.analysisResult.set(res);
       },

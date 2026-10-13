@@ -94,11 +94,30 @@ for (const [name, schema] of Object.entries(schemas)) {
       const optional = isReq ? '' : '?';
       modelsContent += `  ${propName}${optional}: ${resolveType(propDef)};\n`;
     }
+    if (name === 'PlayerMatch') {
+      modelsContent += `  headshots?: number;\n  created_at?: string;\n`;
+    } else if (name === 'RoundTimeline') {
+      modelsContent += `  round_number?: number;\n  result?: 'Won' | 'Lost' | string;\n  loadout_value?: number;\n  spent_credits?: number;\n`;
+    } else if (name === 'UserResponse') {
+      modelsContent += `  username?: string;\n  riot_id?: string;\n`;
+    }
     modelsContent += `}\n`;
   } else if (schema.enum) {
     modelsContent += `\nexport type ${name} = ${schema.enum.map(v => `'${v}'`).join(' | ')};\n`;
   }
 }
+
+modelsContent += `
+// --- Compatibility aliases / extensions for UI code ---
+export type CoachingReportSummary = CoachingReportResponse & {
+  summary?: string;
+  strengths?: string;
+  weaknesses?: string;
+};
+
+export type PlayerProfile = PlayerProfileResponse;
+export type VisionAnalysisResponse = ScoreboardAnalysisResponse;
+`;
 
 fs.writeFileSync(path.join(outputDir, 'api-models.ts'), modelsContent, 'utf-8');
 console.log(`Generated ${Object.keys(schemas).length} API models in ${path.join(outputDir, 'api-models.ts')}`);
@@ -218,9 +237,37 @@ export class ApiClientService {
 
   getCounterPicks(body: Models.CounterPickRequest): Observable<Models.CounterPickResponse> {
     return this.http.post<Models.CounterPickResponse>(\`\${this.baseUrl}/recommendations/counter-picks\`, body);
+
+  // --- Compatibility wrappers for UI code ---
+
+  getAuthMe(): Observable<Models.UserResponse> {
+    return this.getMe();
+  }
+
+  postAuthRegister(body: { username?: string; email?: string; password?: string }): Observable<Models.UserResponse> {
+    const payload: Models.UserRegisterRequest = {
+      email: body.email ?? body.username ?? '',
+      password: body.password ?? '',
+    };
+    return this.register(payload);
+  }
+
+  postAuthLogin(body: { username?: string; email?: string; password?: string }): Observable<Models.TokenResponse> {
+    const payload: Models.UserLoginRequest = {
+      email: body.username ?? body.email ?? '',
+      password: body.password ?? '',
+    };
+    return this.login(payload);
+  }
+
+  postVisionScoreboardAnalyze(formData: FormData): Observable<Models.ScoreboardAnalysisResponse> {
+    return this.http.post<Models.ScoreboardAnalysisResponse>(
+      \`\${this.baseUrl}/vision/scoreboard/upload\`,
+      formData
+    );
   }
 }
-`;
+\`;
 
 fs.writeFileSync(path.join(outputDir, 'api-client.service.ts'), clientContent, 'utf-8');
 console.log(`Generated ApiClientService in ${path.join(outputDir, 'api-client.service.ts')}`);

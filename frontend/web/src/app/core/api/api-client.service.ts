@@ -28,15 +28,20 @@ export class ApiClientService {
   }
 
   getLinkedAccounts(): Observable<Models.LinkedAccountResponse[]> {
-    return this.http.get<Models.LinkedAccountResponse[]>(`${this.baseUrl}/auth/me/accounts`);
+    const url = `${this.baseUrl}/auth/me/accounts`;
+    return this.http.get<Models.LinkedAccountResponse[]>(url);
   }
 
-  linkAccount(body: Models.LinkAccountRequest): Observable<Models.LinkedAccountResponse> {
-    return this.http.post<Models.LinkedAccountResponse>(`${this.baseUrl}/auth/me/accounts`, body);
+  linkAccount(
+    body: Models.LinkAccountRequest
+  ): Observable<Models.LinkedAccountResponse> {
+    const url = `${this.baseUrl}/auth/me/accounts`;
+    return this.http.post<Models.LinkedAccountResponse>(url, body);
   }
 
   unlinkAccount(accountId: string): Observable<{ success: boolean }> {
-    return this.http.delete<{ success: boolean }>(`${this.baseUrl}/auth/me/accounts/${accountId}`);
+    const url = `${this.baseUrl}/auth/me/accounts/${accountId}`;
+    return this.http.delete<{ success: boolean }>(url);
   }
 
   // 2. Player Profile and Match telemetry
@@ -64,13 +69,19 @@ export class ApiClientService {
     );
   }
 
-  getPlayerStats(gameName: string, tagLine: string): Observable<Models.PlayerStatsOverview> {
+  getPlayerStats(
+    gameName: string,
+    tagLine: string
+  ): Observable<Models.PlayerStatsOverview> {
     return this.http.get<Models.PlayerStatsOverview>(
       `${this.baseUrl}/players/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}/stats`
     );
   }
 
-  getPlayerOverview(gameName: string, tagLine: string): Observable<Models.CompletePlayerProfile> {
+  getPlayerOverview(
+    gameName: string,
+    tagLine: string
+  ): Observable<Models.CompletePlayerProfile> {
     return this.http.get<Models.CompletePlayerProfile>(
       `${this.baseUrl}/players/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}/overview`
     );
@@ -124,11 +135,18 @@ export class ApiClientService {
   syncPlayer(
     gameName: string,
     tagLine: string
-  ): Observable<{ status: string; new_report_generated: boolean; report_id?: string }> {
-    return this.http.post<{ status: string; new_report_generated: boolean; report_id?: string }>(
-      `${this.baseUrl}/players/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}/sync`,
-      {}
-    );
+  ): Observable<{
+    status: string;
+    new_report_generated: boolean;
+    report_id?: string;
+  }> {
+    const url =
+      `${this.baseUrl}/players/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}/sync`;
+    return this.http.post<{
+      status: string;
+      new_report_generated: boolean;
+      report_id?: string;
+    }>(url, {});
   }
 
   // 4. Timeline & Economy Analytics
@@ -184,6 +202,45 @@ export class ApiClientService {
     return this.http.post<Models.CounterPickResponse>(
       `${this.baseUrl}/recommendations/counter-picks`,
       body
+    );
+  }
+
+  // --- Compatibility wrappers for UI code ---
+
+  getAuthMe(): Observable<Models.UserResponse> {
+    return this.getMe();
+  }
+
+  postAuthRegister(body: {
+    username?: string;
+    email?: string;
+    password?: string;
+  }): Observable<Models.UserResponse> {
+    const payload: Models.UserRegisterRequest = {
+      email: body.email ?? body.username ?? '',
+      password: body.password ?? '',
+    };
+    return this.register(payload);
+  }
+
+  postAuthLogin(body: {
+    username?: string;
+    email?: string;
+    password?: string;
+  }): Observable<Models.TokenResponse> {
+    const payload: Models.UserLoginRequest = {
+      email: body.username ?? body.email ?? '',
+      password: body.password ?? '',
+    };
+    return this.login(payload);
+  }
+
+  postVisionScoreboardAnalyze(
+    formData: FormData
+  ): Observable<Models.ScoreboardAnalysisResponse> {
+    return this.http.post<Models.ScoreboardAnalysisResponse>(
+      `${this.baseUrl}/vision/scoreboard/upload`,
+      formData
     );
   }
 }

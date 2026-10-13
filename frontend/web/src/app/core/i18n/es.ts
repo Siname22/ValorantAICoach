@@ -9,6 +9,9 @@ export const I18N_ES = {
     tagline: 'HUD Táctico de Rendimiento y Coaching',
     skipLink: 'Saltar al contenido principal',
   },
+  a11y: {
+    skipToContent: 'Saltar al contenido principal',
+  },
   nav: {
     ariaLabel: 'Navegación principal del HUD',
     summary: 'Resumen',
@@ -67,12 +70,24 @@ export const I18N_ES = {
     uploadCard: {
       title: 'Subida de Marcador',
       subtitle: 'Arrastra o selecciona la captura de fin de partida (PNG o JPG)',
+      dropzone: 'Arrastra y suelta tu captura de pantalla aquí',
+      formats: 'Formatos soportados: PNG, JPG, WEBP (hasta 10MB)',
       inputLabel: 'Archivo de imagen del marcador',
       button: 'Examinar archivo',
       uploading: 'Procesando captura con visión artificial...',
       success: 'Marcador analizado e incorporado al historial.',
       error: 'Error al procesar la imagen. Verifica que sea un marcador válido.',
     },
+  },
+  auth: {
+    loginTitle: 'Iniciar sesión',
+    registerTitle: 'Registro',
+    username: 'Usuario',
+    email: 'Email',
+    password: 'Contraseña',
+    registerSubmit: 'Registrarme',
+    loginSubmit: 'Entrar',
+    logout: 'Cerrar sesión',
   },
   status: {
     loading: 'Cargando datos...',

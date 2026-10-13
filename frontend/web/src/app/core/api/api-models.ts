@@ -165,6 +165,8 @@ export interface PlayerMatch {
   agent_name: string;
   provider?: 'tracker' | 'henrik' | 'riot' | 'vision' | unknown;
   provider_score?: number | unknown;
+  headshots?: number;
+  created_at?: string;
 }
 
 export interface PlayerMatchResponse {
@@ -316,6 +318,10 @@ export interface RoundTimeline {
   team_loadouts?: Record<string, number>;
   friendly_score_after?: number;
   enemy_score_after?: number;
+  round_number?: number;
+  result?: 'Won' | 'Lost' | string;
+  loadout_value?: number;
+  spent_credits?: number;
 }
 
 export interface ScoreboardAnalysisResponse {
@@ -411,6 +417,8 @@ export interface UserResponse {
   is_active: boolean;
   is_admin?: boolean;
   created_at: string;
+  username?: string;
+  riot_id?: string;
 }
 
 export interface UtilityCoverage {
@@ -428,3 +436,13 @@ export interface ValidationError {
   input?: unknown;
   ctx?: Record<string, unknown>;
 }
+
+// --- Compatibility aliases / extensions for UI code ---
+export type CoachingReportSummary = CoachingReportResponse & {
+  summary?: string;
+  strengths?: string;
+  weaknesses?: string;
+};
+
+export type PlayerProfile = PlayerProfileResponse;
+export type VisionAnalysisResponse = ScoreboardAnalysisResponse;

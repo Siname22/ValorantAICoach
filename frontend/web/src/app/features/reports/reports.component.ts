@@ -4,7 +4,11 @@ import { FormsModule } from '@angular/forms';
 import { BentoCardComponent } from '../../shared/ui/bento-card/bento-card.component';
 import { I18N_ES } from '../../core/i18n/es';
 import { ApiClientService } from '../../core/api/api-client.service';
-import { CoachingReportSummary, PlayerProgressionResponse } from '../../core/api/api-models';
+import {
+  CoachingReportDetailResponse,
+  CoachingReportSummary,
+  PlayerProgressionResponse,
+} from '../../core/api/api-models';
 
 @Component({
   selector: 'app-reports',
@@ -258,7 +262,7 @@ export class ReportsComponent implements OnInit {
 
   loadProgression(): void {
     this.api.getPlayerProgression(this.gameName, this.tagLine).subscribe({
-      next: (prog) => this.progression.set(prog),
+      next: (prog: PlayerProgressionResponse) => this.progression.set(prog),
       error: () => {},
     });
   }
@@ -268,7 +272,7 @@ export class ReportsComponent implements OnInit {
     this.statusMessage.set('Iniciando orquestación de agentes especializados...');
 
     this.api.generateCoachingReport(this.gameName, this.tagLine, 5).subscribe({
-      next: (detail) => {
+      next: (detail: CoachingReportDetailResponse) => {
         this.generating.set(false);
         this.statusMessage.set('¡Informe de coaching generado con éxito!');
         if (detail.report) {

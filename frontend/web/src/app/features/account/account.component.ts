@@ -6,7 +6,7 @@ import { BentoCardComponent } from '../../shared/ui/bento-card/bento-card.compon
 import { I18N_ES } from '../../core/i18n/es';
 import { TokenService } from '../../core/auth/token.service';
 import { ApiClientService } from '../../core/api/api-client.service';
-import { LinkedAccountResponse, UserResponse } from '../../core/api/api-models';
+import { LinkedAccountResponse, TokenResponse, UserResponse } from '../../core/api/api-models';
 
 @Component({
   selector: 'app-account',
@@ -456,7 +456,7 @@ export class AccountComponent implements OnInit {
 
   loadUserData(): void {
     this.api.getAuthMe().subscribe({
-      next: (u) => {
+      next: (u: UserResponse) => {
         this.user.set(u);
         this.loadLinkedAccounts();
       },
@@ -466,7 +466,7 @@ export class AccountComponent implements OnInit {
 
   loadLinkedAccounts(): void {
     this.api.getLinkedAccounts().subscribe({
-      next: (accs) => this.linkedAccounts.set(accs),
+      next: (accs: LinkedAccountResponse[]) => this.linkedAccounts.set(accs),
       error: () => {}
     });
   }
@@ -497,7 +497,7 @@ export class AccountComponent implements OnInit {
         username: this.username,
         password: this.password
       }).subscribe({
-        next: (token) => {
+        next: (token: TokenResponse) => {
           this.loading.set(false);
           this.tokenService.setToken(token.access_token);
           this.loadUserData();
