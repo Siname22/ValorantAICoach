@@ -121,7 +121,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build Angular HUD Bento image
-        run: docker build -f docker/frontend-web.Dockerfile -t valorant-coach-web:test .
+        run: docker build --progress=plain -f docker/frontend-web.Dockerfile -t valorant-coach-web:test .
       - name: Verify Nginx serving index.html
         shell: bash
         run: |
