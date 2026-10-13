@@ -111,3 +111,22 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/players/Test/EU1)" = 503
           # Verify vision endpoint is wired up and protected (returns 401 Unauthorized, not 500)
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8000/vision/scoreboard/analyze -H 'Content-Type: application/json' -d '{}')" = 401
+
+  frontend-web-image:
+    name: Frontend Web container
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Build Angular HUD Bento image
+        run: docker build -f docker/frontend-web.Dockerfile -t valorant-coach-web:test .
+      - name: Verify Nginx serving index.html
+        shell: bash
+        run: |
+          docker run -d --name coach-web-smoke -p 127.0.0.1:8080:80 valorant-coach-web:test
+          trap 'docker logs coach-web-smoke; docker rm -f coach-web-smoke' EXIT
+          curl --fail --retry 10 --retry-delay 1 http://127.0.0.1:8080/health
+          curl -s http://127.0.0.1:8080/ | grep -q 'Mejora tu próxima partida'
+
