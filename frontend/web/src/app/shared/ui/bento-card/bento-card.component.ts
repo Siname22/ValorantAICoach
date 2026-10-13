@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
 export type BentoCardVariant = 'default' | 'highlight' | 'lime';
-export type BentoCardSpan = 1 | 2 | 'full';
+export type BentoCardSpan = 1 | 2 | '1' | '2' | 'full';
 
 let nextCardId = 0;
 
@@ -13,7 +13,7 @@ let nextCardId = 0;
       class="bento-card"
       [class.variant-highlight]="variant() === 'highlight'"
       [class.variant-lime]="variant() === 'lime'"
-      [class.span-2]="span() === 2"
+      [class.span-2]="span() === 2 || span() === '2'"
       [class.span-full]="span() === 'full'"
       [attr.aria-labelledby]="headingId()"
     >

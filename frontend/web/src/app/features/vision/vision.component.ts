@@ -18,7 +18,7 @@ import { VisionAnalysisResponse } from '../../core/api/api-models';
         </p>
       </app-bento-card>
 
-      <app-bento-card span="2" [title]="i18n.bento.uploadCard.title" [subtitle]="i18n.bento.uploadCard.subtitle">
+      <app-bento-card [span]="2" [title]="i18n.bento.uploadCard.title" [subtitle]="i18n.bento.uploadCard.subtitle">
         <div
           class="dropzone"
           [class.dragover]="isDragging()"
@@ -87,7 +87,7 @@ import { VisionAnalysisResponse } from '../../core/api/api-models';
       </app-bento-card>
 
       @if (analysisResult()) {
-        <app-bento-card span="2" title="Resultado del Análisis de Marcador" subtitle="Datos extraídos por Gemini Vision">
+        <app-bento-card [span]="2" title="Resultado del Análisis de Marcador" subtitle="Datos extraídos por Gemini Vision">
           <div class="result-container" tabindex="0" aria-label="Datos extraídos del marcador">
             <pre class="result-raw">{{ analysisResult() | json }}</pre>
           </div>
