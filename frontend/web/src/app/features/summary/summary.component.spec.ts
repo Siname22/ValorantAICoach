@@ -112,6 +112,6 @@ describe('SummaryComponent', () => {
 
     component.onSearch();
 
-    expect(apiSpy.getPlayer).toHaveBeenCalledWith('TestPlayer', 'EUW');
+    expect(apiSpy.getPlayer).toHaveBeenCalledWith('TestPlayer', 'EUW', 'eu');
   });
 });

@@ -639,7 +639,7 @@ export class SummaryComponent {
     this.api.getPlayer(gameName, tagLine, this.selectedRegion).subscribe({
       next: (profile: PlayerProfile) => {
         this.playerProfile.set(profile);
-        const effectiveRegion = this.selectedRegion || profile.region;
+        const effectiveRegion: string | undefined = this.selectedRegion || (profile.region ? String(profile.region) : undefined);
         this.loadRecentMatches(gameName, tagLine, effectiveRegion);
         this.loadStats(gameName, tagLine);
         this.loadCoachingReport(gameName, tagLine, effectiveRegion);
@@ -658,7 +658,7 @@ export class SummaryComponent {
     this.syncing.set(true);
     this.syncMessage.set(null);
 
-    const effectiveRegion = this.selectedRegion || profile.region;
+    const effectiveRegion: string | undefined = this.selectedRegion || (profile.region ? String(profile.region) : undefined);
     this.api.syncPlayer(profile.game_name, profile.tag_line, effectiveRegion).subscribe({
       next: (_res: { status: string; new_report_generated: boolean; report_id?: string }) => {
         this.syncing.set(false);

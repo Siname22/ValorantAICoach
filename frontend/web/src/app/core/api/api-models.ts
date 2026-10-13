@@ -115,7 +115,7 @@ export interface KillEvent {
 export interface LinkPlayerAccountRequest {
   game_name: string;
   tag_line: string;
-  region?: string | unknown;
+  region?: string | null;
   is_primary?: boolean;
 }
 
@@ -124,11 +124,11 @@ export interface LinkedPlayerAccountResponse {
   user_id: string;
   game_name: string;
   tag_line: string;
-  puuid?: string | unknown;
-  region?: string | unknown;
+  puuid?: string | null;
+  region?: string | null;
   is_primary: boolean;
   linked_at: string;
-  last_synced_at?: string | unknown;
+  last_synced_at?: string | null;
 }
 
 export interface MatchTimelineResponse {
@@ -147,13 +147,13 @@ export interface MetricDataPoint {
 }
 
 export interface PlayerIdentity {
-  puuid?: string | unknown;
+  puuid?: string | null;
   game_name: string;
   tag_line: string;
-  region?: string | unknown;
-  account_level?: number | unknown;
-  avatar_url?: string | unknown;
-  source?: 'tracker' | 'henrik' | 'riot' | unknown;
+  region?: string | null;
+  account_level?: number | null;
+  avatar_url?: string | null;
+  source?: 'tracker' | 'henrik' | 'riot' | string | null;
 }
 
 export interface PlayerMatch {
@@ -194,16 +194,16 @@ export interface PlayerMatchesResponse {
 }
 
 export interface PlayerProfileResponse {
-  puuid?: string | unknown;
+  puuid?: string | null;
   game_name: string;
   tag_line: string;
-  region?: string | unknown;
-  account_level?: number | unknown;
-  avatar_url?: string | unknown;
-  source?: 'tracker' | 'henrik' | 'riot' | unknown;
-  rank_name?: string | unknown;
-  rank_tier?: string | unknown;
-  rank_icon_url?: string | unknown;
+  region?: string | null;
+  account_level?: number | null;
+  avatar_url?: string | null;
+  source?: 'tracker' | 'henrik' | 'riot' | string | null;
+  rank_name?: string | null;
+  rank_tier?: string | null;
+  rank_icon_url?: string | null;
 }
 
 export interface PlayerProgressionMetric {
