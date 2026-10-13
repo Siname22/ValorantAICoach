@@ -32,6 +32,9 @@ env/
 ENV/
 env.bak/
 venv.bak/
+*venv*/
+*.rar
+*.zip
 
 # Type checkers y linters
 .mypy_cache/

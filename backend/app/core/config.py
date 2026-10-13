@@ -1,7 +1,15 @@
+import logging
+import secrets
 from functools import lru_cache
+from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
+
+MIN_JWT_SECRET_LENGTH = 32
+INSECURE_ALLOWED_ENVS = frozenset({"development", "dev", "local", "test"})
 
 
 class Settings(BaseSettings):
@@ -29,9 +37,19 @@ class Settings(BaseSettings):
             "(0 to disable)"
         ),
     )
-    jwt_secret_key: str = "valorant-ai-coach-secret-key-change-in-production"
-    jwt_algorithm: str = "HS256"
+    jwt_secret_key: str | None = Field(
+        default=None,
+        description=(
+            "HS256 signing secret. Mandatory (>= 32 chars) outside development "
+            "and test; startup aborts if missing."
+        ),
+    )
+    jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     jwt_access_token_expire_minutes: int = Field(default=1440, ge=1, le=525600)
+    admin_emails: str = Field(
+        default="",
+        description="Comma-separated e-mails granted the admin role.",
+    )
     cors_allowed_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:8501",
@@ -48,6 +66,34 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @property
+    def admin_email_set(self) -> frozenset[str]:
+        return frozenset(
+            email.strip().lower()
+            for email in self.admin_emails.split(",")
+            if email.strip()
+        )
+
+    @model_validator(mode="after")
+    def _require_jwt_secret(self) -> "Settings":
+        secret = (self.jwt_secret_key or "").strip()
+        if len(secret) >= MIN_JWT_SECRET_LENGTH:
+            return self
+        if self.app_env.lower() in INSECURE_ALLOWED_ENVS:
+            if secret:
+                logger.warning("JWT_SECRET_KEY is shorter than recommended.")
+                return self
+            logger.warning(
+                "JWT_SECRET_KEY is not set; using an ephemeral random secret. "
+                "Issued tokens become invalid when the process restarts."
+            )
+            self.jwt_secret_key = secrets.token_urlsafe(48)
+            return self
+        raise ValueError(
+            f"JWT_SECRET_KEY must be set to at least {MIN_JWT_SECRET_LENGTH} "
+            f"characters when APP_ENV={self.app_env!r}."
+        )
 
 
 @lru_cache

@@ -333,9 +333,21 @@ def test_sync_player_api_endpoint():
         "matches_synced": 5,
         "synced_at": "2026-10-08T10:00:00Z",
     }
+    from backend.app.dependencies.auth_deps import get_current_user
+
     app.dependency_overrides[get_player_service] = lambda: mock_svc
     try:
         with TestClient(app) as client:
+            # 1. Unauthenticated -> 401
+            assert client.post("/players/TenZ/SEN/sync?region=na").status_code == 401
+
+            # 2. Authenticated -> 200
+            app.dependency_overrides[get_current_user] = lambda: {
+                "id": "u-sync",
+                "email": "sync@test.com",
+                "is_active": True,
+                "is_admin": False,
+            }
             res = client.post("/players/TenZ/SEN/sync?region=na")
             assert res.status_code == 200
             data = res.json()
@@ -347,6 +359,8 @@ def test_sync_player_api_endpoint():
 
 
 def test_system_sync_tracked_accounts_endpoint():
+    from backend.app.dependencies.auth_deps import get_current_user
+
     mock_svc = AsyncMock()
     mock_svc.sync_all_tracked_accounts.return_value = {
         "synced_accounts_count": 2,
@@ -355,6 +369,25 @@ def test_system_sync_tracked_accounts_endpoint():
     app.dependency_overrides[get_player_service] = lambda: mock_svc
     try:
         with TestClient(app) as client:
+            # 1. Unauthenticated -> 401
+            assert client.post("/system/coaching/sync-tracked").status_code == 401
+
+            # 2. Non-admin -> 403
+            app.dependency_overrides[get_current_user] = lambda: {
+                "id": "u-regular",
+                "email": "regular@test.com",
+                "is_active": True,
+                "is_admin": False,
+            }
+            assert client.post("/system/coaching/sync-tracked").status_code == 403
+
+            # 3. Admin -> 200
+            app.dependency_overrides[get_current_user] = lambda: {
+                "id": "u-admin",
+                "email": "admin@test.com",
+                "is_active": True,
+                "is_admin": True,
+            }
             res = client.post("/system/coaching/sync-tracked")
             assert res.status_code == 200
             data = res.json()

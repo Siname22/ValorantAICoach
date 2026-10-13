@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
+from backend.app.dependencies.auth_deps import get_current_user
 from backend.app.dependencies.provider_deps import get_player_service
 from backend.app.schemas.vision_schemas import (
     ScoreboardAnalysisResponse,
@@ -47,6 +48,7 @@ def get_vision_service() -> ScoreboardVisionService:
 
 VisionServiceDep = Annotated[ScoreboardVisionService, Depends(get_vision_service)]
 PlayerServiceDep = Annotated[PlayerService, Depends(get_player_service)]
+CurrentUser = Annotated[dict[str, Any], Depends(get_current_user)]
 
 
 async def _analyze_and_maybe_save(
@@ -114,6 +116,7 @@ async def analyze_scoreboard(
     request: ScoreboardIngestRequest,
     vision_service: VisionServiceDep,
     player_service: PlayerServiceDep,
+    _user: CurrentUser,
 ) -> ScoreboardAnalysisResponse:
     return await _analyze_and_maybe_save(
         request.image_base64,
@@ -135,6 +138,7 @@ async def upload_scoreboard_file(
     file: Annotated[UploadFile, File(description="Scoreboard image file")],
     vision_service: VisionServiceDep,
     player_service: PlayerServiceDep,
+    _user: CurrentUser,
     game_name: Annotated[str | None, Form()] = None,
     tag_line: Annotated[str | None, Form()] = None,
     save_to_history: Annotated[bool, Form()] = True,
@@ -162,6 +166,7 @@ async def ingest_player_scoreboard(
     request: ScoreboardIngestRequest,
     vision_service: VisionServiceDep,
     player_service: PlayerServiceDep,
+    _user: CurrentUser,
 ) -> ScoreboardAnalysisResponse:
     return await _analyze_and_maybe_save(
         request.image_base64,

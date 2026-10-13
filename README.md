@@ -8,8 +8,8 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688)](https://fastapi.tiangolo.com/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.39+-FF4B4B)](https://streamlit.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Tests](https://img.shields.io/badge/Tests-581%20Passing-success)](https://pytest.org/)
-[![Resilience](https://img.shields.io/badge/Gemini%20Resilience-81%2F81%20Verified-brightgreen)](https://ai.google.dev/)
+[![Tests](https://img.shields.io/badge/Tests-Passing-success)](https://pytest.org/)
+[![Resilience](https://img.shields.io/badge/Gemini%20Resilience-Verified-brightgreen)](https://ai.google.dev/)
 [![Release](https://img.shields.io/badge/Release-v1.0.0-blueviolet)](https://github.com/Siname22/ValorantAICoach/releases)
 [![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Ruff](https://img.shields.io/badge/linter-ruff-red)](https://github.com/astral-sh/ruff)
@@ -113,21 +113,21 @@ The FastAPI backend exposes comprehensive endpoints documented via OpenAPI/Swagg
 
 ### Multi-Agent Framework
 Located in `agents/`, the analysis engine operates using dedicated analytical agents:
-- **Orchestrator**: Ingests player match telemetry, coordinates sub-agents, and synthesizes structured output.
-- **TacticalCoach**: Identifies positioning errors, round win conditions, and map-specific tendencies.
-- **EconomyCoach**: Detects buy-round mismatches, force-buy inefficiencies, and save-round discipline.
-- **AimCoach**: Evaluates headshot percentages, first-blood conversion, and duel win ratios.
-- **AgentSpecificCoach**: Provides tailored playstyle guidance based on agent roles (Duelist, Initiator, Controller, Sentinel).
+- **orchestrator**: Coordinates the analysis lifecycle, ingests player match telemetry, invokes sub-agents, and compiles the unified training plan.
+- **match_analyst**: Evaluates combat performance, duel win rates, opening duels, and trade efficiency.
+- **economy_coach**: Detects buy-round mismatches, force-buy inefficiencies, and save-round discipline.
+- **role_coach**: Provides role execution insights tailored to agent classes (Duelist, Initiator, Controller, Sentinel).
+- **report_writer**: Synthesizes natural-language feedback, evidence tables, and targeted training routines.
 
 ### Resilient Gemini AI Coach
-Located in `frontend/streamlit_app/utils/gemini_coach.py`, the AI coach delivers conversational guidance with production-grade fault tolerance:
+Located in `frontend/streamlit_app/utils/gemini_client.py`, the AI coach delivers conversational guidance with production-grade fault tolerance:
 - **Automatic Multi-Model Failover Chain**:
   ```text
   gemini-2.5-flash (Primary) ──[Fail]──> gemini-2.5-flash-lite (Fast) ──[Fail]──> gemini-3.5-flash (Fallback)
   ```
 - **Exponential Backoff**: Automatic retry schedule (1s, 2s) on transient errors (HTTP 429, 500, 502, 503, 504, connection timeouts).
 - **Graceful Error Masking**: User-friendly messaging without leaking HTTP status codes, tracebacks, or credentials.
-- **Strict Verification**: Verified by 81 automated resilience tests covering all failure conditions.
+- **Strict Verification**: Verified by automated resilience tests covering all failure conditions.
 
 ---
 
@@ -135,11 +135,9 @@ Located in `frontend/streamlit_app/utils/gemini_coach.py`, the AI coach delivers
 
 The repository maintains strict test coverage, formatting, and linting standards:
 
-```text
-581 passed, 0 failures, 0 skips
-81/81 Gemini resilience checks passed
-100% Ruff & Black compliance
-```
+- Comprehensive regression test suites covering API routes, security, persistence, vision, and agents.
+- Dedicated Gemini AI resilience test suite with simulated network, quota, and authentication failures.
+- 100% Ruff and Black compliance with strict 88-character line limits.
 
 ### Running the Test Suite
 

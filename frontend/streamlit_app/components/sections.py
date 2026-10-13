@@ -276,39 +276,53 @@ def render_player_search_page() -> None:
             type="primary",
             key="btn_generate_report",
         ):
-            with st.spinner("Specialized agents are evaluating match telemetry..."):
-                try:
-                    rep = client.generate_coaching_report(
-                        result["game_name"], result["tag_line"], limit=5
-                    )
-                    payload = rep.get("payload") or rep
-                    st.session_state["coaching_report"] = payload
-                    st.session_state["coaching_report_error"] = None
-                except APIClientError as exc:
-                    st.session_state["coaching_report_error"] = str(exc)
+            if not st.session_state.get("auth_token"):
+                st.warning(
+                    "Please sign in or register in the sidebar (🔐 Account) to "
+                    "generate AI coaching reports."
+                )
+            else:
+                with st.spinner("Specialized agents are evaluating match telemetry..."):
+                    try:
+                        rep = client.generate_coaching_report(
+                            result["game_name"], result["tag_line"], limit=5
+                        )
+                        payload = rep.get("payload") or rep
+                        st.session_state["coaching_report"] = payload
+                        st.session_state["coaching_report_error"] = None
+                    except APIClientError as exc:
+                        st.session_state["coaching_report_error"] = str(exc)
 
     with col_btn2:
         if st.button("🔄 Sync Matches & Auto-Coach", key="btn_sync_matches"):
-            with st.spinner("Syncing latest matches and checking coaching status..."):
-                try:
-                    sync_data = client.sync_player(
-                        result["game_name"], result["tag_line"]
-                    )
-                    if sync_data.get("new_report_generated"):
-                        st.success("New matches detected! Coaching report updated.")
-                        if sync_data.get("report_id"):
-                            rep = client.get_coaching_report(
-                                result["game_name"],
-                                result["tag_line"],
-                                sync_data["report_id"],
-                            )
-                            st.session_state["coaching_report"] = (
-                                rep.get("payload") or rep
-                            )
-                    else:
-                        st.info("Player matches are up to date.")
-                except APIClientError as exc:
-                    st.warning(f"Sync error: {exc}")
+            if not st.session_state.get("auth_token"):
+                st.warning(
+                    "Please sign in or register in the sidebar (🔐 Account) to "
+                    "sync matches and auto-coach."
+                )
+            else:
+                with st.spinner(
+                    "Syncing latest matches and checking coaching status..."
+                ):
+                    try:
+                        sync_data = client.sync_player(
+                            result["game_name"], result["tag_line"]
+                        )
+                        if sync_data.get("new_report_generated"):
+                            st.success("New matches detected! Coaching report updated.")
+                            if sync_data.get("report_id"):
+                                rep = client.get_coaching_report(
+                                    result["game_name"],
+                                    result["tag_line"],
+                                    sync_data["report_id"],
+                                )
+                                st.session_state["coaching_report"] = (
+                                    rep.get("payload") or rep
+                                )
+                        else:
+                            st.info("Player matches are up to date.")
+                    except APIClientError as exc:
+                        st.warning(f"Sync error: {exc}")
 
     if st.session_state.get("coaching_report_error"):
         st.warning(
@@ -490,20 +504,28 @@ def render_scoreboard_vision_section(
                 use_container_width=True,
             )
             if st.button("🔍 Analyze Scoreboard Screenshot", key="btn_analyze_vision"):
-                with st.spinner("Analyzing scoreboard with Computer Vision & OCR..."):
-                    try:
-                        raw = uploaded_file.getvalue()
-                        b64_img = base64.b64encode(raw).decode("utf-8")
-                        res = client.analyze_scoreboard(
-                            b64_img,
-                            game_name=game_name,
-                            tag_line=tag_line,
-                            save_to_history=save_history,
-                        )
-                        st.session_state["scoreboard_vision_analysis"] = res
-                        st.success("Scoreboard analyzed successfully!")
-                    except APIClientError as exc:
-                        st.error(f"Failed to analyze scoreboard: {exc}")
+                if not st.session_state.get("auth_token"):
+                    st.warning(
+                        "Please sign in or register in the sidebar (🔐 Account) to "
+                        "analyze scoreboard screenshots."
+                    )
+                else:
+                    with st.spinner(
+                        "Analyzing scoreboard with Computer Vision & OCR..."
+                    ):
+                        try:
+                            raw = uploaded_file.getvalue()
+                            b64_img = base64.b64encode(raw).decode("utf-8")
+                            res = client.analyze_scoreboard(
+                                b64_img,
+                                game_name=game_name,
+                                tag_line=tag_line,
+                                save_to_history=save_history,
+                            )
+                            st.session_state["scoreboard_vision_analysis"] = res
+                            st.success("Scoreboard analyzed successfully!")
+                        except APIClientError as exc:
+                            st.error(f"Failed to analyze scoreboard: {exc}")
 
         analysis = st.session_state.get("scoreboard_vision_analysis")
         if analysis:

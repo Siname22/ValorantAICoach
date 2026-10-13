@@ -41,6 +41,9 @@ class UserResponse(BaseModel):
     id: str = Field(..., description="Unique user identifier")
     email: str = Field(..., description="User email address")
     is_active: bool = Field(..., description="Whether the user account is active")
+    is_admin: bool = Field(
+        False, description="Whether the user has administrator privileges"
+    )
     created_at: str = Field(
         ..., description="Account creation timestamp in ISO 8601 UTC format"
     )

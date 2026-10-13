@@ -330,7 +330,9 @@ class SQLPlayerStore:
             result = session.execute(statement)
             return int(result.rowcount or 0)
 
-    def create_user(self, email: str, hashed_password: str) -> dict[str, Any]:
+    def create_user(
+        self, email: str, hashed_password: str, is_admin: bool = False
+    ) -> dict[str, Any]:
         normalized_email = email.strip().lower()
         now = datetime.now(UTC)
         user_id = str(uuid.uuid4())
@@ -345,6 +347,7 @@ class SQLPlayerStore:
                 email=normalized_email,
                 hashed_password=hashed_password,
                 is_active=True,
+                is_admin=is_admin,
                 created_at=now,
             )
             session.add(user)
@@ -352,6 +355,7 @@ class SQLPlayerStore:
             "id": user_id,
             "email": normalized_email,
             "is_active": True,
+            "is_admin": is_admin,
             "created_at": now.isoformat(),
         }
 
@@ -368,6 +372,7 @@ class SQLPlayerStore:
                 "email": user.email,
                 "hashed_password": user.hashed_password,
                 "is_active": user.is_active,
+                "is_admin": user.is_admin,
                 "created_at": user.created_at.isoformat(),
             }
 
@@ -380,8 +385,17 @@ class SQLPlayerStore:
                 "id": user.id,
                 "email": user.email,
                 "is_active": user.is_active,
+                "is_admin": user.is_admin,
                 "created_at": user.created_at.isoformat(),
             }
+
+    def update_password_hash(self, user_id: str, hashed_password: str) -> bool:
+        with Session(self.engine) as session, session.begin():
+            user = session.get(UserRecord, user_id)
+            if user is None:
+                return False
+            user.hashed_password = hashed_password
+            return True
 
     def link_player_account(
         self,

@@ -107,6 +107,64 @@ def render_sidebar() -> None:
         )
         st.page_link("pages/4_Roadmap.py", label="Roadmap", icon=":material/route:")
         st.page_link("pages/5_API_Docs.py", label="API docs", icon=":material/code:")
+        st.divider()
+
+        current_user = st.session_state.get("current_user")
+        if current_user:
+            email = current_user.get("email", "User")
+            is_admin = current_user.get("is_admin", False)
+            badge = " (Admin)" if is_admin else ""
+            st.caption(f"Signed in as **{email}**{badge}")
+            if st.button("Sign out", key="btn_auth_sign_out", use_container_width=True):
+                st.session_state.pop("auth_token", None)
+                st.session_state.pop("current_user", None)
+                st.rerun()
+        else:
+            with st.expander("🔐 Account (Sign in / Register)"):
+                tab_login, tab_register = st.tabs(["Sign in", "Register"])
+                with tab_login, st.form("sidebar_login_form"):
+                    log_email = st.text_input("Email", key="sb_login_email")
+                    log_pwd = st.text_input(
+                        "Password", type="password", key="sb_login_pwd"
+                    )
+                    if st.form_submit_button(
+                        "Sign in", type="primary", use_container_width=True
+                    ):
+                        from utils.api_client import APIClientError, get_api_client
+
+                        client = get_api_client()
+                        try:
+                            auth_resp = client.login(log_email, log_pwd)
+                            token = auth_resp.get("access_token")
+                            if token:
+                                st.session_state["auth_token"] = token
+                                client.token = token
+                                me = client.get_me()
+                                st.session_state["current_user"] = me
+                                st.rerun()
+                        except APIClientError as err:
+                            st.error(str(err))
+                with tab_register, st.form("sidebar_register_form"):
+                    reg_email = st.text_input("Email", key="sb_reg_email")
+                    reg_pwd = st.text_input(
+                        "Password (min 8)", type="password", key="sb_reg_pwd"
+                    )
+                    if st.form_submit_button("Register", use_container_width=True):
+                        from utils.api_client import APIClientError, get_api_client
+
+                        client = get_api_client()
+                        try:
+                            client.register(reg_email, reg_pwd)
+                            auth_resp = client.login(reg_email, reg_pwd)
+                            token = auth_resp.get("access_token")
+                            if token:
+                                st.session_state["auth_token"] = token
+                                client.token = token
+                                me = client.get_me()
+                                st.session_state["current_user"] = me
+                                st.rerun()
+                        except APIClientError as err:
+                            st.error(str(err))
 
 
 def apply_chat_styles() -> None:

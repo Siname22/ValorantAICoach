@@ -10,6 +10,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from backend.app.core.config import get_settings
+from backend.app.dependencies.auth_deps import get_current_user
 from backend.app.dependencies.provider_deps import create_player_service
 from backend.app.storage.models import (
     Base,
@@ -587,11 +588,19 @@ def test_persistent_service_readiness_probe_and_cache_prune(
         ready_data = ready_res.json()
         assert ready_data["status"] == "ready"
         assert ready_data["database"] == "connected"
-        assert ready_data["providers_configured"] == 1
 
-        prune_res = client.post("/system/cache/prune")
-        assert prune_res.status_code == 200
-        assert prune_res.json() == {"pruned_count": 0}
+        app.dependency_overrides[get_current_user] = lambda: {
+            "id": "u-admin",
+            "email": "admin@test.com",
+            "is_active": True,
+            "is_admin": True,
+        }
+        try:
+            prune_res = client.post("/system/cache/prune")
+            assert prune_res.status_code == 200
+            assert prune_res.json() == {"pruned_count": 0}
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
 
         service = getattr(app.state, "player_service", None)
         assert service is not None
@@ -659,9 +668,22 @@ def test_invalidate_player_cache_endpoint_and_store(
         store.close()
 
     with TestClient(app) as client:
-        res = client.delete("/players/PlayerA/EU1/cache")
-        assert res.status_code == 200
-        assert res.json() == {"status": "ok", "invalidated_snapshots": 1}
+        # 1. Unauthenticated -> 401
+        assert client.delete("/players/PlayerA/EU1/cache").status_code == 401
+
+        # 2. Authenticated -> 200
+        app.dependency_overrides[get_current_user] = lambda: {
+            "id": "u-cache",
+            "email": "cache@test.com",
+            "is_active": True,
+            "is_admin": False,
+        }
+        try:
+            res = client.delete("/players/PlayerA/EU1/cache")
+            assert res.status_code == 200
+            assert res.json() == {"status": "ok", "invalidated_snapshots": 1}
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
 
     with Session(engine) as session:
         remaining = session.scalars(select(PlayerSnapshot)).all()

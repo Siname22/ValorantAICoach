@@ -142,25 +142,40 @@ def test_api_report_endpoints():
     mock_service.get_rank = AsyncMock(side_effect=Exception("No rank"))
     mock_service.get_stats_overview = AsyncMock(side_effect=Exception("No stats"))
 
+    from backend.app.dependencies.auth_deps import get_current_user
+
     app.state.player_service = mock_service
     client = TestClient(app)
 
-    # 1. POST /players/Boaster/FNC/reports
-    resp = client.post("/players/Boaster/FNC/reports")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "id" in data
-    assert "payload" in data
-    assert "Boaster#FNC" in data["payload"]["title"]
-    assert len(data["payload"]["training_plan"]) >= 1
+    # 1. POST /players/Boaster/FNC/reports without authentication -> 401
+    unauth_resp = client.post("/players/Boaster/FNC/reports")
+    assert unauth_resp.status_code == 401
 
-    # 2. GET /players/Boaster/FNC/reports (in base service returns empty list)
+    # 2. Authenticated POST /players/Boaster/FNC/reports -> 200
+    app.dependency_overrides[get_current_user] = lambda: {
+        "id": "mock-user-1",
+        "email": "coach@test.com",
+        "is_active": True,
+        "is_admin": False,
+    }
+    try:
+        resp = client.post("/players/Boaster/FNC/reports")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "id" in data
+        assert "payload" in data
+        assert "Boaster#FNC" in data["payload"]["title"]
+        assert len(data["payload"]["training_plan"]) >= 1
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+    # 3. GET /players/Boaster/FNC/reports (in base service returns empty list)
     list_resp = client.get("/players/Boaster/FNC/reports")
     assert list_resp.status_code == 200
     list_data = list_resp.json()
     assert "reports" in list_data
     assert list_data["count"] == 0
 
-    # 3. GET /players/Boaster/FNC/reports/unknown-id -> 404
+    # 4. GET /players/Boaster/FNC/reports/unknown-id -> 404
     get_resp = client.get("/players/Boaster/FNC/reports/unknown-id")
     assert get_resp.status_code == 404
