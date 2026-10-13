@@ -1,0 +1,44 @@
+/**
+ * Local font declarations for Chakra Petch and IBM Plex Sans.
+ * Zero external CDN dependencies in production (self-hosted).
+ */
+
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local("Chakra Petch SemiBold"), local("ChakraPetch-SemiBold");
+}
+
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local("Chakra Petch Bold"), local("ChakraPetch-Bold");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local("IBM Plex Sans"), local("IBMPlexSans");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: local("IBM Plex Sans Medium"), local("IBMPlexSans-Medium");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local("IBM Plex Sans SemiBold"), local("IBMPlexSans-SemiBold");
+}

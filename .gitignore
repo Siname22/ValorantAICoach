@@ -68,6 +68,7 @@ instance/
 logs/
 celerybeat-schedule
 celerybeat.pid
+openapi.json
 
 # ------------------------------------------------------------------------------
 # Frontend (Angular / Node)

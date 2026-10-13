@@ -1,0 +1,174 @@
+/**
+ * Global Styles and CSS Reset for Valorant AI Coach Web SPA
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  color-scheme: dark;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+  background-color: var(--color-bg-page);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-body);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Headings and Typography */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-family-display);
+  line-height: var(--line-height-heading);
+  color: var(--color-text-primary);
+}
+
+h1 {
+  font-size: clamp(28px, 5vw, var(--font-size-h1));
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Universal Accessible Focus Indicator (WCAG 2.2 AA) */
+:focus-visible {
+  outline: var(--focus-outline-width) solid var(--color-focus) !important;
+  outline-offset: var(--focus-outline-offset) !important;
+}
+
+/* Touch Target Minimum (44x44px) */
+button,
+a,
+input,
+select,
+textarea {
+  min-height: var(--min-touch-target);
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* Native Controls Default Reset */
+button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Primary Action Button (Lima) */
+.btn-primary {
+  background-color: var(--color-action-primary);
+  color: var(--color-action-text);
+  font-family: var(--font-family-display);
+  font-weight: 700;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0 24px;
+  border-radius: var(--radius-control);
+  min-height: var(--min-touch-target);
+  transition: background-color var(--transition-fast);
+}
+
+.btn-primary:hover {
+  background-color: var(--color-action-primary-hover);
+}
+
+/* Visually Hidden Utility for Screen Readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Skip to Content Link (Accessible requirement 1) */
+.skip-link {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 9999;
+  background-color: var(--color-action-primary);
+  color: var(--color-action-text);
+  font-family: var(--font-family-display);
+  font-weight: 700;
+  padding: 12px 20px;
+  border-radius: var(--radius-control);
+  text-decoration: none;
+  transform: translateY(-200%);
+  transition: transform var(--transition-fast);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+/* Table Container for Responsive Scroll without Page Overflow */
+.table-responsive-container {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Data Tables Semantics */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+caption {
+  text-align: left;
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-h2);
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--color-text-primary);
+}
+
+th, td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+th {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+td {
+  font-size: 14px;
+}

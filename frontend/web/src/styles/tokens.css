@@ -1,0 +1,97 @@
+/**
+ * D · HUD Bento Design Tokens
+ * Single Dark Theme compliant with WCAG 2.2 AA (4.5:1 text, 3:1 UI & focus)
+ */
+
+:root {
+  /* Surfaces & Backgrounds */
+  --color-bg-page: #0B0D12;
+  --color-bg-sidebar: #11141B;
+  --color-bg-card: #151A23;
+  --color-border: #262C38;
+  --color-border-input: #5F6B80;
+  --color-border-upload: #7C879A;
+
+  /* Typography Colors */
+  --color-text-primary: #F2F4F8;
+  --color-text-secondary: #C3CAD6;
+  --color-text-inverse: #0B0D12;
+  --color-text-white: #FFFFFF;
+
+  /* Semantic Action - Lime is the ONLY action color */
+  --color-action-primary: #C6FF3D;
+  --color-action-primary-hover: #b4f526;
+  --color-action-text: #0B0D12;
+
+  /* Highlight Card - Violet */
+  --color-card-highlight: #6D3FE0;
+  --color-card-highlight-text: #FFFFFF;
+
+  /* Game Results */
+  --color-status-victory: #6EE7A0;
+  --color-status-defeat: #FF8A94;
+
+  /* Accessibility Focus Ring (WCAG 2.2 AA) */
+  --color-focus: #FFD84D;
+  --focus-outline-width: 3px;
+  --focus-outline-offset: 3px;
+
+  /* Typography Families */
+  --font-family-display: "Chakra Petch", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-family-body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* Typography Font Sizes */
+  --font-size-body: 16px;
+  --font-size-small: 14px;
+  --font-size-h2: 18px;
+  --font-size-h1: 48px;
+  --font-size-featured: 64px;
+
+  /* Typography Line Heights */
+  --line-height-body: 1.5;
+  --line-height-heading: 1.15;
+
+  /* Border Radii */
+  --radius-card: 20px;
+  --radius-control: 12px;
+  --radius-nav: 10px;
+
+  /* Layout Measurements */
+  --sidebar-width: 240px;
+  --main-padding: 32px;
+  --main-gap: 16px;
+  --min-touch-target: 44px;
+
+  /* Transitions */
+  --transition-fast: 150ms ease-in-out;
+  --transition-normal: 250ms ease-in-out;
+}
+
+@media (min-width: 1200px) {
+  :root {
+    --main-padding: 40px;
+  }
+}
+
+/* High Contrast Mode support (prefers-contrast: more) */
+@media (prefers-contrast: more) {
+  :root {
+    --color-border: #4D576B;
+    --color-border-input: #8F9BB3;
+    --color-text-secondary: #E4E9F2;
+    --focus-outline-width: 4px;
+    --focus-outline-offset: 4px;
+  }
+}
+
+/* Reduced Motion Mode support (prefers-reduced-motion: reduce) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
