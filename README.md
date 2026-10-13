@@ -8,8 +8,9 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688)](https://fastapi.tiangolo.com/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.39+-FF4B4B)](https://streamlit.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Tests](https://img.shields.io/badge/Tests-565%20Passing-success)](https://pytest.org/)
+[![Tests](https://img.shields.io/badge/Tests-581%20Passing-success)](https://pytest.org/)
 [![Resilience](https://img.shields.io/badge/Gemini%20Resilience-81%2F81%20Verified-brightgreen)](https://ai.google.dev/)
+[![Release](https://img.shields.io/badge/Release-v1.0.0-blueviolet)](https://github.com/Siname22/ValorantAICoach/releases)
 [![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Ruff](https://img.shields.io/badge/linter-ruff-red)](https://github.com/astral-sh/ruff)
 
@@ -26,6 +27,8 @@
 - **Backend & Frontend Isolation**: Headless FastAPI service and interactive Streamlit UI run in fully decoupled containers with independent dependencies and virtual environments.
 - **Grounded Multi-Agent Coaching**: Specialized agents evaluate player telemetry (Aim, Economy, Positioning, Agent Utility) and compile structured, evidence-backed recommendations.
 - **Resilient AI Coach**: Integrated Google Gemini assistant powered by the official SDK with an automatic 3-model fallback chain (`gemini-2.5-flash` &rarr; `gemini-2.5-flash-lite` &rarr; `gemini-3.5-flash`), exponential backoff, and 81/81 resilience validations.
+- **Team Synergy & Counter-Pick Engine**: Tactical composition evaluation providing squad archetype synergy scores, utility coverage breakdown, and opponent-tailored counter-pick guidance.
+- **Production Hardened & Audited**: Robust security headers (CSP, HSTS, frame protection, MIME sniffing protection), configurable CORS, request body size limits against DoS, and non-root Docker execution.
 
 ---
 
@@ -100,6 +103,9 @@ The FastAPI backend exposes comprehensive endpoints documented via OpenAPI/Swagg
 | `POST` | `/players/{game_name}/{tag_line}/reports` | Generate a grounded multi-agent coaching report. |
 | `GET` | `/players/{game_name}/{tag_line}/reports` | List historical coaching reports for a player. |
 | `GET` | `/players/{game_name}/{tag_line}/reports/{id}` | Retrieve a specific coaching report by ID. |
+| `POST` | `/recommendations/composition/synergy` | Evaluate squad agent synergy, role balance, and utility coverage. |
+| `POST` | `/recommendations/counter-picks` | Calculate top agent counter-picks against an enemy lineup on a specific map. |
+| `GET` | `/players/{game_name}/{tag_line}/counter-picks` | Personalized counter-pick recommendations tailored to player agent pool. |
 
 ---
 
@@ -130,7 +136,7 @@ Located in `frontend/streamlit_app/utils/gemini_coach.py`, the AI coach delivers
 The repository maintains strict test coverage, formatting, and linting standards:
 
 ```text
-565 passed, 0 failures, 0 skips
+581 passed, 0 failures, 0 skips
 81/81 Gemini resilience checks passed
 100% Ruff & Black compliance
 ```
@@ -264,8 +270,19 @@ ValorantAICoach/
 - [x] Scheduled background coaching sync worker & on-demand sync endpoints
 - [x] Computer Vision & OCR integration for in-game scoreboard capture
 - [x] Round-by-round replay timeline analysis
-- [ ] Team synergy & counter-pick recommendation engine
-- [ ] Production deployment hardening, security audit, and Release 1.0
+- [x] Team synergy & counter-pick recommendation engine
+- [x] Production deployment hardening, security audit, and Release 1.0
+
+---
+
+## 🔒 Production Security & Hardening
+
+The platform adheres to enterprise-grade security standards:
+- **OWASP Recommended Security Headers**: Automatic injection of `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: geolocation=(), camera=(), microphone=()`, and hardened `Content-Security-Policy`.
+- **Strict-Transport-Security (HSTS)**: Configurable HSTS enforcement with `includeSubDomains` for production environments.
+- **Controlled CORS Policy**: Explicitly configured allowed origins prevents arbitrary domain cross-site access.
+- **Request Body Size Guard**: `ContentLengthLimitMiddleware` terminates requests exceeding maximum body thresholds (default 25 MB) with HTTP 413 to prevent memory exhaustion and DoS vectors.
+- **Least-Privilege Docker Containers**: Containers run under dedicated unprivileged `appuser` (UID/GID 10001) with internal container health checks.
 
 ---
 
@@ -274,7 +291,7 @@ ValorantAICoach/
 This repository follows a strict review and branch workflow:
 1. **Never commit directly to `main` without verified testing**.
 2. Create descriptive feature branches (`feature/...`, `fix/...`).
-3. Ensure 100% test pass rate (`565+ tests passing`), Ruff, and Black formatting.
+3. Ensure 100% test pass rate (`581+ tests passing`), Ruff, and Black formatting.
 4. Submit work via Pull Request with clear release notes.
 
 ---

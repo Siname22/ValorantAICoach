@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager, suppress
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend import __version__
@@ -17,6 +18,10 @@ from backend.app.core.config import get_settings
 from backend.app.dependencies.provider_deps import (
     create_player_service,
     get_player_service,
+)
+from backend.app.middleware.security import (
+    ContentLengthLimitMiddleware,
+    SecurityHeadersMiddleware,
 )
 from backend.app.schemas.player_schemas import (
     CachePruneResponse,
@@ -155,6 +160,27 @@ app = FastAPI(
         "name": "Proprietary",
     },
     openapi_tags=tags_metadata,
+)
+
+# Production Security & CORS Middleware
+if settings.cors_allowed_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+if settings.enable_security_headers:
+    app.add_middleware(
+        SecurityHeadersMiddleware,
+        enable_hsts=settings.enable_hsts,
+    )
+
+app.add_middleware(
+    ContentLengthLimitMiddleware,
+    max_content_length=settings.max_request_body_size_bytes,
 )
 
 # Register routers
