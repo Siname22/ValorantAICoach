@@ -265,6 +265,8 @@ export class MatchesComponent implements OnInit {
       deaths: 11,
       assists: 4,
       headshots: 8,
+      mode: 'Competitive',
+      timestamp: 1760292000000,
       created_at: '2026-10-12T18:00:00Z',
     },
     {
@@ -277,6 +279,8 @@ export class MatchesComponent implements OnInit {
       deaths: 15,
       assists: 9,
       headshots: 5,
+      mode: 'Competitive',
+      timestamp: 1760292000000,
       created_at: '2026-10-12T19:30:00Z',
     },
     {
@@ -289,6 +293,8 @@ export class MatchesComponent implements OnInit {
       deaths: 12,
       assists: 11,
       headshots: 6,
+      mode: 'Competitive',
+      timestamp: 1760292000000,
       created_at: '2026-10-12T21:00:00Z',
     },
   ]);

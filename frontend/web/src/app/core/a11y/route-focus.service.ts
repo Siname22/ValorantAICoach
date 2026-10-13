@@ -17,6 +17,10 @@ export class RouteFocusService {
   private readonly router = inject(Router);
   private readonly titleService = inject(Title);
 
+  init(): void {
+    this.initialize();
+  }
+
   initialize(): void {
     this.router.events
       .pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd))

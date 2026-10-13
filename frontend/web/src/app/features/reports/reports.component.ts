@@ -96,7 +96,7 @@ import {
         <app-bento-card span="full" title="Progresión Táctica Histórica" subtitle="Evolución en el tiempo">
           <div class="progression-container">
             <p><strong>Jugador:</strong> {{ progression()?.game_name }}#{{ progression()?.tag_line }}</p>
-            <p><strong>Tendencia global:</strong> {{ progression()?.overall_trend || 'Favorable (+12.4 ACS en las últimas 5 partidas)' }}</p>
+            <p><strong>Tendencia global:</strong> {{ progression()?.trajectory_narrative || progression()?.overall_trend || 'Favorable (+12.4 ACS en las últimas 5 partidas)' }}</p>
           </div>
         </app-bento-card>
       }

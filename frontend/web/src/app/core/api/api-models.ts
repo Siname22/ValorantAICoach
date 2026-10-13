@@ -36,7 +36,10 @@ export interface CoachingReportResponse {
   provider?: string;
   payload: Record<string, unknown>;
   evidence?: Record<string, unknown>[];
-  created_at?: string | unknown;
+  created_at?: string;
+  summary?: string;
+  strengths?: string;
+  weaknesses?: string;
 }
 
 export interface CoachingReportsListResponse {
@@ -134,7 +137,8 @@ export interface MatchTimelineResponse {
   game_mode?: string;
   friendly_team?: string | unknown;
   rounds?: RoundTimeline[];
-  summary: TimelineTacticalSummary;
+  total_rounds?: number;
+  summary?: TimelineTacticalSummary;
 }
 
 export interface MetricDataPoint {
@@ -155,8 +159,8 @@ export interface PlayerIdentity {
 export interface PlayerMatch {
   match_id: string;
   map_name: string;
-  mode: string;
-  timestamp: number | string;
+  mode?: string;
+  timestamp?: number | string;
   result: string;
   kills: number;
   deaths: number;
@@ -223,6 +227,7 @@ export interface PlayerProgressionResponse {
   active_focus_areas?: string[];
   agent_trends?: Record<string, AgentPerformanceSummary>;
   trajectory_narrative: string;
+  overall_trend?: string;
 }
 
 export interface PlayerRank {
@@ -438,11 +443,23 @@ export interface ValidationError {
 }
 
 // --- Compatibility aliases / extensions for UI code ---
-export type CoachingReportSummary = CoachingReportResponse & {
+export interface CoachingReportSummary {
+  id: string;
+  created_at?: string;
   summary?: string;
   strengths?: string;
   weaknesses?: string;
-};
+  payload?: Record<string, unknown>;
+  player_id?: string;
+}
 
 export type PlayerProfile = PlayerProfileResponse;
 export type VisionAnalysisResponse = ScoreboardAnalysisResponse;
+export type RegisterRequest = UserRegisterRequest;
+export type LoginRequest = UserLoginRequest;
+export type LinkedAccountResponse = LinkedPlayerAccountResponse;
+export type LinkAccountRequest = LinkPlayerAccountRequest;
+export type CoachingReportDetailResponse = CoachingReportResponse & {
+  status?: string;
+  report?: CoachingReportResponse;
+};

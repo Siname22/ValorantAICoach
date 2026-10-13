@@ -9,7 +9,6 @@ import {
   PlayerMatch,
   PlayerStatsOverview,
   CoachingReportSummary,
-  PlayerTimelineAnalyticsResponse,
 } from '../../core/api/api-models';
 
 @Component({
@@ -664,7 +663,7 @@ export class SummaryComponent {
             this.latestPlanItems.set([
               { title: 'Fortaleza clave', description: report.strengths.slice(0, 80) },
               { title: 'Área de mejora', description: report.weaknesses.slice(0, 80) },
-              { title: 'Recomendación táctica', description: report.summary.slice(0, 80) },
+              { title: 'Recomendación táctica', description: (report.summary ?? '').slice(0, 80) },
             ]);
           }
         }
