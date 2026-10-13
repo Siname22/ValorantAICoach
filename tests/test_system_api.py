@@ -236,8 +236,34 @@ def test_readiness_probe_reports_ready_with_provider(provider_environment, monke
     assert data["providers_configured"] == 1
 
 
-def test_cache_prune_endpoint_returns_count(provider_environment):
+def test_cache_prune_endpoint_authorization(provider_environment):
+    from backend.app.dependencies.auth_deps import get_current_user
+
     with TestClient(app) as client:
-        response = client.post("/system/cache/prune")
-    assert response.status_code == 200
-    assert response.json() == {"pruned_count": 0}
+        # 1. Unauthenticated -> 401
+        res_unauth = client.post("/system/cache/prune")
+        assert res_unauth.status_code == 401
+
+        # 2. Authenticated as non-admin -> 403
+        app.dependency_overrides[get_current_user] = lambda: {
+            "id": "u-regular",
+            "email": "regular@test.com",
+            "is_active": True,
+            "is_admin": False,
+        }
+        res_forbidden = client.post("/system/cache/prune")
+        assert res_forbidden.status_code == 403
+
+        # 3. Authenticated as admin -> 200
+        app.dependency_overrides[get_current_user] = lambda: {
+            "id": "u-admin",
+            "email": "admin@test.com",
+            "is_active": True,
+            "is_admin": True,
+        }
+        try:
+            res_admin = client.post("/system/cache/prune")
+            assert res_admin.status_code == 200
+            assert res_admin.json() == {"pruned_count": 0}
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)

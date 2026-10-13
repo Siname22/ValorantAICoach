@@ -239,14 +239,23 @@ class PersistentPlayerService(PlayerService):
         )
         return await self._storage_call(self.store.invalidate_player_cache, player_id)
 
-    async def create_user(self, email: str, password_hash: str) -> dict[str, Any]:
-        return await self._storage_call(self.store.create_user, email, password_hash)
+    async def create_user(
+        self, email: str, password_hash: str, is_admin: bool = False
+    ) -> dict[str, Any]:
+        return await self._storage_call(
+            self.store.create_user, email, password_hash, is_admin
+        )
 
     async def get_user_by_email(self, email: str) -> dict[str, Any] | None:
         return await self._storage_call(self.store.get_user_by_email, email)
 
     async def get_user_by_id(self, user_id: str) -> dict[str, Any] | None:
         return await self._storage_call(self.store.get_user_by_id, user_id)
+
+    async def update_password_hash(self, user_id: str, password_hash: str) -> bool:
+        return await self._storage_call(
+            self.store.update_password_hash, user_id, password_hash
+        )
 
     async def link_player_account(
         self,

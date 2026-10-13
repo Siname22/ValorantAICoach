@@ -25,7 +25,7 @@ def page(monkeypatch):
 def test_first_screen_is_player_lookup(page):
     page.run()
     assert not page.exception
-    assert [item.label for item in page.text_input] == ["Game name", "Tag line"]
+    assert [item.label for item in page.main.text_input] == ["Game name", "Tag line"]
     assert page.button[0].label == "Search player"
 
 

@@ -1,52 +1,71 @@
-import base64
+"""Password hashing and JWT access tokens.
+
+Passwords are hashed with Argon2id (argon2-cffi). Hashes produced by the
+previous PBKDF2-HMAC-SHA256 implementation are still verified so existing
+users can log in; ``password_needs_rehash`` tells the login flow to upgrade
+them to Argon2id transparently.
+
+Tokens are signed and validated with PyJWT. ``exp``, ``iat`` and ``sub`` are
+mandatory: a token missing any of them is rejected.
+"""
+
 import hashlib
 import hmac
-import json
-import secrets
-import time
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import jwt
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError
+
 from backend.app.core.config import get_settings
 
-PBKDF2_ITERATIONS = 100_000
+logger = logging.getLogger(__name__)
+
+LEGACY_PBKDF2_PREFIX = "pbkdf2_sha256$"
+REQUIRED_TOKEN_CLAIMS = ("exp", "iat", "sub")
+
+_password_hasher = PasswordHasher()
 
 
 def get_password_hash(password: str) -> str:
-    """Hash password using PBKDF2-HMAC-SHA256 with a cryptographically secure salt."""
-    salt = secrets.token_bytes(16)
-    key = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, PBKDF2_ITERATIONS)
-    salt_hex = salt.hex()
-    key_hex = key.hex()
-    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt_hex}${key_hex}"
+    """Hash a password with Argon2id."""
+    return _password_hasher.hash(password)
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify plain password against stored PBKDF2-HMAC-SHA256 hash in constant time."""
+def _verify_legacy_pbkdf2(plain_password: str, hashed_password: str) -> bool:
     try:
-        parts = hashed_password.split("$")
-        if len(parts) != 4 or parts[0] != "pbkdf2_sha256":
-            return False
-        iterations = int(parts[1])
-        salt = bytes.fromhex(parts[2])
-        expected_key = bytes.fromhex(parts[3])
-        actual_key = hashlib.pbkdf2_hmac(
-            "sha256", plain_password.encode(), salt, iterations
+        _, iterations, salt_hex, key_hex = hashed_password.split("$")
+        actual = hashlib.pbkdf2_hmac(
+            "sha256",
+            plain_password.encode(),
+            bytes.fromhex(salt_hex),
+            int(iterations),
         )
-        return hmac.compare_digest(actual_key, expected_key)
-    except Exception:
+        return hmac.compare_digest(actual, bytes.fromhex(key_hex))
+    except (ValueError, TypeError):
         return False
 
 
-def _b64url_encode(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).decode().rstrip("=")
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password against an Argon2id or legacy PBKDF2 hash."""
+    if hashed_password.startswith(LEGACY_PBKDF2_PREFIX):
+        return _verify_legacy_pbkdf2(plain_password, hashed_password)
+    try:
+        return _password_hasher.verify(hashed_password, plain_password)
+    except (VerificationError, InvalidHashError):
+        return False
 
 
-def _b64url_decode(data: str) -> bytes:
-    padding = len(data) % 4
-    if padding > 0:
-        data += "=" * (4 - padding)
-    return base64.urlsafe_b64decode(data.encode())
+def password_needs_rehash(hashed_password: str) -> bool:
+    """Return True for legacy hashes or Argon2 hashes with outdated parameters."""
+    if hashed_password.startswith(LEGACY_PBKDF2_PREFIX):
+        return True
+    try:
+        return _password_hasher.check_needs_rehash(hashed_password)
+    except InvalidHashError:
+        return True
 
 
 def create_access_token(
@@ -54,67 +73,36 @@ def create_access_token(
     expires_delta: timedelta | None = None,
     secret_key: str | None = None,
 ) -> str:
-    """Create a standard signed HS256 JWT access token."""
+    """Create a signed JWT. ``data`` must contain ``sub``."""
+    if "sub" not in data:
+        raise ValueError("Access tokens require a 'sub' claim.")
     settings = get_settings()
-    secret = (secret_key or settings.jwt_secret_key).encode()
     now = datetime.now(UTC)
-    if expires_delta is not None:
-        expire = now + expires_delta
-    else:
-        expire = now + timedelta(minutes=settings.jwt_access_token_expire_minutes)
-
-    header = {"alg": "HS256", "typ": "JWT"}
-    payload = {
-        **data,
-        "iat": int(now.timestamp()),
-        "exp": int(expire.timestamp()),
-    }
-
-    header_bytes = json.dumps(header, separators=(",", ":"), sort_keys=True).encode()
-    payload_bytes = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
-
-    encoded_header = _b64url_encode(header_bytes)
-    encoded_payload = _b64url_encode(payload_bytes)
-    signing_input = f"{encoded_header}.{encoded_payload}".encode()
-
-    signature = hmac.new(secret, signing_input, hashlib.sha256).digest()
-    encoded_signature = _b64url_encode(signature)
-
-    return f"{encoded_header}.{encoded_payload}.{encoded_signature}"
+    expire = now + (
+        expires_delta
+        if expires_delta is not None
+        else timedelta(minutes=settings.jwt_access_token_expire_minutes)
+    )
+    payload = {**data, "sub": str(data["sub"]), "iat": now, "exp": expire}
+    return jwt.encode(
+        payload,
+        secret_key or settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
 
 
 def decode_access_token(
     token: str,
     secret_key: str | None = None,
 ) -> dict[str, Any] | None:
-    """Decode and verify an HS256 JWT access token. Returns claims dict or None."""
+    """Validate a JWT and return its claims, or None if it is not acceptable."""
     settings = get_settings()
-    secret = (secret_key or settings.jwt_secret_key).encode()
-
-    parts = token.split(".")
-    if len(parts) != 3:
-        return None
-
-    encoded_header, encoded_payload, encoded_signature = parts
-    signing_input = f"{encoded_header}.{encoded_payload}".encode()
-
-    expected_signature = hmac.new(secret, signing_input, hashlib.sha256).digest()
     try:
-        actual_signature = _b64url_decode(encoded_signature)
-    except Exception:
+        return jwt.decode(
+            token,
+            secret_key or settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+            options={"require": list(REQUIRED_TOKEN_CLAIMS)},
+        )
+    except jwt.PyJWTError:
         return None
-
-    if not hmac.compare_digest(actual_signature, expected_signature):
-        return None
-
-    try:
-        payload_bytes = _b64url_decode(encoded_payload)
-        payload: dict[str, Any] = json.loads(payload_bytes.decode())
-    except Exception:
-        return None
-
-    exp = payload.get("exp")
-    if exp is not None and isinstance(exp, (int, float)) and exp < time.time():
-        return None
-
-    return payload

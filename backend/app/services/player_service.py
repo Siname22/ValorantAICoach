@@ -565,7 +565,9 @@ class PlayerService:
     async def invalidate_player_cache(self, game_name: str, tag_line: str) -> int:
         return 0
 
-    async def create_user(self, email: str, password_hash: str) -> dict[str, Any]:
+    async def create_user(
+        self, email: str, password_hash: str, is_admin: bool = False
+    ) -> dict[str, Any]:
         raise PlayerServiceUnavailableError(
             "User authentication requires persistent storage."
         )
@@ -576,6 +578,11 @@ class PlayerService:
         )
 
     async def get_user_by_id(self, user_id: str) -> dict[str, Any] | None:
+        raise PlayerServiceUnavailableError(
+            "User authentication requires persistent storage."
+        )
+
+    async def update_password_hash(self, user_id: str, password_hash: str) -> bool:
         raise PlayerServiceUnavailableError(
             "User authentication requires persistent storage."
         )

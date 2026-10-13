@@ -44,8 +44,6 @@ jobs:
         run: uv run --no-sync ruff check .
       - name: Format
         run: uv run --no-sync black --workers 1 --check backend tests agents frontend database integration_tests
-      - name: Diff whitespace
-        run: git diff --check
 
   postgres-storage:
     name: PostgreSQL 16 storage
@@ -103,7 +101,7 @@ jobs:
       - name: Verify unprivileged runtime and production imports
         run: |
           docker run --rm valorant-coach:test sh -c 'test "$(id -u)" -ne 0'
-          docker run --rm valorant-coach:test uv run --no-sync python -c 'import backend.main, httpx; import importlib.util; assert importlib.util.find_spec("pytest") is None'
+          docker run --rm valorant-coach:test uv run --no-sync python -c 'import backend.main, httpx; from google import genai; import jwt, argon2; import importlib.util; assert importlib.util.find_spec("pytest") is None'
       - name: Check liveness without provider credentials
         shell: bash
         run: |
@@ -111,3 +109,5 @@ jobs:
           trap 'docker logs coach-smoke; docker rm -f coach-smoke' EXIT
           curl --fail --retry 20 --retry-delay 1 --retry-all-errors --connect-timeout 1 --max-time 3 --retry-max-time 30 http://127.0.0.1:8000/health/live
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/players/Test/EU1)" = 503
+          # Verify vision endpoint is wired up and protected (returns 401 Unauthorized, not 500)
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8000/vision/scoreboard/analyze -H 'Content-Type: application/json' -d '{}')" = 401

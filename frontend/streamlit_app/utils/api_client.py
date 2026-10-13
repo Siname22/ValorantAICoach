@@ -384,4 +384,11 @@ class APIClient:
 
 
 def get_api_client() -> APIClient:
-    return APIClient()
+    token: str | None = None
+    try:
+        import streamlit as st
+
+        token = st.session_state.get("auth_token")
+    except Exception:
+        token = None
+    return APIClient(token=token)

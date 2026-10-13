@@ -1,12 +1,14 @@
 import logging
 from typing import Annotated, Any
 
+from backend.app.core.config import get_settings
 from backend.app.core.security import (
     create_access_token,
     get_password_hash,
+    password_needs_rehash,
     verify_password,
 )
-from backend.app.dependencies.auth_deps import get_current_user
+from backend.app.dependencies.auth_deps import get_current_user, is_admin_user
 from backend.app.dependencies.provider_deps import get_player_service
 from backend.app.schemas.auth_schemas import (
     LinkedPlayerAccountResponse,
@@ -42,9 +44,12 @@ async def register(
 ) -> UserResponse:
     """Create a new user with an email and secure hashed password."""
     try:
+        settings = get_settings()
+        is_admin = request.email.strip().lower() in settings.admin_email_set
         user = await service.create_user(
             email=request.email,
             password_hash=get_password_hash(request.password),
+            is_admin=is_admin,
         )
         return UserResponse(**user)
     except ValueError:
@@ -90,6 +95,17 @@ async def login(
             detail="Inactive user account.",
         )
 
+    # Transparent password rehashing for legacy or outdated hashes
+    if password_needs_rehash(user["hashed_password"]):
+        try:
+            new_hash = get_password_hash(request.password)
+            await service.update_password_hash(user["id"], new_hash)
+            logger.info("Transparently updated password hash for user %s", user["id"])
+        except Exception:
+            logger.warning(
+                "Failed to transparently update password hash", exc_info=True
+            )
+
     token = create_access_token(data={"sub": user["id"], "email": user["email"]})
     return TokenResponse(access_token=token, token_type="bearer")
 
@@ -107,6 +123,7 @@ async def get_me(
         id=current_user["id"],
         email=current_user["email"],
         is_active=current_user["is_active"],
+        is_admin=is_admin_user(current_user),
         created_at=current_user["created_at"],
     )
 

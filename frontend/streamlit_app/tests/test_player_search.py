@@ -365,6 +365,7 @@ def test_player_search_generates_and_displays_coaching_report(player_app, monkey
         return res
 
     monkeypatch.setattr(requests, "post", post)
+    app.session_state["auth_token"] = "fake-jwt-token"
 
     gen_btn = next((b for b in app.button if "Generate" in b.label), None)
     assert gen_btn is not None
@@ -377,3 +378,14 @@ def test_player_search_generates_and_displays_coaching_report(player_app, monkey
     assert "High first blood conversion" in text
     assert "Forcing after round 2 losses" in text
     assert "Step 1:" in text
+
+
+def test_player_search_generate_requires_authentication(player_app):
+    app, payloads, calls = player_app
+    submit(app)
+    gen_btn = next((b for b in app.button if "Generate" in b.label), None)
+    assert gen_btn is not None
+    gen_btn.click().run()
+    assert not app.exception
+    warnings = "\n".join(item.value for item in app.warning)
+    assert "Please sign in or register" in warnings

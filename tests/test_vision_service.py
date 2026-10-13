@@ -62,6 +62,32 @@ def storage_database(monkeypatch, tmp_path):
         get_settings.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def override_vision_auth():
+    from backend.app.dependencies.auth_deps import get_current_user
+
+    app.dependency_overrides[get_current_user] = lambda: {
+        "id": "mock-vision-user",
+        "email": "vision@test.com",
+        "is_active": True,
+        "is_admin": False,
+    }
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_vision_endpoints_require_authentication():
+    from backend.app.dependencies.auth_deps import get_current_user
+
+    app.dependency_overrides.pop(get_current_user, None)
+    with TestClient(app) as client:
+        res = client.post(
+            "/vision/scoreboard/analyze",
+            json={"image_base64": VALID_PNG_BASE64},
+        )
+        assert res.status_code == 401
+
+
 def test_decode_and_validate_image_valid_formats():
     raw, mime = decode_and_validate_image(VALID_PNG_BYTES)
     assert raw == VALID_PNG_BYTES

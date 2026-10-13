@@ -15,6 +15,7 @@ from backend.app.api.player_router import router as player_router
 from backend.app.api.synergy_router import router as synergy_router
 from backend.app.api.vision_router import router as vision_router
 from backend.app.core.config import get_settings
+from backend.app.dependencies.auth_deps import require_admin
 from backend.app.dependencies.provider_deps import (
     create_player_service,
     get_player_service,
@@ -263,10 +264,13 @@ async def readiness_check(
     response_model=CachePruneResponse,
     tags=["system"],
     summary="Prune expired cache",
-    description="Deletes expired snapshot cache entries from persistence.",
+    description=(
+        "Deletes expired snapshot cache entries from persistence. " "Requires admin."
+    ),
 )
 async def prune_cache(
     service: Annotated[PlayerService, Depends(get_player_service)],
+    _admin: Annotated[dict[str, Any], Depends(require_admin)],
 ) -> CachePruneResponse:
     count = await service.prune_expired_cache()
     return CachePruneResponse(pruned_count=count)
@@ -277,10 +281,12 @@ async def prune_cache(
     tags=["system"],
     summary="Synchronize all tracked player accounts",
     description=(
-        "Forces a coaching sync across all active primary linked player accounts."
+        "Forces a coaching sync across all active primary linked player accounts. "
+        "Requires admin."
     ),
 )
 async def sync_tracked_coaching(
     service: Annotated[PlayerService, Depends(get_player_service)],
+    _admin: Annotated[dict[str, Any], Depends(require_admin)],
 ) -> dict[str, Any]:
     return await service.sync_all_tracked_accounts()

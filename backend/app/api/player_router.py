@@ -1,5 +1,6 @@
 from typing import Annotated, Any, Literal
 
+from backend.app.dependencies.auth_deps import get_current_user
 from backend.app.dependencies.provider_deps import get_player_service
 from backend.app.schemas.player_schemas import (
     CoachingReportResponse,
@@ -25,6 +26,7 @@ GameName = Annotated[str, Path(min_length=1, max_length=64, pattern=r".*\S.*")]
 TagLine = Annotated[str, Path(min_length=1, max_length=16, pattern=r".*\S.*")]
 Region = Literal["eu", "na", "ap", "kr", "br", "latam"]
 Service = Annotated[PlayerService, Depends(get_player_service)]
+CurrentUser = Annotated[dict[str, Any], Depends(get_current_user)]
 RegionQuery = Annotated[
     Region | None,
     Query(description="Henrik region override; otherwise resolved from the account"),
@@ -129,6 +131,7 @@ async def generate_coaching_report(
     game_name: GameName,
     tag_line: TagLine,
     service: Service,
+    _user: CurrentUser,
     region: RegionQuery = None,
     limit: Annotated[int, Query(ge=1, le=20)] = 5,
 ) -> CoachingReportResponse:
@@ -200,6 +203,7 @@ async def invalidate_player_cache(
     game_name: GameName,
     tag_line: TagLine,
     service: Service,
+    _user: CurrentUser,
 ) -> dict[str, Any]:
     count = await service.invalidate_player_cache(game_name, tag_line)
     return {"status": "ok", "invalidated_snapshots": count}
@@ -239,6 +243,7 @@ async def sync_player(
     game_name: GameName,
     tag_line: TagLine,
     service: Service,
+    _user: CurrentUser,
     region: RegionQuery = None,
 ) -> PlayerSyncResponse:
     sync_result = await service.sync_player_coaching(game_name, tag_line, region=region)
