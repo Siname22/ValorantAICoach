@@ -32,6 +32,16 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "valorant-ai-coach-secret-key-change-in-production"
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = Field(default=1440, ge=1, le=525600)
+    cors_allowed_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:8501",
+            "http://127.0.0.1:8501",
+            "http://localhost:3000",
+        ]
+    )
+    enable_security_headers: bool = True
+    enable_hsts: bool = False
+    max_request_body_size_bytes: int = Field(default=25 * 1024 * 1024, ge=1024)
 
     model_config = SettingsConfigDict(
         env_file=".env",
