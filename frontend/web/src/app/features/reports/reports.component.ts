@@ -275,14 +275,15 @@ export class ReportsComponent implements OnInit {
       next: (detail: CoachingReportDetailResponse) => {
         this.generating.set(false);
         this.statusMessage.set('¡Informe de coaching generado con éxito!');
-        if (detail.report) {
+        const rep = detail.report;
+        if (rep) {
           this.reports.update((list) => [
             {
-              id: detail.report.id,
-              created_at: detail.report.created_at,
-              summary: detail.report.summary,
-              strengths: detail.report.strengths,
-              weaknesses: detail.report.weaknesses,
+              id: rep.id,
+              created_at: rep.created_at,
+              summary: rep.summary,
+              strengths: rep.strengths,
+              weaknesses: rep.weaknesses,
             },
             ...list,
           ]);
