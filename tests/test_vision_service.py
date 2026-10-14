@@ -518,3 +518,43 @@ async def test_vision_match_persisted_to_storage(storage_database):
     finally:
         app.dependency_overrides.clear()
         store.close()
+
+
+def test_find_target_row_rejects_conflicting_tag_line():
+    """Verify that requesting Alex#MINE does NOT match Alex#OTHER even if it is
+    the only Alex row.
+    """
+    from backend.app.services.vision_service import find_target_row
+
+    row_other = ScoreboardPlayerRow(
+        player_name="Alex",
+        tag_line="OTHER",
+        agent="Jett",
+        kills=20,
+        deaths=10,
+        assists=5,
+    )
+    # 1. Conflicting tag_line -> must be None, never attribute stats to another account
+    match = find_target_row([row_other], game_name="Alex", tag_line="MINE")
+    assert match is None
+
+    # 2. Matching tag_line -> successfully matched
+    row_mine = ScoreboardPlayerRow(
+        player_name="Alex",
+        tag_line="MINE",
+        agent="Jett",
+        kills=15,
+        deaths=12,
+        assists=3,
+    )
+    match_ok = find_target_row([row_mine], game_name="Alex", tag_line="MINE")
+    assert match_ok is not None
+    assert match_ok.tag_line == "MINE"
+
+    # 3. Two players with same name, different tags -> correct row selected
+    match_disambiguated = find_target_row(
+        [row_other, row_mine], game_name="Alex", tag_line="MINE"
+    )
+    assert match_disambiguated is not None
+    assert match_disambiguated.tag_line == "MINE"
+    assert match_disambiguated.kills == 15

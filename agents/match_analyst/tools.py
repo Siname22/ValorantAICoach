@@ -22,7 +22,7 @@ class MatchAnalystTool(BaseTool):
 
     async def execute(self, **kwargs: Any) -> dict[str, Any]:
         return {
-            "result": f"Executed MatchAnalystTool with query: {kwargs.get("query")}"
+            "result": f"Executed MatchAnalystTool with query: {kwargs.get('query')}"
         }
 
 

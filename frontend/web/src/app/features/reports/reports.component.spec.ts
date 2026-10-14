@@ -73,4 +73,32 @@ describe('ReportsComponent', () => {
     expect(component.reports().length).toBe(2);
     expect(component.statusMessage()).toContain('éxito');
   });
+
+  it('should incorporate direct CoachingReportResponse returned by backend', () => {
+    apiSpy.generateCoachingReport.and.returnValue(
+      of({
+        id: 'direct-report-101',
+        player_id: 'p-1',
+        schema_version: 1,
+        provider: 'orchestrator',
+        payload: {
+          title: 'Direct Report Title',
+          executive_summary: 'Direct executive summary.',
+          key_strengths: ['Great utility usage'],
+          critical_flaws: ['Poor crosshair discipline'],
+        },
+        evidence: [],
+        created_at: '2026-10-14T09:00:00Z',
+      } as any)
+    );
+
+    component.onGenerateReport();
+
+    expect(component.reports().length).toBe(2);
+    expect(component.reports()[0].id).toBe('direct-report-101');
+    expect(component.reports()[0].summary).toBe('Direct executive summary.');
+    expect(component.reports()[0].strengths).toContain('Great utility usage');
+    expect(component.reports()[0].weaknesses).toContain('Poor crosshair discipline');
+    expect(component.statusMessage()).toContain('éxito');
+  });
 });

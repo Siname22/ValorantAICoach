@@ -206,8 +206,31 @@ class PersistentPlayerService(PlayerService):
             "created_at": report.get("created_at") or "",
         }
 
-    async def get_coaching_report(self, report_id: str) -> dict[str, Any] | None:
-        return await self._storage_call(self.store.get_coaching_report, report_id)
+    async def get_coaching_report(
+        self,
+        report_id: str,
+        *,
+        game_name: str | None = None,
+        tag_line: str | None = None,
+    ) -> dict[str, Any] | None:
+        report = await self._storage_call(self.store.get_coaching_report, report_id)
+        if report is None:
+            return None
+        if game_name and tag_line:
+            expected_player_id = request_key(
+                "identity", {"game_name": game_name, "tag_line": tag_line}
+            )
+            rep_player_id = report.get("player_id")
+            if rep_player_id and rep_player_id != expected_player_id:
+                return None
+            payload = report.get("payload") or {}
+            rep_name = payload.get("player_name")
+            rep_tag = payload.get("player_tag")
+            if rep_name and rep_name.casefold() != game_name.casefold():
+                return None
+            if rep_tag and rep_tag.casefold() != tag_line.casefold():
+                return None
+        return report
 
     async def list_coaching_reports(
         self, game_name: str, tag_line: str, *, limit: int = 10
@@ -348,16 +371,22 @@ class PersistentPlayerService(PlayerService):
         region: str | None = None,
         limit: int = 5,
     ) -> PlayerTimelineAnalyticsResponse:
-        player_id = request_key(
+        player_key = request_key(
             "identity", {"game_name": game_name, "tag_line": tag_line}
         )
         stored_details = await self._storage_call(
-            self.store.list_player_match_details, player_id, limit
+            self.store.list_player_match_details, player_key, limit
         )
         if stored_details:
+            try:
+                profile = await self.get_player(game_name, tag_line, region=region)
+                player_ident = profile.puuid or f"{game_name}#{tag_line}"
+            except Exception:
+                player_ident = f"{game_name}#{tag_line}"
+
             return TimelineService.aggregate_player_timeline_analytics(
                 stored_details,
-                player_identifier=player_id,
+                player_identifier=player_ident,
                 game_name=game_name,
                 tag_line=tag_line,
             )

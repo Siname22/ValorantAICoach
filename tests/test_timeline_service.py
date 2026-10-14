@@ -455,3 +455,57 @@ def test_get_player_timeline_analytics_invalid_limit(client, mock_player_service
     assert response.status_code == 422
     response = client.get("/players/TenZ/SEN/timeline-analytics?limit=25")
     assert response.status_code == 422
+
+
+def test_parse_match_timeline_team_perspective_not_defaulted_to_enemy():
+    """Verify that when players[0] is on the enemy team, timeline analytics
+    correctly resolves the friendly team for the target player and does not
+    invert perspective.
+    """
+    match_detail = {
+        "matchInfo": {
+            "matchId": "test-match-inverted",
+            "mapId": "Ascent",
+            "gameMode": "Competitive",
+        },
+        "players": [
+            # Enemy player is first in list (Blue team)
+            {
+                "puuid": "p-enemy",
+                "gameName": "Enemy",
+                "tagLine": "111",
+                "teamId": "Blue",
+            },
+            # Our target player is second (Red team)
+            {
+                "puuid": "p-alice",
+                "gameName": "Alice",
+                "tagLine": "EU1",
+                "teamId": "Red",
+            },
+        ],
+        "roundResults": [
+            # Round 1: Red attacks (rounds 1-12 Red attacks in Standard).
+            # Blue wins defense. Red loses attack.
+            {"roundNum": 0, "winningTeam": "Blue", "roundCeremony": "Default"},
+        ],
+    }
+
+    # Analyzing from Alice#EU1 perspective:
+    # Friendly team is Red. Red lost round 1 on attack.
+    timeline = TimelineService.parse_match_timeline(
+        match_detail, player_identifier="Alice#EU1"
+    )
+    assert timeline.friendly_team == "Red"
+    assert timeline.summary.attack_rounds_won == 0
+    assert timeline.summary.attack_rounds_total == 1
+
+    # Also test analytics aggregation with Alice#EU1
+    analytics = TimelineService.aggregate_player_timeline_analytics(
+        [match_detail],
+        player_identifier="Alice#EU1",
+        game_name="Alice",
+        tag_line="EU1",
+    )
+    # Alice has 0% attack win rate (0 won of 1 played), not 100% (Enemy's perspective)
+    assert analytics.overall_attack_win_rate == 0.0

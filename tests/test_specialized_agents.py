@@ -179,3 +179,52 @@ async def test_orchestrator_legacy_message(agent_context):
     assert isinstance(result.requested_agents, list)
     assert "Orchestrator initialized" in result.reasoning
     assert result.report is None
+
+
+@pytest.mark.asyncio
+async def test_match_analyst_and_report_writer_grounding_accuracy(agent_context):
+    """Test that match-specific stats (e.g. K/D 0.25) take priority over global stats
+    (K/D 2.0), and that the report writer accurately extracts the calculated K/D
+    rather than falling back to 1.0.
+    """
+    from agents.match_analyst.agent import MatchAnalystAgent
+    from agents.match_analyst.schema import MatchAnalystInput
+
+    analyst = MatchAnalystAgent()
+    # Match data: 2 kills, 8 deaths -> K/D 0.25
+    # Player stats (career/global): 20 kills, 10 deaths -> K/D 2.0
+    input_data = MatchAnalystInput(
+        match_id="match-low-kd",
+        player_id="Player#001",
+        match_data={"kills": 2, "deaths": 8, "assists": 1, "result": "Defeat"},
+        player_stats={"kills": 20, "deaths": 10, "kd_ratio": 2.0},
+    )
+    res = await analyst.run(input_data, agent_context)
+
+    # 1. Analyst metrics and evidence must be 0.25, NOT 2.0
+    assert res.metrics["kd_ratio"] == 0.25
+    assert "0.25" in res.diagnosis
+    kd_evidence = [e for e in res.evidence if e["metric"] == "kd_ratio"][0]
+    assert kd_evidence["value"] == 0.25
+
+    # 2. Report writer must incorporate 0.25 into executive summary,
+    # not fallback 1.0 or global 2.0
+    writer = ReportWriterAgent()
+    writer_input = ReportWriterInput(
+        player_name="Player",
+        player_tag="001",
+        rank="Gold 1",
+        match_analysis=res.model_dump(),
+        economy_analysis={
+            "economy_rating": 65.0,
+            "main_mistake": "Fuerzas innecesarias",
+        },
+        role_analysis={"role": "Initiator", "role_score": 60.0},
+    )
+    report = await writer.run(writer_input, agent_context)
+
+    assert "0.25" in report.executive_summary
+    assert "1.0" not in report.executive_summary
+    assert "2.0" not in report.executive_summary
+    rep_evidence = [e for e in report.evidence if e.get("metric") == "kd_ratio"][0]
+    assert rep_evidence["value"] == 0.25

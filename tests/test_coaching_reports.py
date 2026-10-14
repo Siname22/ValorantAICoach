@@ -114,10 +114,18 @@ async def test_persistent_player_service_generate_and_list_reports(storage_datab
         assert len(history) == 1
         assert history[0]["id"] == report["id"]
 
-        # Retrieve report by ID
-        found = await mock_service.get_coaching_report(report["id"])
+        # Retrieve report by ID with correct player
+        found = await mock_service.get_coaching_report(
+            report["id"], game_name="Derke", tag_line="FNC"
+        )
         assert found is not None
         assert found["id"] == report["id"]
+
+        # Attempting to retrieve report under another player's identity returns None
+        wrong_player = await mock_service.get_coaching_report(
+            report["id"], game_name="Bob", tag_line="NA1"
+        )
+        assert wrong_player is None
     finally:
         await mock_service.close()
 
@@ -179,3 +187,29 @@ def test_api_report_endpoints():
     # 4. GET /players/Boaster/FNC/reports/unknown-id -> 404
     get_resp = client.get("/players/Boaster/FNC/reports/unknown-id")
     assert get_resp.status_code == 404
+
+    # 5. Report belonging to Alice is not returned under Bob's URL -> 404
+    async def mock_get_report(rep_id, *, game_name=None, tag_line=None):
+        if rep_id == "alice-rep-1" and game_name == "Alice" and tag_line == "EU1":
+            return {
+                "id": "alice-rep-1",
+                "player_id": "pid-alice",
+                "schema_version": 1,
+                "provider": "orchestrator",
+                "payload": {"title": "Alice Report"},
+                "evidence": [],
+                "created_at": "2026-10-06T12:00:00Z",
+            }
+        return None
+
+    mock_service.get_coaching_report = mock_get_report
+
+    # Alice URL succeeds
+    alice_resp = client.get("/players/Alice/EU1/reports/alice-rep-1")
+    assert alice_resp.status_code == 200
+    assert alice_resp.json()["id"] == "alice-rep-1"
+
+    # Bob URL for Alice's report returns 404!
+    bob_resp = client.get("/players/Bob/NA1/reports/alice-rep-1")
+    assert bob_resp.status_code == 404
+    assert "not found" in bob_resp.json()["detail"].lower()

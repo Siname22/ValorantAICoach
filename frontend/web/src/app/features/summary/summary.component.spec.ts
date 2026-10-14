@@ -114,4 +114,92 @@ describe('SummaryComponent', () => {
 
     expect(apiSpy.getPlayer).toHaveBeenCalledWith('TestPlayer', 'EUW', 'eu');
   });
+
+  it('should calculate ACS accurately from scored matches and not fabricate 231 or kd*180', () => {
+    // When no matches or stats, calculatedAcs should be null
+    component.matches.set([]);
+    component.stats.set(null);
+    expect(component.calculatedAcs()).toBeNull();
+
+    // When matches have scores, average them
+    component.matches.set([
+      {
+        match_id: 'm1',
+        map_name: 'Ascent',
+        result: 'Victory',
+        kills: 20,
+        deaths: 10,
+        assists: 5,
+        score: 300,
+        agent_name: 'Jett',
+      },
+      {
+        match_id: 'm2',
+        map_name: 'Bind',
+        result: 'Defeat',
+        kills: 15,
+        deaths: 15,
+        assists: 2,
+        score: 200,
+        agent_name: 'Raze',
+      },
+    ]);
+    expect(component.calculatedAcs()).toBe(250);
+
+    // When no scored matches but stats has avg_score
+    component.matches.set([]);
+    component.stats.set({
+      game_name: 'Test',
+      tag_line: 'EUW',
+      kills: 10,
+      deaths: 10,
+      assists: 5,
+      kd_ratio: 1.0,
+      win_pct: 0.5,
+      headshot_pct: 0.2,
+      avg_score: 275,
+    } as any);
+    expect(component.calculatedAcs()).toBe(275);
+  });
+
+  it('should render real match metrics and not display hardcoded 13 - 9 or fake 240', () => {
+    component.matches.set([
+      {
+        match_id: 'm1',
+        map_name: 'Split',
+        result: 'Victory',
+        kills: 18,
+        deaths: 12,
+        assists: 7,
+        score: 265,
+        round_score: '13 - 6',
+        agent_name: 'Omen',
+      },
+      {
+        match_id: 'm2',
+        map_name: 'Lotus',
+        result: 'Defeat',
+        kills: 10,
+        deaths: 14,
+        assists: 3,
+        agent_name: 'Fade',
+      },
+    ]);
+    fixture.detectChanges();
+
+    const tableText = fixture.nativeElement.querySelector('table').textContent;
+    // Real match 1
+    expect(tableText).toContain('13 - 6');
+    expect(tableText).toContain('265');
+    // Real match 2 without score or round_score should render dash, not 13 - 9 or 240
+    expect(tableText).not.toContain('13 - 9');
+    expect(tableText).not.toContain('240');
+  });
+
+  it('should not display hardcoded 72.5% economy narrative', () => {
+    fixture.detectChanges();
+    const trendDesc = fixture.nativeElement.querySelector('#econ-trend-desc');
+    expect(trendDesc.textContent).not.toContain('72.5%');
+  });
 });
+

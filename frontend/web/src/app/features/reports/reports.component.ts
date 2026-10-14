@@ -275,18 +275,36 @@ export class ReportsComponent implements OnInit {
       next: (detail: CoachingReportDetailResponse) => {
         this.generating.set(false);
         this.statusMessage.set('¡Informe de coaching generado con éxito!');
-        const rep = detail.report;
-        if (rep) {
+        const rep = (detail as any).report || detail;
+        if (rep && (rep.id || rep.report_id)) {
+          const payload = (rep.payload || {}) as Record<string, any>;
+          const summary =
+            rep.summary ||
+            payload['executive_summary'] ||
+            payload['summary'] ||
+            'Informe táctico generado.';
+          const strengths =
+            rep.strengths ||
+            (Array.isArray(payload['key_strengths'])
+              ? payload['key_strengths'].join('. ')
+              : payload['strengths'] || '');
+          const weaknesses =
+            rep.weaknesses ||
+            (Array.isArray(payload['critical_flaws'])
+              ? payload['critical_flaws'].join('. ')
+              : payload['weaknesses'] || '');
+
           this.reports.update((list) => [
             {
-              id: rep.id,
-              created_at: rep.created_at,
-              summary: rep.summary,
-              strengths: rep.strengths,
-              weaknesses: rep.weaknesses,
+              id: rep.id || rep.report_id || 'rep-new',
+              created_at: rep.created_at || new Date().toISOString(),
+              summary: String(summary),
+              strengths: String(strengths),
+              weaknesses: String(weaknesses),
             },
             ...list,
           ]);
+          this.loadProgression();
         }
       },
       error: (err: { error?: { detail?: string } }) => {

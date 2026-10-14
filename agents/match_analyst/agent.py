@@ -29,11 +29,28 @@ class MatchAnalystAgent(BaseAgent[MatchAnalystInput, MatchAnalystOutput]):
         stats: dict[str, Any] = data.player_stats or {}
         match_info: dict[str, Any] = data.match_data or {}
 
-        kills = int(stats.get("kills", 0))
-        deaths = int(stats.get("deaths", 0))
-        assists = int(stats.get("assists", 0))
-        score = int(stats.get("score", 0))
-        rounds = int(stats.get("rounds_played") or match_info.get("rounds_played") or 0)
+        # Prioritize match-level statistics over career aggregate player_stats
+        kills = int(
+            match_info.get("kills")
+            if match_info.get("kills") is not None
+            else stats.get("kills", 0)
+        )
+        deaths = int(
+            match_info.get("deaths")
+            if match_info.get("deaths") is not None
+            else stats.get("deaths", 0)
+        )
+        assists = int(
+            match_info.get("assists")
+            if match_info.get("assists") is not None
+            else stats.get("assists", 0)
+        )
+        score = int(
+            match_info.get("score")
+            if match_info.get("score") is not None
+            else stats.get("score", 0)
+        )
+        rounds = int(match_info.get("rounds_played") or stats.get("rounds_played") or 0)
         result = str(match_info.get("result") or stats.get("result") or "Unknown")
 
         if not stats and not match_info:

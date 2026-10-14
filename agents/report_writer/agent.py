@@ -32,7 +32,16 @@ class ReportWriterAgent(BaseAgent[ReportWriterInput, ReportWriterOutput]):
         report_id = str(uuid.uuid4())
         title = f"Informe de Rendimiento Táctico: {player_name}#{player_tag} ({rank})"
 
-        kd = match_an.get("kd_ratio", 1.0)
+        match_metrics = match_an.get("metrics") or {}
+        kd = match_metrics.get("kd_ratio") or match_an.get("kd_ratio")
+        if kd is None:
+            for ev in match_an.get("evidence", []):
+                if ev.get("metric") == "kd_ratio":
+                    kd = ev.get("value")
+                    break
+        if kd is None:
+            kd = 1.0
+
         econ_rating = econ_an.get("economy_rating", 70.0)
         role_name = role_an.get("role", "Flex")
         role_score = role_an.get("role_score", 70.0)

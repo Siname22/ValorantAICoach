@@ -164,12 +164,31 @@ def find_target_row(
     if not game_name:
         return None
     wanted = game_name.strip().casefold()
+    wanted_tag = tag_line.strip().casefold() if tag_line else None
+
     candidates = [r for r in rows if r.player_name.strip().casefold() == wanted]
-    if tag_line and len(candidates) > 1:
-        wanted_tag = tag_line.strip().casefold()
-        candidates = [
+    if not candidates:
+        return None
+
+    if wanted_tag:
+        # If candidate row has a matching tag_line, select it
+        matching_tag = [
             r for r in candidates if (r.tag_line or "").strip().casefold() == wanted_tag
         ]
+        if matching_tag:
+            return matching_tag[0] if len(matching_tag) == 1 else None
+
+        # If candidates have visible tag_lines that conflict with wanted_tag,
+        # reject them to prevent misattribution.
+        conflicting_tag = [
+            r
+            for r in candidates
+            if (r.tag_line or "").strip()
+            and (r.tag_line or "").strip().casefold() != wanted_tag
+        ]
+        if conflicting_tag:
+            return None
+
     return candidates[0] if len(candidates) == 1 else None
 
 

@@ -334,6 +334,7 @@ def test_auth_endpoints_when_database_disabled(monkeypatch):
 
 
 def test_admin_authorization_and_protected_costly_endpoints(auth_database, monkeypatch):
+    config, engine, url = auth_database
     monkeypatch.setenv("ADMIN_EMAILS", "superadmin@example.com")
     get_settings.cache_clear()
 
@@ -365,18 +366,40 @@ def test_admin_authorization_and_protected_costly_endpoints(auth_database, monke
         res_sync = client.post("/system/coaching/sync-tracked", headers=headers_reg)
         assert res_sync.status_code == 403
 
-        # 3. Register admin user (in ADMIN_EMAILS)
-        reg_admin = client.post(
+        # 3. Attempting to register admin email via public registration
+        # is forbidden (403)
+        reg_admin_forbidden = client.post(
             "/auth/register",
             json={"email": "superadmin@example.com", "password": "AdminPassword123!"},
         )
-        assert reg_admin.status_code == 201
-        assert reg_admin.json()["is_admin"] is True
+        assert reg_admin_forbidden.status_code == 403
+        assert "reserved" in reg_admin_forbidden.json()["detail"].lower()
+
+        # 4. Provision admin user directly (as intended for administrative accounts)
+        import uuid
+        from datetime import UTC, datetime
+
+        with Session(engine) as session, session.begin():
+            u = UserRecord(
+                id=str(uuid.uuid4()),
+                email="superadmin@example.com",
+                hashed_password=get_password_hash("AdminPassword123!"),
+                is_active=True,
+                is_admin=True,
+                created_at=datetime.now(UTC),
+            )
+            session.add(u)
+
         token_admin = client.post(
             "/auth/login",
             json={"email": "superadmin@example.com", "password": "AdminPassword123!"},
         ).json()["access_token"]
         headers_admin = {"Authorization": f"Bearer {token_admin}"}
+
+        # Verify /auth/me returns is_admin=True for provisioned admin
+        me_admin = client.get("/auth/me", headers=headers_admin)
+        assert me_admin.status_code == 200
+        assert me_admin.json()["is_admin"] is True
 
         # Admin user gets 200 on /system/* endpoints
         prune_res = client.post("/system/cache/prune", headers=headers_admin)

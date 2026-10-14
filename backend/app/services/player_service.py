@@ -353,7 +353,9 @@ class PlayerService:
                             result = (
                                 "Victory"
                                 if own > other
-                                else "Defeat" if own < other else "Draw"
+                                else "Defeat"
+                                if own < other
+                                else "Draw"
                             )
                     summaries.append(
                         PlayerMatch(
@@ -488,7 +490,13 @@ class PlayerService:
         )
         return output.report or {}
 
-    async def get_coaching_report(self, report_id: str) -> dict[str, Any] | None:
+    async def get_coaching_report(
+        self,
+        report_id: str,
+        *,
+        game_name: str | None = None,
+        tag_line: str | None = None,
+    ) -> dict[str, Any] | None:
         return None
 
     async def list_coaching_reports(
@@ -599,7 +607,7 @@ class PlayerService:
 
         sorted_matches = sorted(
             matches,
-            key=lambda m: (m.timestamp if isinstance(m.timestamp, (int, float)) else 0),
+            key=lambda m: m.timestamp if isinstance(m.timestamp, (int, float)) else 0,
         )
 
         kd_points = []
@@ -687,7 +695,11 @@ class PlayerService:
         if reports:
             for i, rep in enumerate(reports):
                 payload = rep.get("payload", {})
-                crit = payload.get("critical_weaknesses", [])
+                crit = (
+                    payload.get("critical_flaws")
+                    or payload.get("critical_weaknesses")
+                    or []
+                )
                 weakness_texts = [
                     w if isinstance(w, str) else w.get("area", str(w)) for w in crit
                 ]
@@ -700,7 +712,7 @@ class PlayerService:
             area for area in set(all_weaknesses) if area not in latest_weaknesses
         ]
 
-        if not latest_weaknesses and not resolved_areas:
+        if not reports and not latest_weaknesses and not resolved_areas:
             latest_weaknesses = [
                 "First Duel Conversion",
                 "Eco-Round Buy Discipline",

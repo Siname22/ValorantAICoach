@@ -265,7 +265,7 @@ async def readiness_check(
     tags=["system"],
     summary="Prune expired cache",
     description=(
-        "Deletes expired snapshot cache entries from persistence. " "Requires admin."
+        "Deletes expired snapshot cache entries from persistence. Requires admin."
     ),
 )
 async def prune_cache(
