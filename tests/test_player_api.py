@@ -89,6 +89,7 @@ def test_get_player_matches_success(client, mock_player_service):
             deaths=10,
             assists=5,
             score=5000,
+            round_score="13 - 11",
             agent_name="Jett",
         )
     ]
@@ -102,6 +103,7 @@ def test_get_player_matches_success(client, mock_player_service):
     assert data["count"] == 1
     assert data["matches"][0]["match_id"] == "m-1"
     assert data["matches"][0]["agent_name"] == "Jett"
+    assert data["matches"][0]["round_score"] == "13 - 11"
 
 
 def test_health_check_success(client, mock_player_service):

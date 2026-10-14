@@ -305,6 +305,12 @@ class TrackerProvider(BaseProvider):
                     f"Tracker.gg match is missing a valid {key}"
                 ) from error
 
+        round_score = None
+        if "roundsWon" in metadata and "roundsLost" in metadata:
+            round_score = f"{metadata['roundsWon']} - {metadata['roundsLost']}"
+        elif "roundScore" in metadata:
+            round_score = str(metadata["roundScore"])
+
         return MatchSummary(
             match_id=attributes.get("matchId") or attributes.get("id", "unknown"),
             map_name=metadata.get("mapName", "unknown"),
@@ -315,6 +321,7 @@ class TrackerProvider(BaseProvider):
             deaths=stat_value("deaths"),
             assists=stat_value("assists"),
             score=stat_value("score"),
+            round_score=round_score,
             timestamp=metadata.get("timestamp", "unknown"),
         )
 

@@ -350,6 +350,7 @@ class ScoreboardVisionService:
             assists=stats.assists,
             # Scoreboards show ACS, not total score.
             score=None,
+            round_score=f"{analysis.rounds_won} - {analysis.rounds_lost}",
             provider_score=stats.score,
             agent_name=resolve_agent_name(stats.agent),
             provider="vision",

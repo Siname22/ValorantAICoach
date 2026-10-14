@@ -326,6 +326,7 @@ class PlayerService:
                         deaths=m.deaths,
                         assists=m.assists,
                         score=m.score,
+                        round_score=getattr(m, "round_score", None),
                         provider="tracker",
                         agent_name=m.agent_name,
                     )
@@ -343,6 +344,7 @@ class PlayerService:
                 summaries = []
                 for match in matches[:limit]:
                     result = "Unknown"
+                    round_score = None
                     if match.stats.team.lower() in ("red", "blue"):
                         own, other = (
                             (match.teams.red, match.teams.blue)
@@ -355,6 +357,7 @@ class PlayerService:
                                 if own > other
                                 else "Defeat" if own < other else "Draw"
                             )
+                            round_score = f"{own} - {other}"
                     summaries.append(
                         PlayerMatch(
                             match_id=match.metadata.id,
@@ -366,6 +369,7 @@ class PlayerService:
                             deaths=match.stats.deaths,
                             assists=match.stats.assists,
                             score=None,
+                            round_score=round_score,
                             provider="henrik",
                             provider_score=match.stats.score,
                             agent_name=match.stats.character.name,
@@ -392,6 +396,7 @@ class PlayerService:
                         deaths=m.player_stats.deaths,
                         assists=m.player_stats.assists,
                         score=m.player_stats.score,
+                        round_score=getattr(m, "round_score", None),
                         provider="riot",
                         agent_name=resolve_agent_name(m.player_stats.agent_name),
                     )

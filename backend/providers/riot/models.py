@@ -43,6 +43,7 @@ class Match(BaseModel):
     game_start_time: int = Field(..., alias="gameStartTimeMillis")
     result: str  # Victory, Defeat, Draw or Unknown, based on the player's team.
     player_stats: MatchPlayerStats  # Stats for the specific player in this match
+    round_score: str | None = None
 
 
 class RiotAPIResponse(BaseModel):

@@ -631,18 +631,27 @@ export class SummaryComponent {
     const mList = this.matches();
     const acsValues: number[] = [];
     for (const m of mList) {
-      if (typeof m.score === 'number' && m.score > 0) {
-        if (m.score <= 500) {
-          acsValues.push(m.score);
-        } else if (m.round_score) {
-          const parts = m.round_score.split('-').map((s) => parseInt(s.trim(), 10));
-          if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-            const rounds = parts[0] + parts[1];
-            if (rounds > 0) {
-              acsValues.push(Math.round(m.score / rounds));
-            }
+      let rounds: number | null = null;
+      if (m.round_score) {
+        const parts = m.round_score.split('-').map((s) => parseInt(s.trim(), 10));
+        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+          const sum = parts[0] + parts[1];
+          if (sum > 0) {
+            rounds = sum;
           }
         }
+      }
+
+      if (typeof m.score === 'number' && m.score > 0) {
+        if (rounds !== null && rounds > 0) {
+          acsValues.push(Math.round(m.score / rounds));
+        }
+      } else if (
+        m.provider === 'vision' &&
+        typeof m.provider_score === 'number' &&
+        m.provider_score > 0
+      ) {
+        acsValues.push(Math.round(m.provider_score));
       }
     }
     if (acsValues.length > 0) {

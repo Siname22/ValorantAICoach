@@ -121,7 +121,7 @@ describe('SummaryComponent', () => {
     component.stats.set(null);
     expect(component.calculatedAcs()).toBeNull();
 
-    // When matches have scores, average them
+    // When matches have total scores and round_score, divide total score by rounds
     component.matches.set([
       {
         match_id: 'm1',
@@ -130,7 +130,8 @@ describe('SummaryComponent', () => {
         kills: 20,
         deaths: 10,
         assists: 5,
-        score: 300,
+        score: 6000,
+        round_score: '13 - 7', // 20 rounds -> ACS 300
         agent_name: 'Jett',
       },
       {
@@ -140,11 +141,61 @@ describe('SummaryComponent', () => {
         kills: 15,
         deaths: 15,
         assists: 2,
-        score: 200,
+        score: 4000,
+        round_score: '7 - 13', // 20 rounds -> ACS 200
         agent_name: 'Raze',
       },
     ]);
     expect(component.calculatedAcs()).toBe(250);
+
+    // Total score of 400 with 24 rounds ('13 - 11') calculates 17 ACS (never 400)
+    component.matches.set([
+      {
+        match_id: 'm-low-score',
+        map_name: 'Ascent',
+        result: 'Defeat',
+        kills: 2,
+        deaths: 18,
+        assists: 1,
+        score: 400,
+        round_score: '13 - 11',
+        agent_name: 'Cypher',
+      },
+    ]);
+    expect(component.calculatedAcs()).toBe(17);
+
+    // Total score of 400 WITHOUT round count must NOT be assumed to be 400 ACS
+    component.matches.set([
+      {
+        match_id: 'm-no-rounds-low',
+        map_name: 'Ascent',
+        result: 'Defeat',
+        kills: 2,
+        deaths: 18,
+        assists: 1,
+        score: 400,
+        agent_name: 'Cypher',
+      },
+    ]);
+    expect(component.calculatedAcs()).toBeNull();
+
+    // Vision provider matches provide direct ACS via provider_score
+    component.matches.set([
+      {
+        match_id: 'm-vision',
+        map_name: 'Split',
+        result: 'Victory',
+        kills: 22,
+        deaths: 12,
+        assists: 4,
+        score: null,
+        provider_score: 285,
+        provider: 'vision',
+        round_score: '13 - 9',
+        agent_name: 'Reyna',
+      },
+    ]);
+    expect(component.calculatedAcs()).toBe(285);
 
     // When no scored matches but stats has avg_score
     component.matches.set([]);
