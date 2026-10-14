@@ -284,6 +284,41 @@ async def test_progression_extracts_critical_flaws_from_real_reports(
     assert "First Duel Conversion" not in res["active_focus_areas"]
 
 
+@pytest.mark.asyncio
+async def test_progression_extracts_critical_flaws_without_recent_matches(
+    mock_isolated_service,
+):
+    """Verify that progression extracts flaws from reports even when
+    matches is empty.
+    """
+    mock_isolated_service.get_recent_matches = AsyncMock(return_value=[])
+    mock_isolated_service.list_coaching_reports = AsyncMock(
+        return_value=[
+            {
+                "id": "rep-latest",
+                "payload": {
+                    "critical_flaws": ["Combate: Tomar duelos aislados"],
+                },
+            },
+            {
+                "id": "rep-older",
+                "payload": {
+                    "critical_flaws": [
+                        "Combate: Tomar duelos aislados",
+                        "Economía: Forzar compra en ronda 3",
+                    ],
+                },
+            },
+        ]
+    )
+
+    res = await mock_isolated_service.get_player_progression("Boaster", "FNC")
+    assert res["total_matches_analyzed"] == 0
+    assert res["total_reports_generated"] == 2
+    assert "Combate: Tomar duelos aislados" in res["active_focus_areas"]
+    assert "Economía: Forzar compra en ronda 3" in res["resolved_focus_areas"]
+
+
 def test_get_player_progression_api_endpoint():
     mock_svc = AsyncMock()
     mock_svc.get_player_progression.return_value = {

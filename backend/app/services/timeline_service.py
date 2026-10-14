@@ -124,10 +124,17 @@ class TimelineService:
                 norm_ident == puuid.lower()
                 or norm_ident == display_name.lower()
                 or norm_ident == gname.lower()
+                or (
+                    norm_ident.split("#")[0] == gname.lower()
+                    if "#" in norm_ident
+                    else False
+                )
             ):
                 friendly_team = team_id
 
-        if not friendly_team and players:
+        if not friendly_team and match_detail.get("friendlyTeam"):
+            friendly_team = str(match_detail["friendlyTeam"])
+        elif not friendly_team and not norm_ident and players:
             friendly_team = str(players[0].get("teamId", "Blue"))
 
         raw_rounds = match_detail.get("roundResults", [])

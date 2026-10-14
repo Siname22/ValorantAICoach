@@ -129,9 +129,9 @@ def test_health_check_success(client, mock_player_service):
 @pytest.mark.parametrize("suffix", ["", "/rank", "/matches"])
 def test_upstream_failure_returns_503(client, mock_player_service, suffix):
     for method in ("get_complete_player_profile", "get_rank", "get_recent_matches"):
-        getattr(
-            mock_player_service, method
-        ).side_effect = PlayerServiceUnavailableError("Data provider unavailable")
+        getattr(mock_player_service, method).side_effect = (
+            PlayerServiceUnavailableError("Data provider unavailable")
+        )
     response = client.get(f"/players/Test/EU1{suffix}")
     assert response.status_code == 503
 

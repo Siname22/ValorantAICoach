@@ -66,9 +66,9 @@ import { MatchTimelineResponse, PlayerMatch } from '../../core/api/api-models';
                   </th>
                   <td>{{ m.map_name }}</td>
                   <td>{{ m.agent_name }}</td>
-                  <td>13 - 9</td>
+                  <td>{{ m.round_score || '—' }}</td>
                   <td>{{ m.kills }} / {{ m.deaths }} / {{ m.assists }}</td>
-                  <td>{{ m.score || 240 }}</td>
+                  <td>{{ m.score !== null && m.score !== undefined ? m.score : '—' }}</td>
                   <td>
                     <button
                       type="button"

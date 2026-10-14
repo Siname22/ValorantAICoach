@@ -160,6 +160,53 @@ describe('SummaryComponent', () => {
       avg_score: 275,
     } as any);
     expect(component.calculatedAcs()).toBe(275);
+
+    // Total match score of 6000 without round count must NOT return 6000
+    component.stats.set(null);
+    component.matches.set([
+      {
+        match_id: 'm-high',
+        map_name: 'Haven',
+        result: 'Victory',
+        kills: 25,
+        deaths: 12,
+        assists: 5,
+        score: 6000,
+        agent_name: 'Jett',
+      },
+    ]);
+    expect(component.calculatedAcs()).toBeNull();
+
+    // Total match score of 6000 WITH round_score '13 - 11' (24 rounds) divides correctly
+    component.matches.set([
+      {
+        match_id: 'm-high-rounds',
+        map_name: 'Haven',
+        result: 'Victory',
+        kills: 25,
+        deaths: 12,
+        assists: 5,
+        score: 6000,
+        round_score: '13 - 11',
+        agent_name: 'Jett',
+      },
+    ]);
+    expect(component.calculatedAcs()).toBe(250);
+
+    // Ensure damage_per_round is never multiplied by 1.45 to invent ACS
+    component.matches.set([]);
+    component.stats.set({
+      game_name: 'Test',
+      tag_line: 'EUW',
+      kills: 10,
+      deaths: 10,
+      assists: 5,
+      kd_ratio: 1.0,
+      win_pct: 0.5,
+      headshot_pct: 0.2,
+      damage_per_round: 150,
+    } as any);
+    expect(component.calculatedAcs()).toBeNull();
   });
 
   it('should render real match metrics and not display hardcoded 13 - 9 or fake 240', () => {

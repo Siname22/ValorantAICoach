@@ -629,20 +629,33 @@ export class SummaryComponent {
 
   calculatedAcs(): number | null {
     const mList = this.matches();
-    const scored = mList.filter(
-      (m) => typeof m.score === 'number' && (m.score as number) > 0
-    );
-    if (scored.length > 0) {
+    const acsValues: number[] = [];
+    for (const m of mList) {
+      if (typeof m.score === 'number' && m.score > 0) {
+        if (m.score <= 500) {
+          acsValues.push(m.score);
+        } else if (m.round_score) {
+          const parts = m.round_score.split('-').map((s) => parseInt(s.trim(), 10));
+          if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            const rounds = parts[0] + parts[1];
+            if (rounds > 0) {
+              acsValues.push(Math.round(m.score / rounds));
+            }
+          }
+        }
+      }
+    }
+    if (acsValues.length > 0) {
       return Math.round(
-        scored.reduce((sum, m) => sum + (m.score as number), 0) / scored.length
+        acsValues.reduce((sum, val) => sum + val, 0) / acsValues.length
       );
     }
     const st = this.stats();
     if (st && typeof (st as any).avg_score === 'number' && (st as any).avg_score > 0) {
-      return Math.round((st as any).avg_score);
-    }
-    if (st && typeof st.damage_per_round === 'number' && (st.damage_per_round as number) > 0) {
-      return Math.round((st.damage_per_round as number) * 1.45);
+      const avg = (st as any).avg_score;
+      if (avg <= 500) {
+        return Math.round(avg);
+      }
     }
     return null;
   }

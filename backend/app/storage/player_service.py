@@ -217,19 +217,33 @@ class PersistentPlayerService(PlayerService):
         if report is None:
             return None
         if game_name and tag_line:
-            expected_player_id = request_key(
-                "identity", {"game_name": game_name, "tag_line": tag_line}
-            )
-            rep_player_id = report.get("player_id")
-            if rep_player_id and rep_player_id != expected_player_id:
-                return None
             payload = report.get("payload") or {}
-            rep_name = payload.get("player_name")
-            rep_tag = payload.get("player_tag")
-            if rep_name and rep_name.casefold() != game_name.casefold():
-                return None
-            if rep_tag and rep_tag.casefold() != tag_line.casefold():
-                return None
+            rep_name = report.get("player_name") or payload.get("player_name")
+            rep_tag = report.get("player_tag") or payload.get("player_tag")
+            if not rep_name or not rep_tag:
+                title = payload.get("title", "")
+                if ":" in title and "#" in title:
+                    try:
+                        name_tag_part = title.split(":", 1)[1].strip().split()[0]
+                        if "#" in name_tag_part:
+                            t_name, t_tag = name_tag_part.split("#", 1)
+                            rep_name = rep_name or t_name
+                            rep_tag = rep_tag or t_tag
+                    except Exception:
+                        pass
+            if rep_name and rep_tag:
+                if (
+                    rep_name.casefold() != game_name.casefold()
+                    or rep_tag.casefold() != tag_line.casefold()
+                ):
+                    return None
+            else:
+                expected_player_id = request_key(
+                    "identity", {"game_name": game_name, "tag_line": tag_line}
+                )
+                rep_player_id = report.get("player_id")
+                if rep_player_id and rep_player_id != expected_player_id:
+                    return None
         return report
 
     async def list_coaching_reports(
@@ -239,7 +253,11 @@ class PersistentPlayerService(PlayerService):
             "identity", {"game_name": game_name, "tag_line": tag_line}
         )
         return await self._storage_call(
-            self.store.list_coaching_reports, player_id, limit
+            self.store.list_coaching_reports,
+            player_id,
+            limit,
+            game_name,
+            tag_line,
         )
 
     async def ready(self) -> dict[str, Any]:
@@ -378,11 +396,61 @@ class PersistentPlayerService(PlayerService):
             self.store.list_player_match_details, player_key, limit
         )
         if stored_details:
+            player_ident = None
             try:
                 profile = await self.get_player(game_name, tag_line, region=region)
-                player_ident = profile.puuid or f"{game_name}#{tag_line}"
+                player_ident = profile.puuid
             except Exception:
-                player_ident = f"{game_name}#{tag_line}"
+                pass
+
+            if not player_ident:
+                stored_puuid = await self._storage_call(
+                    self.store.get_player_puuid, player_key
+                )
+                if stored_puuid:
+                    player_ident = stored_puuid
+
+            match_summaries = await self._storage_call(
+                self.store.get_player_match_summaries, player_key, limit
+            )
+
+            resolved_puuid = None
+            for detail in stored_details:
+                info = detail.get("matchInfo", {})
+                mid = info.get("matchId")
+                summary = match_summaries.get(mid)
+                players = detail.get("players", [])
+
+                if not player_ident and summary:
+                    target_agent = summary.get("agent_name")
+                    target_result = summary.get("result")
+                    for p in players:
+                        char = p.get("characterId") or ""
+                        if target_agent and (
+                            char == target_agent or target_agent.lower() in char.lower()
+                        ):
+                            detail["friendlyTeam"] = p.get("teamId")
+                            resolved_puuid = p.get("puuid")
+                            break
+                        if target_result:
+                            teams = detail.get("teams", [])
+                            winning_team = next(
+                                (
+                                    t.get("teamId")
+                                    for t in teams
+                                    if t.get("won") is True
+                                ),
+                                None,
+                            )
+                            if winning_team and target_result == "Victory":
+                                detail["friendlyTeam"] = winning_team
+                            elif winning_team and target_result == "Defeat":
+                                detail["friendlyTeam"] = (
+                                    "Blue" if winning_team == "Red" else "Red"
+                                )
+
+            if not player_ident:
+                player_ident = resolved_puuid or f"{game_name}#{tag_line}"
 
             return TimelineService.aggregate_player_timeline_analytics(
                 stored_details,

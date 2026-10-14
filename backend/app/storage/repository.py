@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import create_engine, delete, event, select, update
+from sqlalchemy import create_engine, delete, event, func, select, update
 from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import make_url
@@ -43,7 +43,7 @@ def provider_datetime(value: int | str | None) -> datetime | None:
 class SQLPlayerStore:
     def __init__(self, url: str, *, ttl_seconds: int, test_mode: bool = False) -> None:
         parsed = make_url(url)
-        if parsed.drivername == "sqlite+pysqlite" and test_mode:
+        if parsed.drivername in ("sqlite", "sqlite+pysqlite") and test_mode:
             options = {"connect_args": {"check_same_thread": False}}
             self._insert = sqlite_insert
         elif parsed.drivername == "postgresql+psycopg":
@@ -55,7 +55,7 @@ class SQLPlayerStore:
             )
         self.engine = create_engine(parsed, pool_pre_ping=True, **options)
         self.ttl_seconds = ttl_seconds
-        if parsed.drivername == "sqlite+pysqlite":
+        if parsed.drivername in ("sqlite", "sqlite+pysqlite"):
             event.listen(self.engine, "connect", self._enable_sqlite_foreign_keys)
         try:
             with Session(self.engine) as session:
@@ -243,9 +243,16 @@ class SQLPlayerStore:
             record = session.get(CoachingReportRecord, report_id)
             if record is None:
                 return None
+            player = (
+                session.get(PlayerRecord, record.player_id)
+                if record.player_id
+                else None
+            )
             return {
                 "id": record.id,
                 "player_id": record.player_id,
+                "player_name": player.game_name if player else None,
+                "player_tag": player.tag_line if player else None,
                 "schema_version": record.schema_version,
                 "provider": record.provider,
                 "payload": record.payload,
@@ -261,6 +268,34 @@ class SQLPlayerStore:
             if record is None or record.detail is None:
                 return None
             return record.detail
+
+    def get_player_puuid(self, player_id: str) -> str | None:
+        with Session(self.engine) as session:
+            record = session.get(PlayerRecord, player_id)
+            if record and record.puuid:
+                return record.puuid
+            return None
+
+    def update_player_puuid(self, player_id: str, puuid: str) -> None:
+        with Session(self.engine) as session, session.begin():
+            record = session.get(PlayerRecord, player_id)
+            if record:
+                record.puuid = puuid
+
+    def get_player_match_summaries(
+        self, player_id: str, limit: int = 10
+    ) -> dict[str, dict[str, Any]]:
+        with Session(self.engine) as session:
+            statement = (
+                select(PlayerMatchHistory)
+                .where(PlayerMatchHistory.player_id == player_id)
+                .order_by(PlayerMatchHistory.observed_at.desc())
+                .limit(limit)
+            )
+            histories = session.execute(statement).scalars().all()
+            return {
+                h.match_id: h.payload for h in histories if isinstance(h.payload, dict)
+            }
 
     def list_player_match_details(
         self, player_id: str, limit: int = 10
@@ -284,12 +319,25 @@ class SQLPlayerStore:
             return [r.detail for r in records if r.detail is not None]
 
     def list_coaching_reports(
-        self, player_id: str, limit: int = 10
+        self,
+        player_id: str,
+        limit: int = 10,
+        game_name: str | None = None,
+        tag_line: str | None = None,
     ) -> list[dict[str, Any]]:
         with Session(self.engine) as session:
+            target_ids = {player_id}
+            if game_name and tag_line:
+                alt_ids = session.scalars(
+                    select(PlayerRecord.id).where(
+                        func.lower(PlayerRecord.game_name) == game_name.lower(),
+                        func.lower(PlayerRecord.tag_line) == tag_line.lower(),
+                    )
+                ).all()
+                target_ids.update(alt_ids)
             statement = (
                 select(CoachingReportRecord)
-                .where(CoachingReportRecord.player_id == player_id)
+                .where(CoachingReportRecord.player_id.in_(target_ids))
                 .order_by(CoachingReportRecord.created_at.desc())
                 .limit(limit)
             )

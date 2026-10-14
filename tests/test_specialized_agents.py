@@ -228,3 +228,25 @@ async def test_match_analyst_and_report_writer_grounding_accuracy(agent_context)
     assert "2.0" not in report.executive_summary
     rep_evidence = [e for e in report.evidence if e.get("metric") == "kd_ratio"][0]
     assert rep_evidence["value"] == 0.25
+
+
+@pytest.mark.asyncio
+async def test_report_writer_zero_kd_not_fallback_to_one(agent_context):
+    """Verify that an explicit K/D of 0.0 is preserved and not overwritten to 1.0."""
+    from agents.report_writer.agent import ReportWriterAgent
+    from agents.report_writer.schema import ReportWriterInput
+
+    writer = ReportWriterAgent()
+    # Explicit 0.0 K/D without additional evidence
+    writer_input = ReportWriterInput(
+        player_name="Player",
+        player_tag="001",
+        rank="Silver 2",
+        match_analysis={"metrics": {"kd_ratio": 0.0}},
+        economy_analysis={"economy_rating": 50.0},
+        role_analysis={"role": "Duelist", "role_score": 40.0},
+    )
+    report = await writer.run(writer_input, agent_context)
+
+    assert "0.0" in report.executive_summary
+    assert "1.0" not in report.executive_summary

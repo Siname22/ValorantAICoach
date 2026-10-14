@@ -509,3 +509,127 @@ def test_parse_match_timeline_team_perspective_not_defaulted_to_enemy():
     )
     # Alice has 0% attack win rate (0 won of 1 played), not 100% (Enemy's perspective)
     assert analytics.overall_attack_win_rate == 0.0
+
+
+@pytest.fixture
+def storage_database(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+    from backend.app.core.config import get_settings
+    from sqlalchemy import create_engine
+
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.chdir(tmp_path)
+    url = f"sqlite+pysqlite:///{(tmp_path / 'coach_timeline.db').as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", url)
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("APP_ENV", "test")
+    get_settings.cache_clear()
+    config = Config(str(root / "alembic.ini"))
+    config.set_main_option("script_location", str(root / "database/migrations"))
+    engine = create_engine(url)
+    command.upgrade(config, "head")
+    try:
+        yield url, engine
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_timeline_analytics_with_anterior_name_and_failed_profile_resolution(
+    storage_database,
+):
+    """Verify that when a player changed Riot ID and profile lookup fails,
+    timeline analytics correctly identifies friendly team and does not invert
+    to enemy perspective (0% instead of 100%).
+    """
+    from backend.app.storage.player_service import PersistentPlayerService
+    from backend.app.storage.repository import SQLPlayerStore
+
+    url, _ = storage_database
+    store = SQLPlayerStore(url, ttl_seconds=60, test_mode=True)
+    service = PersistentPlayerService(store=store)
+
+    # Stored PUUID was previously known for this player
+    store.put(
+        key="profile-test",
+        operation="profile",
+        parameters={"game_name": "NewAlice", "tag_line": "EU1"},
+        payload={
+            "game_name": "NewAlice",
+            "tag_line": "EU1",
+            "puuid": "p-alice-permanent",
+            "region": "eu",
+        },
+        providers=["riot"],
+    )
+
+    # In this historical match, Alice was known as 'OldAlice#111', playing on team Red.
+    # Enemy is players[0] on team Blue.
+    # Red won attack round 1 (100% attack win rate).
+    match_detail = {
+        "matchInfo": {
+            "matchId": "m-anterior-1",
+            "mapId": "Ascent",
+            "gameMode": "Competitive",
+        },
+        "players": [
+            {
+                "puuid": "p-enemy-1",
+                "gameName": "Enemy",
+                "tagLine": "000",
+                "teamId": "Blue",
+            },
+            {
+                "puuid": "p-alice-permanent",
+                "gameName": "OldAlice",
+                "tagLine": "111",
+                "teamId": "Red",
+            },
+        ],
+        "roundResults": [
+            # Red won attack
+            {"roundNum": 0, "winningTeam": "Red", "roundCeremony": "Default"},
+        ],
+    }
+
+    # Store match detail for NewAlice
+    store.put(
+        key="match-test",
+        operation="matches",
+        parameters={"game_name": "NewAlice", "tag_line": "EU1"},
+        payload=[
+            {
+                "match_id": "m-anterior-1",
+                "map_name": "Ascent",
+                "mode": "Competitive",
+                "timestamp": 1234567,
+                "result": "Victory",
+                "kills": 20,
+                "deaths": 5,
+                "assists": 2,
+                "provider": "riot",
+                "agent_name": "Jett",
+            }
+        ],
+        providers=["riot"],
+    )
+    store.put(
+        key="detail-test",
+        operation="match_detail",
+        parameters={"match_id": "m-anterior-1", "provider": "riot"},
+        payload=match_detail,
+        providers=["riot"],
+    )
+
+    # Force get_player to fail (simulating Riot API failure / network down)
+    service.get_player = AsyncMock(side_effect=Exception("Riot API network failure"))
+
+    analytics = await service.get_player_timeline_analytics("NewAlice", "EU1")
+
+    # Alice's team (Red) won 100% on attack, NOT 0% from Blue (Enemy)
+    assert analytics.overall_attack_win_rate == 100.0
+    await service.close()

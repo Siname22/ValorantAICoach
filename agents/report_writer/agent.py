@@ -33,29 +33,36 @@ class ReportWriterAgent(BaseAgent[ReportWriterInput, ReportWriterOutput]):
         title = f"Informe de Rendimiento Táctico: {player_name}#{player_tag} ({rank})"
 
         match_metrics = match_an.get("metrics") or {}
-        kd = match_metrics.get("kd_ratio") or match_an.get("kd_ratio")
-        if kd is None:
+        kd: float | None = None
+        if "kd_ratio" in match_metrics and match_metrics["kd_ratio"] is not None:
+            kd = float(match_metrics["kd_ratio"])
+        elif "kd_ratio" in match_an and match_an["kd_ratio"] is not None:
+            kd = float(match_an["kd_ratio"])
+        else:
             for ev in match_an.get("evidence", []):
-                if ev.get("metric") == "kd_ratio":
-                    kd = ev.get("value")
+                if ev.get("metric") == "kd_ratio" and ev.get("value") is not None:
+                    kd = float(ev["value"])
                     break
-        if kd is None:
-            kd = 1.0
 
         econ_rating = econ_an.get("economy_rating", 70.0)
         role_name = role_an.get("role", "Flex")
         role_score = role_an.get("role_score", 70.0)
 
         # Executive summary
+        if kd is not None:
+            kd_phrase = f"un ratio K/D de {kd}"
+        else:
+            kd_phrase = "rendimiento táctico sin ratio K/D registrado"
+
         summary = (
             f"Análisis de rendimiento para {player_name}#{player_tag} en rango {rank}. "
-            f"El jugador muestra un ratio K/D de {kd}, con una valoración económica "
+            f"El jugador muestra {kd_phrase}, con una valoración económica "
             f"de {econ_rating}/100 y una efectividad en su rol de {role_name} "
             f"de {role_score}/100."
         )
 
         strengths: list[str] = []
-        if kd >= 1.0:
+        if kd is not None and kd >= 1.0:
             strengths.append(f"Solvencia en duelos individuales con K/D de {kd}.")
         else:
             strengths.append("Capacidad para generar asistencias y apoyo al equipo.")

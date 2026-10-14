@@ -353,9 +353,7 @@ class PlayerService:
                             result = (
                                 "Victory"
                                 if own > other
-                                else "Defeat"
-                                if own < other
-                                else "Draw"
+                                else "Defeat" if own < other else "Draw"
                             )
                     summaries.append(
                         PlayerMatch(
@@ -567,6 +565,28 @@ class PlayerService:
         reports = await self.list_coaching_reports(game_name, tag_line, limit=10)
 
         if not matches:
+            all_weaknesses: list[str] = []
+            latest_weaknesses: list[str] = []
+            if reports:
+                for i, rep in enumerate(reports):
+                    payload = rep.get("payload", {})
+                    crit = (
+                        payload.get("critical_flaws")
+                        or payload.get("critical_weaknesses")
+                        or []
+                    )
+                    weakness_texts = [
+                        w if isinstance(w, str) else w.get("area", str(w)) for w in crit
+                    ]
+                    if i == 0:
+                        latest_weaknesses.extend(weakness_texts)
+                    else:
+                        all_weaknesses.extend(weakness_texts)
+
+            resolved_areas = [
+                area for area in set(all_weaknesses) if area not in latest_weaknesses
+            ]
+
             return {
                 "game_name": game_name,
                 "tag_line": tag_line,
@@ -596,8 +616,8 @@ class PlayerService:
                     "change_pct": 0.0,
                     "data_points": [],
                 },
-                "resolved_focus_areas": [],
-                "active_focus_areas": [],
+                "resolved_focus_areas": resolved_areas,
+                "active_focus_areas": latest_weaknesses,
                 "agent_trends": {},
                 "trajectory_narrative": (
                     f"No recent matches recorded for {game_name}#{tag_line} yet. "

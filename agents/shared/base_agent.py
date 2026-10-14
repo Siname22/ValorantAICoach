@@ -73,7 +73,9 @@ class BaseAgent[TInput, TOutput](ABC):  # noqa: B024
         """
         return cast(TOutput, data)
 
-    async def before_run(self, data: TInput, context: AgentContext) -> None:  # noqa: B027
+    async def before_run(
+        self, data: TInput, context: AgentContext
+    ) -> None:  # noqa: B027
         """
         Optional hook executed before the agent's execute method.
         Can be overridden by subclasses for pre-processing or setup.

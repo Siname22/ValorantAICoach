@@ -121,6 +121,13 @@ async def test_persistent_player_service_generate_and_list_reports(storage_datab
         assert found is not None
         assert found["id"] == report["id"]
 
+        # Retrieving report with different casing succeeds (case-insensitive)
+        case_insensitive = await mock_service.get_coaching_report(
+            report["id"], game_name="derke", tag_line="fnc"
+        )
+        assert case_insensitive is not None
+        assert case_insensitive["id"] == report["id"]
+
         # Attempting to retrieve report under another player's identity returns None
         wrong_player = await mock_service.get_coaching_report(
             report["id"], game_name="Bob", tag_line="NA1"

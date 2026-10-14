@@ -166,6 +166,7 @@ export interface PlayerMatch {
   deaths: number;
   assists: number;
   score?: number | unknown;
+  round_score?: string;
   agent_name: string;
   provider?: 'tracker' | 'henrik' | 'riot' | 'vision' | unknown;
   provider_score?: number | unknown;
@@ -183,6 +184,7 @@ export interface PlayerMatchResponse {
   deaths: number;
   assists: number;
   score?: number | unknown;
+  round_score?: string;
   agent_name: string;
   provider?: 'tracker' | 'henrik' | 'riot' | 'vision' | unknown;
   provider_score?: number | unknown;
