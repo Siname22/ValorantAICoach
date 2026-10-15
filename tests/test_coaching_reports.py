@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -269,10 +270,14 @@ def test_complete_coaching_report_lifecycle_api(storage_database):
         assert post_resp.status_code == 200
         report_data = post_resp.json()
         rep_id = report_data["id"]
+        post_created_at = report_data["created_at"]
         assert rep_id != ""
         assert report_data["provider"] == "orchestrator"
         assert "Chronicle#FNC" in report_data["payload"]["title"]
-        assert report_data["created_at"] is not None
+        assert post_created_at is not None
+        # Strict validation of ISO format and contemporary generation date
+        parsed_dt = datetime.fromisoformat(post_created_at)
+        assert parsed_dt.year >= 2026
 
         # 2. List reports via GET endpoint -> finds persisted report
         list_resp = client.get("/players/Chronicle/FNC/reports")
@@ -280,6 +285,8 @@ def test_complete_coaching_report_lifecycle_api(storage_database):
         reports_list = list_resp.json()
         assert reports_list["count"] == 1
         assert reports_list["reports"][0]["id"] == rep_id
+        # Strict exact match of created_at between POST generation and list endpoint
+        assert reports_list["reports"][0]["created_at"] == post_created_at
         assert (
             reports_list["reports"][0]["payload"]["title"]
             == report_data["payload"]["title"]
@@ -290,6 +297,8 @@ def test_complete_coaching_report_lifecycle_api(storage_database):
         assert get_resp.status_code == 200
         single_rep = get_resp.json()
         assert single_rep["id"] == rep_id
+        # Strict exact match of created_at between POST, list, and individual endpoint
+        assert single_rep["created_at"] == post_created_at
         assert single_rep["payload"] == report_data["payload"]
 
         # 4. Identity isolation: retrieving report under another player's URL -> 404
