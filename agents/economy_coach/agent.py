@@ -58,15 +58,15 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
 
         total_analyzed = eco_rounds_detected + force_buys_detected + full_buys_detected
 
-        if total_analyzed > 0:
+        if total_analyzed >= 2:
             force_ratio = force_buys_detected / total_analyzed
             buy_discipline = round(max(10.0, 100.0 - (force_ratio * 70.0)), 1)
             economy_rating = round(min(98.0, 60.0 + (buy_discipline * 0.35)), 1)
 
-            if buy_discipline < 60.0 or force_buys_detected > 3:
+            if buy_discipline < 60.0 or force_buys_detected > 2:
                 main_mistake = (
-                    "Comprar individualmente en rondas donde tu equipo necesita "
-                    "ahorrar, rompiendo la sincronía económica."
+                    f"Compras forzadas detectadas en {force_buys_detected} rondas "
+                    "con loadout intermedio y bajo remanente de créditos."
                 )
                 practical_rule = (
                     "Si la media de créditos de tu equipo es menor a 3.300, ahorra "
@@ -80,8 +80,9 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
                 )
             else:
                 main_mistake = (
-                    "Invertir en exceso de habilidades o escudos pesados en "
-                    "rondas bonus, sacrificando el banco para la ronda armada."
+                    "Sin compras forzadas recurrentes en el loadout analizado; "
+                    "como sugerencia: vigilar la inversión en rondas bonus para "
+                    "no comprometer la compra completa."
                 )
                 practical_rule = (
                     "Mantén un remanente mínimo de 3.900 créditos proyectados para la "
@@ -106,8 +107,13 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
             buy_discipline = None
             economy_rating = None
             main_mistake = (
-                "Información económica de rondas no disponible en los datos "
-                "de la partida."
+                "Muestra de una sola ronda; insuficiente para evaluar la "
+                "disciplina económica global de la partida."
+                if total_analyzed == 1
+                else (
+                    "Información económica de rondas no disponible en los "
+                    "datos de la partida."
+                )
             )
             practical_rule = (
                 "Mantén un remanente mínimo de 3.900 créditos proyectados para "
@@ -120,10 +126,15 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
             evidence.append(
                 {
                     "status": "insufficient_data",
-                    "reason": "No round-by-round economy data recorded for this match.",
-                    "eco_rounds": 0,
-                    "force_buys": 0,
-                    "full_buys": 0,
+                    "reason": (
+                        f"Muestra insuficiente ({total_analyzed} ronda(s)); se "
+                        "requieren múltiples rondas para evaluar sincronía económica."
+                        if total_analyzed == 1
+                        else "No round-by-round economy data recorded for this match."
+                    ),
+                    "eco_rounds": eco_rounds_detected,
+                    "force_buys": force_buys_detected,
+                    "full_buys": full_buys_detected,
                 }
             )
 

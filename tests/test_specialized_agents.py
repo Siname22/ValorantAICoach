@@ -311,16 +311,76 @@ async def test_report_writer_grounded_missing_ratings_and_flaws(agent_context):
     assert "sin datos económicos suficientes" in report.executive_summary
     assert "sin métricas detalladas" in report.executive_summary
 
-    # 2. Critical flaws must not include "insuficientes" as a gameplay mistake
-    assert (
-        "No se detectaron fallos críticos con la información disponible."
-        in report.critical_flaws
-    )
-    assert (
-        "Tendencia a tomar duelos sin soporte de utilidad de equipo."
-        not in report.critical_flaws
-    )
+    # 2. Critical flaws must be empty ([]) when no flaws are detected
+    assert report.critical_flaws == []
 
     # 3. Strengths must not invent fake praise
     assert "Capacidad para generar asistencias" not in report.key_strengths[0]
     assert "Sin fortalezas estadísticas destacadas" in report.key_strengths[0]
+
+
+@pytest.mark.asyncio
+async def test_match_analyst_high_kd_defeat_does_not_assert_unobserved_exit_frags(
+    agent_context,
+):
+    """With 20K, 10D, 4A in a defeat, MatchAnalyst must NOT accuse the player of
+    exit frags or overextending as observed facts, and must not use trade_rate.
+    """
+    from agents.match_analyst.agent import MatchAnalystAgent
+    from agents.match_analyst.schema import MatchAnalystInput
+
+    analyst = MatchAnalystAgent()
+    input_data = MatchAnalystInput(
+        match_id="m-high-kd-defeat",
+        player_id="Player#001",
+        match_data={"kills": 20, "deaths": 10, "assists": 4, "result": "Defeat"},
+    )
+    res = await analyst.run(input_data, agent_context)
+
+    # Must NOT label assists/deaths as trade_rate
+    assert "trade_rate" not in res.metrics
+    assert "assist_death_ratio" in res.metrics
+    assert res.metrics["assist_death_ratio"] == 0.4
+
+    # Must explain limitation regarding round telemetry
+    assert "Sin telemetría de eventos por ronda" in res.main_mistake
+    assert "Baja conversión de eliminaciones" in res.main_mistake
+
+
+@pytest.mark.asyncio
+async def test_economy_coach_single_round_leaves_economy_unevaluated(agent_context):
+    """A single full buy round must NOT evaluate economy (None) and must NOT
+    accuse the player of over-investing in bonus rounds.
+    """
+    coach = EconomyCoachAgent()
+    input_data = EconomyCoachInput(
+        match_data={
+            "rounds": [
+                {"buy_type": "full", "loadout_value": 4300, "remaining_credits": 1200}
+            ]
+        }
+    )
+    res = await coach.run(input_data, agent_context)
+
+    assert res.economy_rating is None
+    assert res.buy_discipline_score is None
+    assert "insuficiente" in res.main_mistake.lower()
+    assert "Invertir en exceso" not in res.main_mistake
+
+
+@pytest.mark.asyncio
+async def test_role_coach_omen_does_not_accuse_premature_smokes_without_telemetry(
+    agent_context,
+):
+    """Omen must NOT receive an accusation of placing premature smokes when
+    ability telemetry is absent; guidance must be framed as suggestions.
+    """
+    coach = RoleCoachAgent()
+    input_data = RoleCoachInput(
+        agent_name="Omen",
+        match_data={"kills": 14, "deaths": 12, "assists": 8},
+    )
+    res = await coach.run(input_data, agent_context)
+
+    assert "Sin telemetría de habilidades" in res.main_mistake
+    assert "sugerencia" in res.main_mistake.lower()

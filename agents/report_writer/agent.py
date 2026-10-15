@@ -106,31 +106,36 @@ class ReportWriterAgent(BaseAgent[ReportWriterInput, ReportWriterOutput]):
                 "se recomienda consolidar fundamentos."
             )
 
+        def _is_grounded_flaw(err: str | None) -> bool:
+            if not err:
+                return False
+            e = err.lower().strip()
+            ignored_terms = [
+                "insuficiente",
+                "no disponible",
+                "sin errores",
+                "sin fallos",
+                "sin déficit",
+                "sin compras forzadas",
+                "disciplina de compra adecuada",
+                "sin telemetría",
+                "como sugerencia",
+                "no se detectaron",
+            ]
+            return not any(term in e for term in ignored_terms)
+
         flaws: list[str] = []
         match_err = match_an.get("main_mistake")
-        if match_err and "insuficientes" not in match_err.lower():
+        if match_err and _is_grounded_flaw(match_err):
             flaws.append(f"Combate: {match_err}")
 
         econ_err = econ_an.get("main_mistake")
-        if (
-            econ_err
-            and "no disponible" not in econ_err.lower()
-            and "insuficientes" not in econ_err.lower()
-        ):
+        if econ_err and _is_grounded_flaw(econ_err):
             flaws.append(f"Economía: {econ_err}")
 
         role_err = role_an.get("main_mistake")
-        if (
-            role_err
-            and "no disponible" not in role_err.lower()
-            and "insuficientes" not in role_err.lower()
-        ):
+        if role_err and _is_grounded_flaw(role_err):
             flaws.append(f"Rol ({role_name}): {role_err}")
-
-        if not flaws:
-            flaws.append(
-                "No se detectaron fallos críticos con la información disponible."
-            )
 
         training_plan: list[str] = []
         if match_an.get("drill"):

@@ -715,6 +715,23 @@ class PlayerService:
             for agent, s in agent_stats.items()
         }
 
+        def _is_actual_weakness(text: str) -> bool:
+            t = text.lower().strip()
+            if not t:
+                return False
+            ignored_phrases = [
+                "no se detectaron",
+                "insuficiente",
+                "no disponible",
+                "sin errores",
+                "sin fallos",
+                "sin debilidades",
+                "sin compras",
+                "sin telemetría",
+                "sugerencia",
+            ]
+            return not any(phrase in t for phrase in ignored_phrases)
+
         all_weaknesses: list[str] = []
         latest_weaknesses: list[str] = []
         if reports:
@@ -728,10 +745,11 @@ class PlayerService:
                 weakness_texts = [
                     w if isinstance(w, str) else w.get("area", str(w)) for w in crit
                 ]
+                valid_weaknesses = [w for w in weakness_texts if _is_actual_weakness(w)]
                 if i == 0:
-                    latest_weaknesses.extend(weakness_texts)
+                    latest_weaknesses.extend(valid_weaknesses)
                 else:
-                    all_weaknesses.extend(weakness_texts)
+                    all_weaknesses.extend(valid_weaknesses)
 
         resolved_areas = [
             area for area in set(all_weaknesses) if area not in latest_weaknesses

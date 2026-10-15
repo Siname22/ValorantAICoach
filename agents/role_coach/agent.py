@@ -11,11 +11,12 @@ from .schema import RoleCoachInput, RoleCoachOutput
 ROLE_FEEDBACK: dict[str, dict[str, str]] = {
     "Duelist": {
         "main_mistake": (
-            "Buscar duelos de entrada de forma aislada sin coordinar trades ni "
-            "esperar la utilidad de tu iniciador."
+            "Sin telemetría de primera sangre por ronda; como sugerencia de "
+            "rol: coordinar entradas al punto con la utilidad del equipo para "
+            "asegurar trades."
         ),
         "tactical_adaptation": (
-            "Sé el primero en traspasar el humo o cuello de botella tras el flash, "
+            "Sé el primero en traspasar el cuello de botella tras el flash, "
             "comunicando tu ruta para que tu equipo tradee tu muerte de inmediato."
         ),
         "drill": (
@@ -25,8 +26,9 @@ ROLE_FEEDBACK: dict[str, dict[str, str]] = {
     },
     "Controller": {
         "main_mistake": (
-            "Colocar humos demasiado temprano al inicio de ronda o morir primero, "
-            "dejando a tu equipo sin control de visión."
+            "Sin telemetría de habilidades en la API para registrar colocación "
+            "de humos; como sugerencia de rol: guardar al menos un humo para "
+            "el plantado o retake."
         ),
         "tactical_adaptation": (
             "Guarda al menos un humo para el momento exacto del plantado o "
@@ -39,8 +41,8 @@ ROLE_FEEDBACK: dict[str, dict[str, str]] = {
     },
     "Initiator": {
         "main_mistake": (
-            "Gastar la utilidad de reconocimiento sin compañeros posicionados para "
-            "capitalizar la información obtenida."
+            "Sin telemetría de habilidades en la API para medir timing de utilidad; "
+            "como sugerencia de rol: coordinar flashes e información antes de duelos."
         ),
         "tactical_adaptation": (
             "Coordina con tu duelista con una cuenta regresiva de 3 segundos antes "
@@ -53,8 +55,9 @@ ROLE_FEEDBACK: dict[str, dict[str, str]] = {
     },
     "Sentinel": {
         "main_mistake": (
-            "Pikear agresivamente en defensa antes de que los atacantes activen "
-            "tus trampas o cables, regalando la primera sangre."
+            "Sin telemetría de habilidades para registrar activación de trampas; "
+            "como sugerencia de defensa: jugar paciente tras el sonido de cables y no "
+            "regalar la primera sangre."
         ),
         "tactical_adaptation": (
             "Ancla el sitio pacientemente y juega exclusivamente tras el sonido o "
@@ -69,7 +72,8 @@ ROLE_FEEDBACK: dict[str, dict[str, str]] = {
 
 DEFAULT_FEEDBACK = {
     "main_mistake": (
-        "Falta de sincronización táctica entre tus habilidades y tu posicionamiento."
+        "Sin telemetría de habilidades específicas; como sugerencia de rol: "
+        "coordinar la utilidad para ganar ventaja antes de tomar duelos directos."
     ),
     "tactical_adaptation": (
         "Utiliza tu utilidad para ganar ventaja antes de tomar duelos directos."
