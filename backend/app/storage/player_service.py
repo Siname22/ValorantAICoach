@@ -196,6 +196,11 @@ class PersistentPlayerService(PlayerService):
             report_id,
             {"game_name": game_name, "tag_line": tag_line},
         )
+        saved_record = await self.get_coaching_report(
+            saved_id, game_name=game_name, tag_line=tag_line
+        )
+        if saved_record is not None:
+            return saved_record
         return {
             "id": saved_id,
             "player_id": player_id,

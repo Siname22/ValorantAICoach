@@ -5,7 +5,11 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from backend.app.core.config import get_settings
-from backend.app.services.player_service import PlayerMatch, PlayerService
+from backend.app.services.player_service import (
+    PlayerMatch,
+    PlayerService,
+    PlayerServiceUnavailableError,
+)
 from backend.app.storage.player_service import PersistentPlayerService
 from backend.app.storage.repository import SQLPlayerStore
 from backend.main import app
@@ -220,3 +224,99 @@ def test_api_report_endpoints():
     bob_resp = client.get("/players/Bob/NA1/reports/alice-rep-1")
     assert bob_resp.status_code == 404
     assert "not found" in bob_resp.json()["detail"].lower()
+
+
+def test_complete_coaching_report_lifecycle_api(storage_database):
+    url, _ = storage_database
+    store = SQLPlayerStore(url, ttl_seconds=300, test_mode=True)
+    persistent_service = PersistentPlayerService(store=store)
+
+    mock_matches = [
+        PlayerMatch(
+            match_id="match-e2e-1",
+            map_name="Ascent",
+            mode="Competitive",
+            timestamp="2026-10-06T10:00:00Z",
+            result="Victory",
+            kills=20,
+            deaths=10,
+            assists=5,
+            agent_name="Sova",
+            provider="riot",
+        )
+    ]
+    persistent_service.get_recent_matches = AsyncMock(return_value=mock_matches)
+    persistent_service.get_rank = AsyncMock(side_effect=Exception("No rank available"))
+    persistent_service.get_stats_overview = AsyncMock(
+        side_effect=Exception("No stats available")
+    )
+
+    from backend.app.dependencies.auth_deps import get_current_user
+
+    app.state.player_service = persistent_service
+    client = TestClient(app)
+
+    app.dependency_overrides[get_current_user] = lambda: {
+        "id": "e2e-user",
+        "email": "e2e@test.com",
+        "is_active": True,
+        "is_admin": False,
+    }
+
+    try:
+        # 1. Generate report via POST endpoint (orchestrator -> persistent storage)
+        post_resp = client.post("/players/Chronicle/FNC/reports")
+        assert post_resp.status_code == 200
+        report_data = post_resp.json()
+        rep_id = report_data["id"]
+        assert rep_id != ""
+        assert report_data["provider"] == "orchestrator"
+        assert "Chronicle#FNC" in report_data["payload"]["title"]
+        assert report_data["created_at"] is not None
+
+        # 2. List reports via GET endpoint -> finds persisted report
+        list_resp = client.get("/players/Chronicle/FNC/reports")
+        assert list_resp.status_code == 200
+        reports_list = list_resp.json()
+        assert reports_list["count"] == 1
+        assert reports_list["reports"][0]["id"] == rep_id
+        assert (
+            reports_list["reports"][0]["payload"]["title"]
+            == report_data["payload"]["title"]
+        )
+
+        # 3. Get specific report via GET endpoint
+        get_resp = client.get(f"/players/Chronicle/FNC/reports/{rep_id}")
+        assert get_resp.status_code == 200
+        single_rep = get_resp.json()
+        assert single_rep["id"] == rep_id
+        assert single_rep["payload"] == report_data["payload"]
+
+        # 4. Identity isolation: retrieving report under another player's URL -> 404
+        cross_resp = client.get(f"/players/Boaster/FNC/reports/{rep_id}")
+        assert cross_resp.status_code == 404
+
+        # 5. Progression endpoint integrates the persisted report
+        prog_resp = client.get("/players/Chronicle/FNC/progression")
+        assert prog_resp.status_code == 200
+        prog_data = prog_resp.json()
+        assert prog_data["total_reports_generated"] >= 1
+
+        # 6. Provider failure during generation returns 503
+        persistent_service.get_recent_matches = AsyncMock(
+            side_effect=PlayerServiceUnavailableError("Upstream match provider offline")
+        )
+        fail_resp = client.post("/players/Chronicle/FNC/reports")
+        assert fail_resp.status_code == 503
+        assert "upstream" in fail_resp.json()["detail"].lower()
+
+        # 7. Zero matches scenario (matches=[]) -> generates grounded report cleanly
+        persistent_service.get_recent_matches = AsyncMock(return_value=[])
+        zero_matches_resp = client.post("/players/Chronicle/FNC/reports")
+        assert zero_matches_resp.status_code == 200
+        zero_data = zero_matches_resp.json()
+        assert zero_data["id"] != ""
+        assert "Chronicle#FNC" in zero_data["payload"]["title"]
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+        store.close()

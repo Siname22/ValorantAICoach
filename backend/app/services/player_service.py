@@ -491,7 +491,10 @@ class PlayerService:
             ),
             AgentContext(),
         )
-        return output.report or {}
+        report = output.report or {}
+        if report and "created_at" not in report:
+            report["created_at"] = datetime.now(UTC).isoformat()
+        return report
 
     async def get_coaching_report(
         self,
