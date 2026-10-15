@@ -158,6 +158,8 @@ async def test_get_player_progression_empty_matches(mock_isolated_service):
     assert res["kd_metric"]["trend"] == "stable"
     assert res["win_rate_metric"]["trend"] == "stable"
     assert "No recent matches recorded" in res["trajectory_narrative"]
+    assert res["active_focus_areas"] == []
+    assert res["resolved_focus_areas"] == []
 
 
 @pytest.mark.asyncio

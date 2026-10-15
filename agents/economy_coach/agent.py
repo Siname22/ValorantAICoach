@@ -22,7 +22,6 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
         self, data: EconomyCoachInput, context: AgentContext
     ) -> EconomyCoachOutput:
         match_data = data.match_data
-        player_stats = data.player_stats or {}
 
         rounds: list[dict[str, Any]] = (
             match_data.get("round_results") or match_data.get("rounds") or []
@@ -63,49 +62,70 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
             force_ratio = force_buys_detected / total_analyzed
             buy_discipline = round(max(10.0, 100.0 - (force_ratio * 70.0)), 1)
             economy_rating = round(min(98.0, 60.0 + (buy_discipline * 0.35)), 1)
-        else:
-            win_pct = float(player_stats.get("win_pct", 50.0))
-            buy_discipline = round(max(30.0, min(95.0, win_pct * 1.4)), 1)
-            economy_rating = round(max(40.0, min(90.0, 50.0 + (win_pct * 0.4))), 1)
 
-        if buy_discipline < 60.0 or force_buys_detected > 3:
+            if buy_discipline < 60.0 or force_buys_detected > 3:
+                main_mistake = (
+                    "Comprar individualmente en rondas donde tu equipo necesita "
+                    "ahorrar, rompiendo la sincronía económica."
+                )
+                practical_rule = (
+                    "Si la media de créditos de tu equipo es menor a 3.300, ahorra "
+                    "(pistola base o Sheriff) para asegurar Vandal/Phantom + escudo "
+                    "completo en la siguiente."
+                )
+                drill = (
+                    "Regla de los 3 segundos en Menú B: Antes de comprar, mira "
+                    "la columna derecha de créditos de tu equipo. Si 2 o más "
+                    "compañeros están en eco, no compres."
+                )
+            else:
+                main_mistake = (
+                    "Invertir en exceso de habilidades o escudos pesados en "
+                    "rondas bonus, sacrificando el banco para la ronda armada."
+                )
+                practical_rule = (
+                    "Mantén un remanente mínimo de 3.900 créditos proyectados para la "
+                    "siguiente ronda si tu equipo planea compra completa."
+                )
+                drill = (
+                    "Monitoreo de 'Mínimo próxima ronda': Revisa siempre el "
+                    "número debajo de tus créditos en el menú de compra antes "
+                    "de cerrar tu loadout."
+                )
+
+            evidence.append(
+                {
+                    "buy_discipline": buy_discipline,
+                    "economy_rating": economy_rating,
+                    "eco_rounds": eco_rounds_detected,
+                    "force_buys": force_buys_detected,
+                    "full_buys": full_buys_detected,
+                }
+            )
+        else:
+            buy_discipline = None
+            economy_rating = None
             main_mistake = (
-                "Comprar individualmente en rondas donde tu equipo necesita ahorrar, "
-                "rompiendo la sincronía económica."
+                "Información económica de rondas no disponible en los datos "
+                "de la partida."
             )
             practical_rule = (
-                "Si la media de créditos de tu equipo es menor a 3.300, ahorra "
-                "(pistola base o Sheriff) para asegurar Vandal/Phantom + escudo "
-                "completo en la siguiente."
+                "Mantén un remanente mínimo de 3.900 créditos proyectados para "
+                "asegurar compra completa con tu equipo."
             )
             drill = (
-                "Regla de los 3 segundos en Menú B: Antes de comprar, mira la columna "
-                "derecha de créditos de tu equipo. Si 2 o más compañeros están en eco, "
-                "no compres."
+                "Revisar el menú de compra al inicio de cada ronda para "
+                "coordinar compras completas y rondas de ahorro con el equipo."
             )
-        else:
-            main_mistake = (
-                "Invertir en exceso de habilidades o escudos pesados en rondas bonus, "
-                "sacrificando el banco para la ronda armada."
+            evidence.append(
+                {
+                    "status": "insufficient_data",
+                    "reason": "No round-by-round economy data recorded for this match.",
+                    "eco_rounds": 0,
+                    "force_buys": 0,
+                    "full_buys": 0,
+                }
             )
-            practical_rule = (
-                "Mantén un remanente mínimo de 3.900 créditos proyectados para la "
-                "siguiente ronda si tu equipo planea compra completa."
-            )
-            drill = (
-                "Monitoreo de 'Mínimo próxima ronda': Revisa siempre el número debajo "
-                "de tus créditos en el menú de compra antes de cerrar tu loadout."
-            )
-
-        evidence.append(
-            {
-                "buy_discipline": buy_discipline,
-                "economy_rating": economy_rating,
-                "eco_rounds": eco_rounds_detected,
-                "force_buys": force_buys_detected,
-                "full_buys": full_buys_detected,
-            }
-        )
 
         return EconomyCoachOutput(
             economy_rating=economy_rating,

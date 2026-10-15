@@ -17,7 +17,7 @@ class RoleCoachOutput(AgentModel):
 
     agent_name: str
     role: str
-    role_score: float
+    role_score: float | None = None
     main_mistake: str
     tactical_adaptation: str
     drill: str

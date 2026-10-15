@@ -49,9 +49,11 @@ async def test_economy_coach_fallback_stats(agent_context):
     )
     result = await coach.run(input_data, agent_context)
 
-    assert 30.0 <= result.buy_discipline_score <= 100.0
-    assert result.main_mistake != ""
-    assert result.drill != ""
+    # Must NOT fabricate buy_discipline_score or economy_rating from win_pct
+    assert result.buy_discipline_score is None
+    assert result.economy_rating is None
+    assert "no disponible" in result.main_mistake.lower()
+    assert result.evidence[0]["status"] == "insufficient_data"
 
 
 @pytest.mark.asyncio
@@ -250,3 +252,75 @@ async def test_report_writer_zero_kd_not_fallback_to_one(agent_context):
 
     assert "0.0" in report.executive_summary
     assert "1.0" not in report.executive_summary
+
+
+@pytest.mark.asyncio
+async def test_role_coach_missing_stats_returns_insufficient_data(agent_context):
+    """Verify that RoleCoachAgent does not invent 12/10/4 stats when data is missing."""
+    coach = RoleCoachAgent()
+    input_data = RoleCoachInput(
+        agent_name="Jett",
+        match_data={},
+        player_stats={},
+    )
+    result = await coach.run(input_data, agent_context)
+
+    assert result.role_score is None
+    assert "insuficientes" in result.main_mistake.lower()
+    assert result.evidence[0]["status"] == "insufficient_data"
+
+
+@pytest.mark.asyncio
+async def test_report_writer_grounded_missing_ratings_and_flaws(agent_context):
+    """Verify ReportWriter does not fabricate 70.0 ratings or default flaws."""
+    writer = ReportWriterAgent()
+    input_data = ReportWriterInput(
+        player_name="AcePlayer",
+        player_tag="VAL",
+        rank="Silver 1",
+        match_analysis={
+            "metrics": {"status": "no_stats"},
+            "main_mistake": "Datos insuficientes para aislar errores específicos.",
+            "drill": "Completar una partida competitiva adicional.",
+        },
+        economy_analysis={
+            "economy_rating": None,
+            "main_mistake": (
+                "Información económica de rondas no disponible en los datos "
+                "de la partida."
+            ),
+            "drill": "Revisar los créditos de tu equipo en el menú de compra.",
+            "evidence": [{"status": "insufficient_data"}],
+        },
+        role_analysis={
+            "role": "Duelist",
+            "role_score": None,
+            "main_mistake": (
+                "Estadísticas de agente insuficientes para evaluar " "desempeño de rol."
+            ),
+            "drill": (
+                "Completar una partida competitiva registrando bajas y " "asistencias."
+            ),
+            "evidence": [{"status": "insufficient_data"}],
+        },
+    )
+    report = await writer.run(input_data, agent_context)
+
+    # 1. Executive summary must not have fake 70.0 numbers
+    assert "70.0" not in report.executive_summary
+    assert "sin datos económicos suficientes" in report.executive_summary
+    assert "sin métricas detalladas" in report.executive_summary
+
+    # 2. Critical flaws must not include "insuficientes" as a gameplay mistake
+    assert (
+        "No se detectaron fallos críticos con la información disponible."
+        in report.critical_flaws
+    )
+    assert (
+        "Tendencia a tomar duelos sin soporte de utilidad de equipo."
+        not in report.critical_flaws
+    )
+
+    # 3. Strengths must not invent fake praise
+    assert "Capacidad para generar asistencias" not in report.key_strengths[0]
+    assert "Sin fortalezas estadísticas destacadas" in report.key_strengths[0]

@@ -737,14 +737,6 @@ class PlayerService:
             area for area in set(all_weaknesses) if area not in latest_weaknesses
         ]
 
-        if not reports and not latest_weaknesses and not resolved_areas:
-            latest_weaknesses = [
-                "First Duel Conversion",
-                "Eco-Round Buy Discipline",
-            ]
-            if kd_trend == "improving":
-                resolved_areas = ["Crosshair Placement at Mid Range"]
-
         best_agent = (
             max(agent_trends.items(), key=lambda x: x[1]["win_pct"])[0]
             if agent_trends

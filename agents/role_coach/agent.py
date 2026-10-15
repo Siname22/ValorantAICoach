@@ -104,9 +104,60 @@ class RoleCoachAgent(BaseAgent[RoleCoachInput, RoleCoachOutput]):
         match_data = data.match_data
         player_stats = data.player_stats or {}
 
-        kills = int(match_data.get("kills", player_stats.get("kills", 12)))
-        deaths = int(match_data.get("deaths", player_stats.get("deaths", 10)))
-        assists = int(match_data.get("assists", player_stats.get("assists", 4)))
+        has_stats = (
+            match_data.get("kills") is not None
+            or match_data.get("deaths") is not None
+            or match_data.get("assists") is not None
+            or player_stats.get("kills") is not None
+            or player_stats.get("deaths") is not None
+            or player_stats.get("assists") is not None
+        )
+
+        if not has_stats:
+            return RoleCoachOutput(
+                agent_name=resolved_name,
+                role=role,
+                role_score=None,
+                main_mistake=(
+                    "Estadísticas de agente insuficientes para evaluar "
+                    "desempeño de rol."
+                ),
+                tactical_adaptation=(
+                    "Registrar estadísticas detalladas de combate y habilidades "
+                    f"para evaluar el impacto específico como {role}."
+                ),
+                drill=(
+                    "Completar una partida competitiva registrando bajas y "
+                    f"asistencias con {resolved_name}."
+                ),
+                evidence=[
+                    {
+                        "agent": resolved_name,
+                        "role": role,
+                        "status": "insufficient_data",
+                        "reason": (
+                            "No combat or ability metrics provided for role "
+                            "execution analysis."
+                        ),
+                    }
+                ],
+            )
+
+        kills = int(
+            match_data.get("kills")
+            if match_data.get("kills") is not None
+            else player_stats.get("kills", 0)
+        )
+        deaths = int(
+            match_data.get("deaths")
+            if match_data.get("deaths") is not None
+            else player_stats.get("deaths", 0)
+        )
+        assists = int(
+            match_data.get("assists")
+            if match_data.get("assists") is not None
+            else player_stats.get("assists", 0)
+        )
 
         # Calculate a baseline role performance metric
         if role == "Duelist":
