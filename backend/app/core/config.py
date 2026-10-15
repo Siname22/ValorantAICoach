@@ -1,4 +1,5 @@
 import logging
+import os
 import secrets
 from functools import lru_cache
 from typing import Literal
@@ -64,6 +65,9 @@ class Settings(BaseSettings):
     enable_security_headers: bool = True
     enable_hsts: bool = False
     max_request_body_size_bytes: int = Field(default=25 * 1024 * 1024, ge=1024)
+    rate_limit_enabled: bool = True
+    rate_limit_requests_per_minute: int = Field(default=120, ge=1)
+    rate_limit_burst: int = Field(default=30, ge=1)
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -81,6 +85,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _require_jwt_secret(self) -> "Settings":
+        if self.app_env.lower() == "test" and "RATE_LIMIT_ENABLED" not in os.environ:
+            self.rate_limit_enabled = False
         secret = (self.jwt_secret_key or "").strip()
         if len(secret) >= MIN_JWT_SECRET_LENGTH:
             return self

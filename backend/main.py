@@ -20,6 +20,7 @@ from backend.app.dependencies.provider_deps import (
     create_player_service,
     get_player_service,
 )
+from backend.app.middleware.rate_limit import RateLimitMiddleware
 from backend.app.middleware.security import (
     ContentLengthLimitMiddleware,
     SecurityHeadersMiddleware,
@@ -182,6 +183,13 @@ if settings.enable_security_headers:
 app.add_middleware(
     ContentLengthLimitMiddleware,
     max_content_length=settings.max_request_body_size_bytes,
+)
+
+app.add_middleware(
+    RateLimitMiddleware,
+    enabled=settings.rate_limit_enabled,
+    requests_per_minute=settings.rate_limit_requests_per_minute,
+    burst=settings.rate_limit_burst,
 )
 
 # Register routers
