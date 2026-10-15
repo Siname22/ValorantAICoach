@@ -1,6 +1,7 @@
 import logging
 import os
 import secrets
+import sys
 from functools import lru_cache
 from typing import Literal
 
@@ -68,6 +69,13 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     rate_limit_requests_per_minute: int = Field(default=120, ge=1)
     rate_limit_burst: int = Field(default=30, ge=1)
+    rate_limit_trusted_proxies: str = Field(
+        default="127.0.0.1,::1,testclient",
+        description=(
+            "Comma-separated IPs or hostnames of trusted reverse proxies "
+            "allowed to forward client IPs via X-Forwarded-For."
+        ),
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -83,9 +91,22 @@ class Settings(BaseSettings):
             if email.strip()
         )
 
+    @property
+    def trusted_proxy_set(self) -> frozenset[str]:
+        return frozenset(
+            ip.strip().lower()
+            for ip in self.rate_limit_trusted_proxies.split(",")
+            if ip.strip()
+        )
+
     @model_validator(mode="after")
     def _require_jwt_secret(self) -> "Settings":
-        if self.app_env.lower() == "test" and "RATE_LIMIT_ENABLED" not in os.environ:
+        is_test_runner = (
+            self.app_env.lower() in ("test", "testing")
+            or "PYTEST_CURRENT_TEST" in os.environ
+            or "pytest" in sys.modules
+        )
+        if is_test_runner and "RATE_LIMIT_ENABLED" not in os.environ:
             self.rate_limit_enabled = False
         secret = (self.jwt_secret_key or "").strip()
         if len(secret) >= MIN_JWT_SECRET_LENGTH:

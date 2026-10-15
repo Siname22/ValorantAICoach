@@ -5,7 +5,9 @@ from backend.app.middleware.rate_limit import (
     RateLimitMiddleware,
     TokenBucketRateLimiter,
 )
+from backend.app.middleware.security import SecurityHeadersMiddleware
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 
 
@@ -42,7 +44,90 @@ async def test_token_bucket_rate_limiter_replenishment():
     assert allowed is True
 
 
-def test_rate_limit_middleware_blocks_excess_and_exempts_health():
+def test_rate_limit_exempts_all_health_probes():
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        enabled=True,
+        requests_per_minute=60,
+        burst=1,
+    )
+
+    @app.get("/health")
+    def health():
+        return {"status": "ok"}
+
+    @app.get("/health/live")
+    def live():
+        return {"status": "live"}
+
+    @app.get("/health/ready")
+    def ready():
+        return {"status": "ready"}
+
+    @app.get("/api/data")
+    def data():
+        return {"data": 123}
+
+    client = TestClient(app)
+
+    # Exhaust quota on normal endpoint (burst=1)
+    assert client.get("/api/data").status_code == 200
+    assert client.get("/api/data").status_code == 429
+
+    # All health probes remain exempt and return 200 even after exhaustion
+    assert client.get("/health").status_code == 200
+    assert client.get("/health/live").status_code == 200
+    assert client.get("/health/ready").status_code == 200
+
+
+def test_rate_limit_429_preserves_cors_and_security_headers():
+    app = FastAPI()
+
+    # 1. Innermost: Rate limiter
+    app.add_middleware(
+        RateLimitMiddleware,
+        enabled=True,
+        requests_per_minute=60,
+        burst=1,
+    )
+    # 2. Security headers
+    app.add_middleware(
+        SecurityHeadersMiddleware,
+        enable_hsts=False,
+    )
+    # 3. Outermost: CORS
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:4200"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @app.get("/api/action")
+    def action():
+        return {"ok": True}
+
+    client = TestClient(app)
+    origin_header = {"Origin": "http://localhost:4200"}
+
+    # Request 1: 200 OK with CORS & Security headers
+    r1 = client.get("/api/action", headers=origin_header)
+    assert r1.status_code == 200
+    assert r1.headers.get("access-control-allow-origin") == "http://localhost:4200"
+    assert r1.headers.get("x-content-type-options") == "nosniff"
+
+    # Request 2: 429 Too Many Requests MUST also preserve CORS & Security headers
+    r2 = client.get("/api/action", headers=origin_header)
+    assert r2.status_code == 429
+    assert r2.headers.get("access-control-allow-origin") == "http://localhost:4200"
+    assert r2.headers.get("x-content-type-options") == "nosniff"
+    assert r2.headers.get("x-frame-options") == "DENY"
+    assert "Retry-After" in r2.headers
+
+
+def test_rate_limit_cannot_be_bypassed_via_spoofed_x_forwarded_for():
     app = FastAPI()
     app.add_middleware(
         RateLimitMiddleware,
@@ -51,31 +136,23 @@ def test_rate_limit_middleware_blocks_excess_and_exempts_health():
         burst=2,
     )
 
-    @app.get("/health")
-    def health():
-        return {"status": "ok"}
+    @app.get("/api/action")
+    def action():
+        return {"ok": True}
 
-    @app.get("/api/test-endpoint")
-    def test_endpoint():
-        return {"result": "success"}
+    # Simulate an external client (peer IP 203.0.113.195, NOT a trusted reverse proxy)
+    client = TestClient(app, client=("203.0.113.195", 50123))
 
-    client = TestClient(app)
-    headers = {"X-Forwarded-For": "198.51.100.1"}
-
-    # 1. Normal requests within burst capacity (burst=2)
-    r1 = client.get("/api/test-endpoint", headers=headers)
+    # Request 1: Claims to be 10.0.0.1
+    r1 = client.get("/api/action", headers={"X-Forwarded-For": "10.0.0.1"})
     assert r1.status_code == 200
 
-    r2 = client.get("/api/test-endpoint", headers=headers)
+    # Request 2: Attempts to spoof new identity 10.0.0.2
+    r2 = client.get("/api/action", headers={"X-Forwarded-For": "10.0.0.2"})
     assert r2.status_code == 200
 
-    # 2. 3rd request triggers 429 Too Many Requests
-    r3 = client.get("/api/test-endpoint", headers=headers)
+    # Request 3: Attempts to spoof 10.0.0.3 -> BLOCKED!
+    # Because peer IP 203.0.113.195 is untrusted, X-Forwarded-For is ignored,
+    # and all requests are counted toward 203.0.113.195.
+    r3 = client.get("/api/action", headers={"X-Forwarded-For": "10.0.0.3"})
     assert r3.status_code == 429
-    assert "rate limit exceeded" in r3.json()["detail"].lower()
-    assert "Retry-After" in r3.headers
-
-    # 3. Exempt path (/health) remains accessible even when rate limit triggered
-    r_health = client.get("/health", headers=headers)
-    assert r_health.status_code == 200
-    assert r_health.json()["status"] == "ok"
