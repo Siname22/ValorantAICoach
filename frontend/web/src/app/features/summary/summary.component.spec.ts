@@ -197,6 +197,33 @@ describe('SummaryComponent', () => {
     ]);
     expect(component.calculatedAcs()).toBe(285);
 
+    // Two matches with ACS 0 and 250 must average to 125 (never discarding 0 score)
+    component.matches.set([
+      {
+        match_id: 'm-zero',
+        map_name: 'Ascent',
+        result: 'Defeat',
+        kills: 0,
+        deaths: 15,
+        assists: 0,
+        score: 0,
+        round_score: '13 - 11', // 24 rounds -> ACS 0
+        agent_name: 'Sova',
+      },
+      {
+        match_id: 'm-250',
+        map_name: 'Bind',
+        result: 'Victory',
+        kills: 20,
+        deaths: 10,
+        assists: 5,
+        score: 6000,
+        round_score: '13 - 11', // 24 rounds -> ACS 250
+        agent_name: 'Jett',
+      },
+    ]);
+    expect(component.calculatedAcs()).toBe(125);
+
     // When no scored matches but stats has avg_score
     component.matches.set([]);
     component.stats.set({

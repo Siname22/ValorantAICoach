@@ -633,3 +633,62 @@ async def test_timeline_analytics_with_anterior_name_and_failed_profile_resoluti
     # Alice's team (Red) won 100% on attack, NOT 0% from Blue (Enemy)
     assert analytics.overall_attack_win_rate == 100.0
     await service.close()
+
+
+def test_parse_match_timeline_never_matches_player_with_conflicting_tag():
+    """Verify that searching for Alex#MINE does not match Alex#OTHER on rival team."""
+    detail = {
+        "matchInfo": {
+            "matchId": "m-tag-conflict",
+            "mapId": "Ascent",
+            "gameMode": "Competitive",
+        },
+        "players": [
+            {
+                "puuid": "p-alex-other",
+                "gameName": "Alex",
+                "tagLine": "OTHER",
+                "teamId": "Blue",
+            },
+            {
+                "puuid": "p-alex-mine",
+                "gameName": "Alex",
+                "tagLine": "MINE",
+                "teamId": "Red",
+            },
+        ],
+        "roundResults": [
+            {"roundNum": 0, "winningTeam": "Red", "roundCeremony": "Default"},
+        ],
+    }
+    # Target Alex#MINE is on team Red (which won round 1 on attack)
+    timeline_mine = TimelineService.parse_match_timeline(
+        detail, player_identifier="Alex#MINE"
+    )
+    assert timeline_mine.friendly_team == "Red"
+    assert timeline_mine.rounds[0].friendly_won is True
+    assert timeline_mine.summary.attack_rounds_won == 1
+
+    # If only Alex#OTHER is present, searching for Alex#MINE must NOT match Alex#OTHER
+    detail_only_other = {
+        "matchInfo": {
+            "matchId": "m-tag-conflict-2",
+            "mapId": "Ascent",
+            "gameMode": "Competitive",
+        },
+        "players": [
+            {
+                "puuid": "p-alex-other",
+                "gameName": "Alex",
+                "tagLine": "OTHER",
+                "teamId": "Blue",
+            },
+        ],
+        "roundResults": [
+            {"roundNum": 0, "winningTeam": "Red", "roundCeremony": "Default"},
+        ],
+    }
+    timeline_no_match = TimelineService.parse_match_timeline(
+        detail_only_other, player_identifier="Alex#MINE"
+    )
+    assert timeline_no_match.friendly_team != "Blue"

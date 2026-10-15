@@ -642,14 +642,14 @@ export class SummaryComponent {
         }
       }
 
-      if (typeof m.score === 'number' && m.score > 0) {
+      if (typeof m.score === 'number' && m.score >= 0) {
         if (rounds !== null && rounds > 0) {
           acsValues.push(Math.round(m.score / rounds));
         }
       } else if (
         m.provider === 'vision' &&
         typeof m.provider_score === 'number' &&
-        m.provider_score > 0
+        m.provider_score >= 0
       ) {
         acsValues.push(Math.round(m.provider_score));
       }
@@ -660,7 +660,7 @@ export class SummaryComponent {
       );
     }
     const st = this.stats();
-    if (st && typeof (st as any).avg_score === 'number' && (st as any).avg_score > 0) {
+    if (st && typeof (st as any).avg_score === 'number' && (st as any).avg_score >= 0) {
       const avg = (st as any).avg_score;
       if (avg <= 500) {
         return Math.round(avg);
