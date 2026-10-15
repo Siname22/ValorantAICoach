@@ -491,3 +491,101 @@ async def test_economy_zero_balances_remain_observed_values(agent_context):
     assert "no registrado" not in result.main_mistake.lower()
     assert "0 créditos" in result.main_mistake
     assert len([e for e in result.evidence if e.get("type") == "force_buy_risk"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_economy_none_balance_is_not_treated_as_zero(agent_context):
+    result = await EconomyCoachAgent().run(
+        EconomyCoachInput(
+            match_data={
+                "rounds": [
+                    {"loadout_value": 2500, "remaining_credits": None},
+                    {"loadout_value": 2500, "remaining_credits": None},
+                ]
+            }
+        ),
+        agent_context,
+    )
+
+    assert "no registrado" in result.main_mistake.lower()
+    assert "0 créditos" not in result.main_mistake
+    assert "bajo remanente" not in result.main_mistake.lower()
+    assert not any(e.get("type") == "force_buy_risk" for e in result.evidence)
+    assert "avg_force_buy_remaining" not in result.evidence[-1]
+    assert "avg_semi_buy_remaining" not in result.evidence[-1]
+    assert result.evidence[-1]["semi_buy_remaining_observations"] == 0
+
+
+@pytest.mark.asyncio
+async def test_economy_partial_coverage_intermediate_buys(agent_context):
+    result = await EconomyCoachAgent().run(
+        EconomyCoachInput(
+            match_data={
+                "rounds": [
+                    {"loadout_value": 2600, "remaining_credits": 4500},
+                    {"loadout_value": 2600, "remaining_credits": None},
+                ]
+            }
+        ),
+        agent_context,
+    )
+
+    assert result.evidence[-1]["force_buys"] == 0
+    assert result.evidence[-1]["semi_buys"] == 2
+    assert result.evidence[-1]["semi_buy_remaining_observations"] == 1
+    assert result.evidence[-1]["avg_semi_buy_remaining"] == 4500
+    assert "1 de 2" in result.main_mistake
+    assert "Sin compras forzadas confirmadas" in result.main_mistake
+
+
+@pytest.mark.asyncio
+async def test_economy_zero_combined_with_unknown_balance(agent_context):
+    result = await EconomyCoachAgent().run(
+        EconomyCoachInput(
+            match_data={
+                "rounds": [
+                    {
+                        "buy_type": "force",
+                        "loadout_value": 2500,
+                        "remaining_credits": 0,
+                    },
+                    {
+                        "buy_type": "force",
+                        "loadout_value": 2500,
+                        "remaining_credits": None,
+                    },
+                ]
+            }
+        ),
+        agent_context,
+    )
+
+    assert result.evidence[-1]["avg_force_buy_remaining"] == 0
+    assert result.evidence[-1]["force_buy_remaining_observations"] == 1
+    assert "1 de 2" in result.main_mistake
+    assert "0 créditos restantes" in result.main_mistake
+    risks = [e for e in result.evidence if e.get("type") == "force_buy_risk"]
+    assert len(risks) == 1
+    assert risks[0]["round"] == 1
+    assert risks[0]["remaining"] == 0
+
+
+@pytest.mark.asyncio
+async def test_economy_isolated_force_buy(agent_context):
+    rounds = [
+        {"buy_type": "force", "loadout_value": 2500, "remaining_credits": 200},
+        {"buy_type": "full", "loadout_value": 4200, "remaining_credits": 2100},
+        {"buy_type": "full", "loadout_value": 4100, "remaining_credits": 1900},
+        {"buy_type": "full", "loadout_value": 4300, "remaining_credits": 2200},
+        {"buy_type": "full", "loadout_value": 4000, "remaining_credits": 2000},
+    ]
+    result = await EconomyCoachAgent().run(
+        EconomyCoachInput(match_data={"rounds": rounds}),
+        agent_context,
+    )
+
+    assert result.evidence[-1]["force_buys"] == 1
+    assert result.buy_discipline_score > 60.0
+    assert "Compra forzada aislada en 1 ronda(s)" in result.main_mistake
+    assert "en general buena disciplina" in result.main_mistake
+    assert "200 créditos restantes" in result.main_mistake
