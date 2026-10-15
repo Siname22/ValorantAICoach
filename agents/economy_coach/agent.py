@@ -7,6 +7,16 @@ from agents.shared.registry import AgentRegistry
 from .schema import EconomyCoachInput, EconomyCoachOutput
 
 
+def _describe_remaining_credits(values: list[int], round_count: int) -> str:
+    if not values:
+        return "saldo restante no registrado"
+    average = round(sum(values) / len(values))
+    description = f"media observada de {average} créditos restantes"
+    if len(values) < round_count:
+        description += f", saldo registrado en {len(values)} de {round_count} rondas"
+    return description
+
+
 class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
     """Specialized agent analyzing team economy and buy discipline.
 
@@ -38,7 +48,7 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
         if rounds:
             for round_idx, r in enumerate(rounds, start=1):
                 loadout_val = r.get("loadout_value", 0)
-                remaining_cred = r.get("remaining_credits", 0)
+                remaining_cred = r.get("remaining_credits")
                 buy_type = r.get("buy_type")
 
                 if buy_type == "eco" or (loadout_val > 0 and loadout_val < 2000):
@@ -46,11 +56,15 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
                 elif buy_type == "full" or loadout_val >= 3900:
                     full_buys_detected += 1
                 elif buy_type == "force" or (
-                    loadout_val >= 2000 and loadout_val < 3900 and remaining_cred < 1000
+                    loadout_val >= 2000
+                    and loadout_val < 3900
+                    and remaining_cred is not None
+                    and remaining_cred < 1000
                 ):
                     force_buys_detected += 1
-                    force_buy_remainings.append(remaining_cred)
-                    if remaining_cred < 500:
+                    if remaining_cred is not None:
+                        force_buy_remainings.append(remaining_cred)
+                    if remaining_cred is not None and remaining_cred < 500:
                         evidence.append(
                             {
                                 "round": round_idx,
@@ -61,7 +75,8 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
                         )
                 elif loadout_val >= 2000 and loadout_val < 3900:
                     semi_buys_detected += 1
-                    semi_buy_remainings.append(remaining_cred)
+                    if remaining_cred is not None:
+                        semi_buy_remainings.append(remaining_cred)
 
         total_analyzed = (
             eco_rounds_detected
@@ -78,11 +93,12 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
             if force_buys_detected > 0 and (
                 buy_discipline < 60.0 or force_buys_detected > 2
             ):
-                avg_rem = round(sum(force_buy_remainings) / len(force_buy_remainings))
+                remaining_description = _describe_remaining_credits(
+                    force_buy_remainings, force_buys_detected
+                )
                 main_mistake = (
                     f"Compras forzadas detectadas en {force_buys_detected} rondas "
-                    f"con loadout intermedio y bajo remanente de créditos "
-                    f"(media de {avg_rem} créditos restantes)."
+                    f"con loadout intermedio ({remaining_description})."
                 )
                 practical_rule = (
                     "Si la media de créditos de tu equipo es menor a 3.300, ahorra "
@@ -95,11 +111,13 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
                     "compañeros están en eco, no compres."
                 )
             elif force_buys_detected == 0 and semi_buys_detected > 0:
-                avg_rem = round(sum(semi_buy_remainings) / len(semi_buy_remainings))
+                remaining_description = _describe_remaining_credits(
+                    semi_buy_remainings, semi_buys_detected
+                )
                 main_mistake = (
-                    "Sin compras forzadas con saldo comprometido; se registraron "
-                    f"{semi_buys_detected} compras intermedias conservando reservas "
-                    f"(media de {avg_rem} créditos restantes)."
+                    "Sin compras forzadas confirmadas; se registraron "
+                    f"{semi_buys_detected} compras intermedias "
+                    f"({remaining_description})."
                 )
                 practical_rule = (
                     "Con reservas altas (3.900+ créditos), priorizar compra "
@@ -110,10 +128,12 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
                     "créditos tras comprar, equipa rifle principal en rondas armadas."
                 )
             elif force_buys_detected > 0:
-                avg_rem = round(sum(force_buy_remainings) / len(force_buy_remainings))
+                remaining_description = _describe_remaining_credits(
+                    force_buy_remainings, force_buys_detected
+                )
                 main_mistake = (
                     f"Compra forzada aislada en {force_buys_detected} ronda(s) "
-                    f"({avg_rem} créditos restantes); en general buena disciplina."
+                    f"({remaining_description}); en general buena disciplina."
                 )
                 practical_rule = (
                     "Mantén un remanente mínimo de 3.900 créditos proyectados para la "
@@ -146,6 +166,8 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
                 "force_buys": force_buys_detected,
                 "semi_buys": semi_buys_detected,
                 "full_buys": full_buys_detected,
+                "force_buy_remaining_observations": len(force_buy_remainings),
+                "semi_buy_remaining_observations": len(semi_buy_remainings),
             }
             if force_buy_remainings:
                 evidence_summary["avg_force_buy_remaining"] = round(
