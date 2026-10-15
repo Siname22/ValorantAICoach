@@ -29,7 +29,10 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
 
         eco_rounds_detected = 0
         force_buys_detected = 0
+        semi_buys_detected = 0
         full_buys_detected = 0
+        force_buy_remainings: list[int] = []
+        semi_buy_remainings: list[int] = []
         evidence: list[dict[str, Any]] = []
 
         if rounds:
@@ -40,10 +43,13 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
 
                 if buy_type == "eco" or (loadout_val > 0 and loadout_val < 2000):
                     eco_rounds_detected += 1
+                elif buy_type == "full" or loadout_val >= 3900:
+                    full_buys_detected += 1
                 elif buy_type == "force" or (
-                    loadout_val >= 2000 and loadout_val < 3900
+                    loadout_val >= 2000 and loadout_val < 3900 and remaining_cred < 1000
                 ):
                     force_buys_detected += 1
+                    force_buy_remainings.append(remaining_cred)
                     if remaining_cred < 500:
                         evidence.append(
                             {
@@ -53,20 +59,30 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
                                 "remaining": remaining_cred,
                             }
                         )
-                elif buy_type == "full" or loadout_val >= 3900:
-                    full_buys_detected += 1
+                elif loadout_val >= 2000 and loadout_val < 3900:
+                    semi_buys_detected += 1
+                    semi_buy_remainings.append(remaining_cred)
 
-        total_analyzed = eco_rounds_detected + force_buys_detected + full_buys_detected
+        total_analyzed = (
+            eco_rounds_detected
+            + force_buys_detected
+            + semi_buys_detected
+            + full_buys_detected
+        )
 
         if total_analyzed >= 2:
             force_ratio = force_buys_detected / total_analyzed
             buy_discipline = round(max(10.0, 100.0 - (force_ratio * 70.0)), 1)
             economy_rating = round(min(98.0, 60.0 + (buy_discipline * 0.35)), 1)
 
-            if buy_discipline < 60.0 or force_buys_detected > 2:
+            if force_buys_detected > 0 and (
+                buy_discipline < 60.0 or force_buys_detected > 2
+            ):
+                avg_rem = round(sum(force_buy_remainings) / len(force_buy_remainings))
                 main_mistake = (
                     f"Compras forzadas detectadas en {force_buys_detected} rondas "
-                    "con loadout intermedio y bajo remanente de créditos."
+                    f"con loadout intermedio y bajo remanente de créditos "
+                    f"(media de {avg_rem} créditos restantes)."
                 )
                 practical_rule = (
                     "Si la media de créditos de tu equipo es menor a 3.300, ahorra "
@@ -77,6 +93,35 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
                     "Regla de los 3 segundos en Menú B: Antes de comprar, mira "
                     "la columna derecha de créditos de tu equipo. Si 2 o más "
                     "compañeros están en eco, no compres."
+                )
+            elif force_buys_detected == 0 and semi_buys_detected > 0:
+                avg_rem = round(sum(semi_buy_remainings) / len(semi_buy_remainings))
+                main_mistake = (
+                    "Sin compras forzadas con saldo comprometido; se registraron "
+                    f"{semi_buys_detected} compras intermedias conservando reservas "
+                    f"(media de {avg_rem} créditos restantes)."
+                )
+                practical_rule = (
+                    "Con reservas altas (3.900+ créditos), priorizar compra "
+                    "completa (Vandal/Phantom + escudo) si el equipo compra completo."
+                )
+                drill = (
+                    "Alinear loadout con el equipo: si dispones de más de 3.900 "
+                    "créditos tras comprar, equipa rifle principal en rondas armadas."
+                )
+            elif force_buys_detected > 0:
+                avg_rem = round(sum(force_buy_remainings) / len(force_buy_remainings))
+                main_mistake = (
+                    f"Compra forzada aislada en {force_buys_detected} ronda(s) "
+                    f"({avg_rem} créditos restantes); en general buena disciplina."
+                )
+                practical_rule = (
+                    "Mantén un remanente mínimo de 3.900 créditos proyectados para la "
+                    "siguiente ronda si tu equipo planea compra completa."
+                )
+                drill = (
+                    "Revisar los créditos de tu equipo en el menú de compra antes "
+                    "de decidir el loadout."
                 )
             else:
                 main_mistake = (
@@ -94,15 +139,23 @@ class EconomyCoachAgent(BaseAgent[EconomyCoachInput, EconomyCoachOutput]):
                     "de cerrar tu loadout."
                 )
 
-            evidence.append(
-                {
-                    "buy_discipline": buy_discipline,
-                    "economy_rating": economy_rating,
-                    "eco_rounds": eco_rounds_detected,
-                    "force_buys": force_buys_detected,
-                    "full_buys": full_buys_detected,
-                }
-            )
+            evidence_summary: dict[str, Any] = {
+                "buy_discipline": buy_discipline,
+                "economy_rating": economy_rating,
+                "eco_rounds": eco_rounds_detected,
+                "force_buys": force_buys_detected,
+                "semi_buys": semi_buys_detected,
+                "full_buys": full_buys_detected,
+            }
+            if force_buy_remainings:
+                evidence_summary["avg_force_buy_remaining"] = round(
+                    sum(force_buy_remainings) / len(force_buy_remainings), 1
+                )
+            if semi_buy_remainings:
+                evidence_summary["avg_semi_buy_remaining"] = round(
+                    sum(semi_buy_remainings) / len(semi_buy_remainings), 1
+                )
+            evidence.append(evidence_summary)
         else:
             buy_discipline = None
             economy_rating = None

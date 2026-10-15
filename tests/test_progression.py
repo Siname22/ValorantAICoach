@@ -355,6 +355,34 @@ async def test_progression_empty_when_reports_have_no_flaws_or_disclaimers(
     assert res["resolved_focus_areas"] == []
 
 
+@pytest.mark.asyncio
+async def test_progression_without_recent_matches_filters_disclaimers(
+    mock_isolated_service,
+):
+    """When a player has no recent matches, disclaimers like 'No se detectaron
+    fallos críticos...' must be filtered out so active_focus_areas is empty.
+    """
+    mock_isolated_service.get_recent_matches = AsyncMock(return_value=[])
+    mock_isolated_service.list_coaching_reports = AsyncMock(
+        return_value=[
+            {
+                "id": "rep-clean-1",
+                "payload": {
+                    "critical_flaws": [
+                        "No se detectaron fallos críticos con la información "
+                        "disponible."
+                    ],
+                },
+            },
+        ]
+    )
+
+    res = await mock_isolated_service.get_player_progression("Boaster", "FNC")
+    assert res["total_matches_analyzed"] == 0
+    assert res["active_focus_areas"] == []
+    assert res["resolved_focus_areas"] == []
+
+
 def test_get_player_progression_api_endpoint():
     mock_svc = AsyncMock()
     mock_svc.get_player_progression.return_value = {

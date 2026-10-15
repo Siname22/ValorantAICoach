@@ -569,11 +569,30 @@ class PlayerService:
             matches = []
         reports = await self.list_coaching_reports(game_name, tag_line, limit=10)
 
-        if not matches:
-            all_weaknesses: list[str] = []
-            latest_weaknesses: list[str] = []
-            if reports:
-                for i, rep in enumerate(reports):
+        def _is_actual_weakness(text: str) -> bool:
+            t = text.lower().strip()
+            if not t:
+                return False
+            ignored_phrases = [
+                "no se detectaron",
+                "insuficiente",
+                "no disponible",
+                "sin errores",
+                "sin fallos",
+                "sin debilidades",
+                "sin compras",
+                "sin telemetría",
+                "sugerencia",
+            ]
+            return not any(phrase in t for phrase in ignored_phrases)
+
+        def _extract_focus_areas(
+            reps: list[dict[str, Any]],
+        ) -> tuple[list[str], list[str]]:
+            all_w: list[str] = []
+            latest_w: list[str] = []
+            if reps:
+                for i, rep in enumerate(reps):
                     payload = rep.get("payload", {})
                     crit = (
                         payload.get("critical_flaws")
@@ -583,14 +602,18 @@ class PlayerService:
                     weakness_texts = [
                         w if isinstance(w, str) else w.get("area", str(w)) for w in crit
                     ]
+                    valid_weaknesses = [
+                        w for w in weakness_texts if _is_actual_weakness(w)
+                    ]
                     if i == 0:
-                        latest_weaknesses.extend(weakness_texts)
+                        latest_w.extend(valid_weaknesses)
                     else:
-                        all_weaknesses.extend(weakness_texts)
+                        all_w.extend(valid_weaknesses)
+            resolved = [area for area in set(all_w) if area not in latest_w]
+            return latest_w, resolved
 
-            resolved_areas = [
-                area for area in set(all_weaknesses) if area not in latest_weaknesses
-            ]
+        if not matches:
+            latest_weaknesses, resolved_areas = _extract_focus_areas(reports)
 
             return {
                 "game_name": game_name,
@@ -715,45 +738,7 @@ class PlayerService:
             for agent, s in agent_stats.items()
         }
 
-        def _is_actual_weakness(text: str) -> bool:
-            t = text.lower().strip()
-            if not t:
-                return False
-            ignored_phrases = [
-                "no se detectaron",
-                "insuficiente",
-                "no disponible",
-                "sin errores",
-                "sin fallos",
-                "sin debilidades",
-                "sin compras",
-                "sin telemetría",
-                "sugerencia",
-            ]
-            return not any(phrase in t for phrase in ignored_phrases)
-
-        all_weaknesses: list[str] = []
-        latest_weaknesses: list[str] = []
-        if reports:
-            for i, rep in enumerate(reports):
-                payload = rep.get("payload", {})
-                crit = (
-                    payload.get("critical_flaws")
-                    or payload.get("critical_weaknesses")
-                    or []
-                )
-                weakness_texts = [
-                    w if isinstance(w, str) else w.get("area", str(w)) for w in crit
-                ]
-                valid_weaknesses = [w for w in weakness_texts if _is_actual_weakness(w)]
-                if i == 0:
-                    latest_weaknesses.extend(valid_weaknesses)
-                else:
-                    all_weaknesses.extend(valid_weaknesses)
-
-        resolved_areas = [
-            area for area in set(all_weaknesses) if area not in latest_weaknesses
-        ]
+        latest_weaknesses, resolved_areas = _extract_focus_areas(reports)
 
         best_agent = (
             max(agent_trends.items(), key=lambda x: x[1]["win_pct"])[0]

@@ -384,3 +384,29 @@ async def test_role_coach_omen_does_not_accuse_premature_smokes_without_telemetr
 
     assert "Sin telemetría de habilidades" in res.main_mistake
     assert "sugerencia" in res.main_mistake.lower()
+
+
+@pytest.mark.asyncio
+async def test_economy_coach_intermediate_loadout_with_high_reserves(
+    agent_context,
+):
+    """Two rounds with intermediate loadout (2500) and 5000 remaining credits
+    must NOT claim 'bajo remanente de créditos', but rather observe that reserves
+    were preserved.
+    """
+    coach = EconomyCoachAgent()
+    input_data = EconomyCoachInput(
+        match_data={
+            "rounds": [
+                {"loadout_value": 2500, "remaining_credits": 5000},
+                {"loadout_value": 2500, "remaining_credits": 5000},
+            ]
+        }
+    )
+    res = await coach.run(input_data, agent_context)
+
+    assert res.economy_rating == 95.0
+    assert res.buy_discipline_score == 100.0
+    assert "bajo remanente" not in res.main_mistake.lower()
+    assert "5000" in res.main_mistake or "5.000" in res.main_mistake
+    assert "Sin compras forzadas" in res.main_mistake
