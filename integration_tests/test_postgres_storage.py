@@ -9,6 +9,7 @@ import os
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -21,6 +22,7 @@ from alembic.script import ScriptDirectory
 from backend.app.core.config import get_settings
 from backend.app.storage.models import (
     Base,
+    CoachingReportRecord,
     MatchRecord,
     PlayerMatchHistory,
     PlayerRecord,
@@ -30,7 +32,7 @@ from backend.app.storage.repository import SQLPlayerStore, request_key
 from fastapi.testclient import TestClient
 from sqlalchemy import DateTime, create_engine, func, inspect, select, text
 from sqlalchemy.engine import URL, make_url
-from sqlalchemy.exc import ArgumentError
+from sqlalchemy.exc import ArgumentError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
@@ -446,3 +448,232 @@ def test_real_match_upserts_isolate_players_and_providers(postgres_database):
             _assert_utc(player.observed_at, earliest, latest)
         for snapshot in snapshots:
             _assert_utc(snapshot.observed_at, earliest, latest)
+
+
+def test_real_coaching_report_storage_timestamp_normalization(postgres_database):
+    config, engine, url = postgres_database
+    command.upgrade(config, "head")
+
+    identity = {"game_name": "Chronicle", "tag_line": "FNC"}
+    player_id = request_key("identity", identity)
+    earliest = datetime.now(UTC)
+    store = SQLPlayerStore(url, ttl_seconds=3600)
+    try:
+        # 1. Naive ISO string (no timezone)
+        naive_payload = {"title": "Naive Report", "created_at": "2026-10-16T10:00:00"}
+        id_naive = store.save_coaching_report(
+            player_id, naive_payload, [], identity=identity
+        )
+        rec_naive = store.get_coaching_report(id_naive)
+        assert rec_naive is not None
+        assert rec_naive["created_at"] == "2026-10-16T10:00:00+00:00"
+        assert rec_naive["payload"]["created_at"] == "2026-10-16T10:00:00+00:00"
+        assert naive_payload["created_at"] == "2026-10-16T10:00:00+00:00"
+
+        # 2. Offset string (+02:00)
+        offset_payload = {
+            "title": "Offset Report",
+            "created_at": "2026-10-16T12:00:00+02:00",
+        }
+        id_offset = store.save_coaching_report(
+            player_id, offset_payload, [], identity=identity
+        )
+        rec_offset = store.get_coaching_report(id_offset)
+        assert rec_offset is not None
+        assert rec_offset["created_at"] == "2026-10-16T10:00:00+00:00"
+        assert rec_offset["payload"]["created_at"] == "2026-10-16T10:00:00+00:00"
+        assert offset_payload["created_at"] == "2026-10-16T10:00:00+00:00"
+
+        # 3. Zulu string (Z suffix)
+        zulu_payload = {"title": "Zulu Report", "created_at": "2026-10-16T10:00:00Z"}
+        id_zulu = store.save_coaching_report(
+            player_id, zulu_payload, [], identity=identity
+        )
+        rec_zulu = store.get_coaching_report(id_zulu)
+        assert rec_zulu is not None
+        assert rec_zulu["created_at"] == "2026-10-16T10:00:00+00:00"
+        assert rec_zulu["payload"]["created_at"] == "2026-10-16T10:00:00+00:00"
+        assert zulu_payload["created_at"] == "2026-10-16T10:00:00+00:00"
+
+        # 4. Auto-generated timestamp when created_at omitted
+        auto_payload = {"title": "Auto Report"}
+        id_auto = store.save_coaching_report(
+            player_id, auto_payload, [], identity=identity
+        )
+        rec_auto = store.get_coaching_report(id_auto)
+        assert rec_auto is not None
+        assert rec_auto["created_at"] == rec_auto["payload"]["created_at"]
+        assert auto_payload["created_at"] == rec_auto["created_at"]
+        parsed_auto = datetime.fromisoformat(rec_auto["created_at"])
+        assert parsed_auto.tzinfo is not None
+        assert parsed_auto.utcoffset() == timedelta(0)
+
+        # 5. Direct PostgreSQL session query confirms all rows are UTC TIMESTAMPTZ
+        latest = datetime.now(UTC)
+        with Session(engine) as session:
+            for rep_id in (id_naive, id_offset, id_zulu):
+                row = session.get(CoachingReportRecord, rep_id)
+                assert row is not None
+                assert row.created_at.tzinfo is not None
+                assert row.created_at.utcoffset() == timedelta(0)
+                assert row.created_at == datetime(2026, 10, 16, 10, 0, 0, tzinfo=UTC)
+                assert row.created_at.isoformat() == "2026-10-16T10:00:00+00:00"
+                assert row.payload["created_at"] == "2026-10-16T10:00:00+00:00"
+            row_auto = session.get(CoachingReportRecord, id_auto)
+            assert row_auto is not None
+            _assert_utc(row_auto.created_at, earliest, latest)
+            assert row_auto.created_at.isoformat() == rec_auto["created_at"]
+            assert row_auto.payload["created_at"] == rec_auto["created_at"]
+
+        # 6. Listing reports preserves exact normalized timestamps
+        reports = store.list_coaching_reports(player_id)
+        assert len(reports) == 4
+        reports_by_id = {r["id"]: r for r in reports}
+        for rep_id in (id_naive, id_offset, id_zulu):
+            assert reports_by_id[rep_id]["created_at"] == "2026-10-16T10:00:00+00:00"
+        assert reports_by_id[id_auto]["created_at"] == rec_auto["created_at"]
+    finally:
+        store.close()
+
+
+def test_real_coaching_report_storage_atomic_rollback(postgres_database):
+    config, engine, url = postgres_database
+    command.upgrade(config, "head")
+
+    rollback_identity = {"game_name": "RollbackPlayer", "tag_line": "TEST"}
+    rollback_player_id = request_key("identity", rollback_identity)
+    store = SQLPlayerStore(url, ttl_seconds=3600)
+    failed_id = "fail-rep-postgres-1"
+
+    original_upsert = store._upsert
+
+    def failing_upsert(session, model, values):
+        original_upsert(session, model, values)
+        if model is CoachingReportRecord:
+            raise SQLAlchemyError("Simulated database failure before commit")
+
+    store._upsert = failing_upsert
+    try:
+        with pytest.raises(
+            SQLAlchemyError, match="Simulated database failure before commit"
+        ):
+            store.save_coaching_report(
+                rollback_player_id,
+                {"title": "Aborted Report"},
+                [],
+                report_id=failed_id,
+                identity=rollback_identity,
+            )
+        assert store.get_coaching_report(failed_id) is None
+        assert store.list_coaching_reports(rollback_player_id) == []
+    finally:
+        store._upsert = original_upsert
+        store.close()
+
+    # Query from an independent session on engine to verify transaction rollback
+    with Session(engine) as verify_session:
+        assert verify_session.get(PlayerRecord, rollback_player_id) is None
+        assert verify_session.get(CoachingReportRecord, failed_id) is None
+        reports = (
+            verify_session.execute(
+                select(CoachingReportRecord).where(
+                    CoachingReportRecord.player_id == rollback_player_id
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(reports) == 0
+
+
+def test_real_coaching_report_read_back_fallback_and_rest(
+    postgres_database, monkeypatch
+):
+    from backend.app.dependencies.auth_deps import get_current_user
+    from backend.main import app
+
+    config, engine, _ = postgres_database
+    command.upgrade(config, "head")
+
+    earliest = datetime.now(UTC)
+    with TestClient(app) as client:
+        service = app.state.player_service
+        assert service is not None
+        assert service.store is not None
+
+        service.get_recent_matches = AsyncMock(return_value=[])
+        service.get_rank = AsyncMock(side_effect=Exception("No rank available"))
+        service.get_stats_overview = AsyncMock(
+            side_effect=Exception("No stats available")
+        )
+
+        app.dependency_overrides[get_current_user] = lambda: {
+            "id": "postgres-user-1",
+            "email": "coach@test.com",
+            "is_active": True,
+            "is_admin": False,
+        }
+        try:
+            # 1. Normal report generation on real PostgreSQL
+            post_resp = client.post("/players/Chronicle/FNC/reports")
+            assert post_resp.status_code == 200, post_resp.text
+            post_data = post_resp.json()
+            rep_id = post_data["id"]
+            post_created_at = post_data["created_at"]
+            assert rep_id != ""
+            assert post_created_at is not None
+
+            # 2. Storage failure on read-back -> returns 200 with fallback state
+            original_get = service.store.get_coaching_report
+
+            def failing_get(*args, **kwargs):
+                raise SQLAlchemyError("Transient connection drop during read-back")
+
+            service.store.get_coaching_report = failing_get
+            try:
+                fallback_resp = client.post("/players/Chronicle/FNC/reports")
+                assert fallback_resp.status_code == 200, fallback_resp.text
+                fallback_data = fallback_resp.json()
+                fallback_id = fallback_data["id"]
+                fallback_created_at = fallback_data["created_at"]
+                assert fallback_id != ""
+                assert fallback_created_at is not None
+                assert fallback_id != rep_id
+            finally:
+                service.store.get_coaching_report = original_get
+
+            # 3. Consistency between HTTP response and real persisted PostgreSQL record
+            latest = datetime.now(UTC)
+            persisted = service.store.get_coaching_report(fallback_id)
+            assert persisted is not None
+            assert persisted["id"] == fallback_id
+            assert persisted["created_at"] == fallback_created_at
+            assert persisted["payload"]["title"] == fallback_data["payload"]["title"]
+
+            # 4. Direct session query confirms UTC timestamp and row persistence
+            with Session(engine) as session:
+                row = session.get(CoachingReportRecord, fallback_id)
+                assert row is not None
+                assert row.player_id == fallback_data["player_id"]
+                _assert_utc(row.created_at, earliest, latest)
+                assert row.created_at.isoformat() == fallback_created_at
+                assert row.payload["created_at"] == fallback_created_at
+
+            # 5. List endpoint finds both reports in PostgreSQL
+            list_resp = client.get("/players/Chronicle/FNC/reports")
+            assert list_resp.status_code == 200, list_resp.text
+            list_data = list_resp.json()
+            assert list_data["count"] == 2
+            ids = [r["id"] for r in list_data["reports"]]
+            assert rep_id in ids
+            assert fallback_id in ids
+
+            # 6. Single report endpoint retrieves fallback report with exact date
+            get_resp = client.get(f"/players/Chronicle/FNC/reports/{fallback_id}")
+            assert get_resp.status_code == 200, get_resp.text
+            assert get_resp.json()["created_at"] == fallback_created_at
+            assert (
+                get_resp.json()["payload"]["title"] == fallback_data["payload"]["title"]
+            )
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
