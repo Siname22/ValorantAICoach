@@ -156,3 +156,91 @@ def test_rate_limit_cannot_be_bypassed_via_spoofed_x_forwarded_for():
     # and all requests are counted toward 203.0.113.195.
     r3 = client.get("/api/action", headers={"X-Forwarded-For": "10.0.0.3"})
     assert r3.status_code == 429
+
+
+def _trusted_proxy_client(trusted_proxies):
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        enabled=True,
+        requests_per_minute=1,
+        burst=1,
+        trusted_proxies=trusted_proxies,
+    )
+
+    @app.get("/api/action")
+    def action():
+        return {"ok": True}
+
+    return TestClient(app, client=("10.0.0.10", 50123))
+
+
+@pytest.mark.parametrize(
+    ("first_header", "second_header", "trusted_proxies"),
+    [
+        (
+            "198.51.100.1, 203.0.113.50",
+            "198.51.100.2, 203.0.113.50",
+            frozenset({"10.0.0.10"}),
+        ),
+        (
+            "198.51.100.1, 203.0.113.50, 10.0.0.20",
+            "198.51.100.2, 203.0.113.50, 10.0.0.20",
+            frozenset({"10.0.0.10", "10.0.0.20"}),
+        ),
+        (
+            "2001:0db8:0000:0000:0000:0000:0000:0050",
+            "2001:db8::50",
+            frozenset({"10.0.0.10"}),
+        ),
+        (
+            "invalid-client-one",
+            "invalid-client-two",
+            frozenset({"10.0.0.10"}),
+        ),
+    ],
+    ids=["appending-proxy", "proxy-chain", "ipv6-aliases", "invalid-addresses"],
+)
+def test_trusted_proxy_cannot_supply_fresh_quota_for_same_client(
+    first_header, second_header, trusted_proxies
+):
+    with _trusted_proxy_client(trusted_proxies) as client:
+        assert (
+            client.get(
+                "/api/action", headers={"X-Forwarded-For": first_header}
+            ).status_code
+            == 200
+        )
+        assert (
+            client.get(
+                "/api/action", headers={"X-Forwarded-For": second_header}
+            ).status_code
+            == 429
+        )
+
+
+@pytest.mark.parametrize(
+    ("proxy_hop", "trusted_proxy"),
+    [
+        ("", "10.0.0.10"),
+        ("10.0.0.20", "10.0.0.20"),
+        (
+            "2001:db8::20",
+            "2001:0db8:0000:0000:0000:0000:0000:0020",
+        ),
+        (
+            "2001:0db8:0000:0000:0000:0000:0000:0020",
+            "2001:db8::20",
+        ),
+    ],
+    ids=["one-proxy", "two-proxies", "expanded-trusted-ipv6", "expanded-hop-ipv6"],
+)
+def test_trusted_proxy_preserves_independent_client_quotas(proxy_hop, trusted_proxy):
+    proxies = frozenset({"10.0.0.10", trusted_proxy})
+    suffix = f", {proxy_hop}" if proxy_hop else ""
+    with _trusted_proxy_client(proxies) as client:
+        alice = {"X-Forwarded-For": f"203.0.113.50{suffix}"}
+        bob = {"X-Forwarded-For": f"203.0.113.51{suffix}"}
+        assert client.get("/api/action", headers=alice).status_code == 200
+        assert client.get("/api/action", headers=alice).status_code == 429
+        assert client.get("/api/action", headers=bob).status_code == 200

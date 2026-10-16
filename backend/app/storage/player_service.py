@@ -196,9 +196,16 @@ class PersistentPlayerService(PlayerService):
             report_id,
             {"game_name": game_name, "tag_line": tag_line},
         )
-        saved_record = await self.get_coaching_report(
-            saved_id, game_name=game_name, tag_line=tag_line
-        )
+        saved_record = None
+        try:
+            saved_record = await self.get_coaching_report(
+                saved_id, game_name=game_name, tag_line=tag_line
+            )
+        except PlayerServiceUnavailableError:
+            logger.warning(
+                "Coaching report %s saved, but read-back failed; returning payload",
+                saved_id,
+            )
         if saved_record is not None:
             return saved_record
         return {

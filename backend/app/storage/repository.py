@@ -211,6 +211,24 @@ class SQLPlayerStore:
         json.dumps(payload, allow_nan=False)
         json.dumps(evidence, allow_nan=False)
         now = datetime.now(UTC)
+        if "created_at" in payload:
+            raw_ts = payload["created_at"]
+            if isinstance(raw_ts, str):
+                try:
+                    candidate = raw_ts.strip()
+                    if candidate.endswith("Z") or candidate.endswith("z"):
+                        candidate = candidate[:-1] + "+00:00"
+                    parsed = datetime.fromisoformat(candidate)
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=UTC)
+                    now = parsed.astimezone(UTC)
+                except (ValueError, TypeError):
+                    pass
+            elif isinstance(raw_ts, datetime):
+                if raw_ts.tzinfo is None:
+                    raw_ts = raw_ts.replace(tzinfo=UTC)
+                now = raw_ts.astimezone(UTC)
+        payload["created_at"] = now.isoformat()
         with Session(self.engine) as session, session.begin():
             if identity:
                 session.execute(

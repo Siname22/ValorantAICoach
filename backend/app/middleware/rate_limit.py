@@ -2,6 +2,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from ipaddress import ip_address
 
 from fastapi import Request, Response, status
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -90,9 +91,22 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if peer_ip.lower() in trusted_proxies:
             forwarded = request.headers.get("x-forwarded-for")
             if forwarded:
-                candidate = forwarded.split(",")[0].strip()
-                if candidate:
-                    return candidate
+                trusted_addresses = set()
+                for proxy in trusted_proxies:
+                    try:
+                        trusted_addresses.add(str(ip_address(proxy)))
+                    except ValueError:
+                        # Hostnames can identify peers, not forwarded IP hops.
+                        continue
+                # Walk towards the client only through trusted proxy hops.
+                for hop in reversed(forwarded.split(",")):
+                    try:
+                        candidate = str(ip_address(hop.strip()))
+                    except ValueError:
+                        return peer_ip
+                    if candidate not in trusted_addresses:
+                        return candidate
+                return candidate
         return peer_ip
 
     async def dispatch(
