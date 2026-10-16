@@ -1,28 +1,32 @@
-FROM python:3.12-slim
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    UV_PROJECT_ENVIRONMENT=/app/.venv \
-    UV_LINK_MODE=copy
+# Multi-stage Dockerfile for Angular HUD Bento SPA
+# Build Stage
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:0.11.32 /uv /uvx /bin/
+COPY frontend/web/package*.json ./
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-# Install frontend-only dependencies
-COPY frontend/streamlit_app/requirements.txt ./requirements.txt
-RUN uv venv /app/.venv && uv pip install --no-cache -r requirements.txt
+COPY frontend/web ./
+RUN npm run build && \
+    if [ -d /app/dist/valorant-ai-coach-web/browser ]; then \
+      cp -r /app/dist/valorant-ai-coach-web/browser /app/dist-final; \
+    else \
+      cp -r /app/dist/valorant-ai-coach-web /app/dist-final; \
+    fi
 
-COPY frontend ./frontend
+# Production Stage with unprivileged Nginx
+FROM nginx:1.27-alpine
 
-# Run as a non-root user (least privilege)
-RUN useradd --create-home --shell /usr/sbin/nologin appuser \
-    && chown -R appuser:appuser /app
-USER appuser
+# Remove default nginx website
+RUN rm -rf /usr/share/nginx/html/*
 
-EXPOSE 8501
+COPY --from=builder /app/dist-final /usr/share/nginx/html
+COPY docker/nginx-spa.conf /etc/nginx/conf.d/default.conf
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD ["/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"]
+EXPOSE 80
 
-CMD ["/app/.venv/bin/streamlit", "run", "frontend/streamlit_app/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://127.0.0.1/health || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

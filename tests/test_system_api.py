@@ -152,6 +152,7 @@ def test_henrik_history_pipeline_preserves_real_player_stats(
         "deaths": 12,
         "assists": 7,
         "score": None,
+        "round_score": "13 - 7",
         "provider_score": 300,
         "provider": "henrik",
         "agent_name": "Jett",

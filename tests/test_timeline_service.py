@@ -455,3 +455,240 @@ def test_get_player_timeline_analytics_invalid_limit(client, mock_player_service
     assert response.status_code == 422
     response = client.get("/players/TenZ/SEN/timeline-analytics?limit=25")
     assert response.status_code == 422
+
+
+def test_parse_match_timeline_team_perspective_not_defaulted_to_enemy():
+    """Verify that when players[0] is on the enemy team, timeline analytics
+    correctly resolves the friendly team for the target player and does not
+    invert perspective.
+    """
+    match_detail = {
+        "matchInfo": {
+            "matchId": "test-match-inverted",
+            "mapId": "Ascent",
+            "gameMode": "Competitive",
+        },
+        "players": [
+            # Enemy player is first in list (Blue team)
+            {
+                "puuid": "p-enemy",
+                "gameName": "Enemy",
+                "tagLine": "111",
+                "teamId": "Blue",
+            },
+            # Our target player is second (Red team)
+            {
+                "puuid": "p-alice",
+                "gameName": "Alice",
+                "tagLine": "EU1",
+                "teamId": "Red",
+            },
+        ],
+        "roundResults": [
+            # Round 1: Red attacks (rounds 1-12 Red attacks in Standard).
+            # Blue wins defense. Red loses attack.
+            {"roundNum": 0, "winningTeam": "Blue", "roundCeremony": "Default"},
+        ],
+    }
+
+    # Analyzing from Alice#EU1 perspective:
+    # Friendly team is Red. Red lost round 1 on attack.
+    timeline = TimelineService.parse_match_timeline(
+        match_detail, player_identifier="Alice#EU1"
+    )
+    assert timeline.friendly_team == "Red"
+    assert timeline.summary.attack_rounds_won == 0
+    assert timeline.summary.attack_rounds_total == 1
+
+    # Also test analytics aggregation with Alice#EU1
+    analytics = TimelineService.aggregate_player_timeline_analytics(
+        [match_detail],
+        player_identifier="Alice#EU1",
+        game_name="Alice",
+        tag_line="EU1",
+    )
+    # Alice has 0% attack win rate (0 won of 1 played), not 100% (Enemy's perspective)
+    assert analytics.overall_attack_win_rate == 0.0
+
+
+@pytest.fixture
+def storage_database(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+    from backend.app.core.config import get_settings
+    from sqlalchemy import create_engine
+
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.chdir(tmp_path)
+    url = f"sqlite+pysqlite:///{(tmp_path / 'coach_timeline.db').as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", url)
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("APP_ENV", "test")
+    get_settings.cache_clear()
+    config = Config(str(root / "alembic.ini"))
+    config.set_main_option("script_location", str(root / "database/migrations"))
+    engine = create_engine(url)
+    command.upgrade(config, "head")
+    try:
+        yield url, engine
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_timeline_analytics_with_anterior_name_and_failed_profile_resolution(
+    storage_database,
+):
+    """Verify that when a player changed Riot ID and profile lookup fails,
+    timeline analytics correctly identifies friendly team and does not invert
+    to enemy perspective (0% instead of 100%).
+    """
+    from backend.app.storage.player_service import PersistentPlayerService
+    from backend.app.storage.repository import SQLPlayerStore
+
+    url, _ = storage_database
+    store = SQLPlayerStore(url, ttl_seconds=60, test_mode=True)
+    service = PersistentPlayerService(store=store)
+
+    # Stored PUUID was previously known for this player
+    store.put(
+        key="profile-test",
+        operation="profile",
+        parameters={"game_name": "NewAlice", "tag_line": "EU1"},
+        payload={
+            "game_name": "NewAlice",
+            "tag_line": "EU1",
+            "puuid": "p-alice-permanent",
+            "region": "eu",
+        },
+        providers=["riot"],
+    )
+
+    # In this historical match, Alice was known as 'OldAlice#111', playing on team Red.
+    # Enemy is players[0] on team Blue.
+    # Red won attack round 1 (100% attack win rate).
+    match_detail = {
+        "matchInfo": {
+            "matchId": "m-anterior-1",
+            "mapId": "Ascent",
+            "gameMode": "Competitive",
+        },
+        "players": [
+            {
+                "puuid": "p-enemy-1",
+                "gameName": "Enemy",
+                "tagLine": "000",
+                "teamId": "Blue",
+            },
+            {
+                "puuid": "p-alice-permanent",
+                "gameName": "OldAlice",
+                "tagLine": "111",
+                "teamId": "Red",
+            },
+        ],
+        "roundResults": [
+            # Red won attack
+            {"roundNum": 0, "winningTeam": "Red", "roundCeremony": "Default"},
+        ],
+    }
+
+    # Store match detail for NewAlice
+    store.put(
+        key="match-test",
+        operation="matches",
+        parameters={"game_name": "NewAlice", "tag_line": "EU1"},
+        payload=[
+            {
+                "match_id": "m-anterior-1",
+                "map_name": "Ascent",
+                "mode": "Competitive",
+                "timestamp": 1234567,
+                "result": "Victory",
+                "kills": 20,
+                "deaths": 5,
+                "assists": 2,
+                "provider": "riot",
+                "agent_name": "Jett",
+            }
+        ],
+        providers=["riot"],
+    )
+    store.put(
+        key="detail-test",
+        operation="match_detail",
+        parameters={"match_id": "m-anterior-1", "provider": "riot"},
+        payload=match_detail,
+        providers=["riot"],
+    )
+
+    # Force get_player to fail (simulating Riot API failure / network down)
+    service.get_player = AsyncMock(side_effect=Exception("Riot API network failure"))
+
+    analytics = await service.get_player_timeline_analytics("NewAlice", "EU1")
+
+    # Alice's team (Red) won 100% on attack, NOT 0% from Blue (Enemy)
+    assert analytics.overall_attack_win_rate == 100.0
+    await service.close()
+
+
+def test_parse_match_timeline_never_matches_player_with_conflicting_tag():
+    """Verify that searching for Alex#MINE does not match Alex#OTHER on rival team."""
+    detail = {
+        "matchInfo": {
+            "matchId": "m-tag-conflict",
+            "mapId": "Ascent",
+            "gameMode": "Competitive",
+        },
+        "players": [
+            {
+                "puuid": "p-alex-other",
+                "gameName": "Alex",
+                "tagLine": "OTHER",
+                "teamId": "Blue",
+            },
+            {
+                "puuid": "p-alex-mine",
+                "gameName": "Alex",
+                "tagLine": "MINE",
+                "teamId": "Red",
+            },
+        ],
+        "roundResults": [
+            {"roundNum": 0, "winningTeam": "Red", "roundCeremony": "Default"},
+        ],
+    }
+    # Target Alex#MINE is on team Red (which won round 1 on attack)
+    timeline_mine = TimelineService.parse_match_timeline(
+        detail, player_identifier="Alex#MINE"
+    )
+    assert timeline_mine.friendly_team == "Red"
+    assert timeline_mine.rounds[0].friendly_won is True
+    assert timeline_mine.summary.attack_rounds_won == 1
+
+    # If only Alex#OTHER is present, searching for Alex#MINE must NOT match Alex#OTHER
+    detail_only_other = {
+        "matchInfo": {
+            "matchId": "m-tag-conflict-2",
+            "mapId": "Ascent",
+            "gameMode": "Competitive",
+        },
+        "players": [
+            {
+                "puuid": "p-alex-other",
+                "gameName": "Alex",
+                "tagLine": "OTHER",
+                "teamId": "Blue",
+            },
+        ],
+        "roundResults": [
+            {"roundNum": 0, "winningTeam": "Red", "roundCeremony": "Default"},
+        ],
+    }
+    timeline_no_match = TimelineService.parse_match_timeline(
+        detail_only_other, player_identifier="Alex#MINE"
+    )
+    assert timeline_no_match.friendly_team != "Blue"

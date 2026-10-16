@@ -89,6 +89,7 @@ def test_get_player_matches_success(client, mock_player_service):
             deaths=10,
             assists=5,
             score=5000,
+            round_score="13 - 11",
             agent_name="Jett",
         )
     ]
@@ -102,6 +103,7 @@ def test_get_player_matches_success(client, mock_player_service):
     assert data["count"] == 1
     assert data["matches"][0]["match_id"] == "m-1"
     assert data["matches"][0]["agent_name"] == "Jett"
+    assert data["matches"][0]["round_score"] == "13 - 11"
 
 
 def test_health_check_success(client, mock_player_service):
@@ -182,3 +184,15 @@ def test_blank_player_name_is_rejected(client, mock_player_service):
     response = client.get("/players/%20/EU1")
     assert response.status_code == 422
     mock_player_service.get_complete_player_profile.assert_not_awaited()
+
+
+def test_get_player_profile_with_region(client, mock_player_service):
+    mock_player_service.get_complete_player_profile.return_value = PlayerProfile(
+        game_name="TenZ", tag_line="0505", region="na"
+    )
+    response = client.get("/players/TenZ/0505?region=na")
+    assert response.status_code == 200
+    assert response.json()["region"] == "na"
+    mock_player_service.get_complete_player_profile.assert_awaited_once_with(
+        "TenZ", "0505", region="na"
+    )

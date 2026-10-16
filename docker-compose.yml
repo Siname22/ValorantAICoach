@@ -64,23 +64,16 @@ services:
       context: .
       dockerfile: docker/frontend.Dockerfile
     restart: unless-stopped
-    environment:
-      VALORANT_API_BASE_URL: http://backend:8000
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
     ports:
-      - "${FRONTEND_PORT:-8501}:8501"
-    volumes:
-      - ./frontend:/app/frontend
-      - frontend_venv:/app/.venv
+      - "${FRONTEND_PORT:-8080}:80"
     depends_on:
       - backend
     healthcheck:
-      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"]
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 5s
 
   postgres:
     image: postgres:16-alpine
@@ -102,4 +95,3 @@ services:
 volumes:
   postgres_data:
   backend_venv:
-  frontend_venv:

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { BentoCardComponent } from '../../shared/ui/bento-card/bento-card.component';
@@ -44,6 +44,26 @@ import {
               <span id="search-hint" class="sr-only">Introduce tu nombre de invocador y lema separados por almohadilla (ej. TenZ#0001).</span>
             </div>
 
+            <div class="input-field region-field">
+              <label for="region-select" class="input-label">
+                {{ i18n.hero.regionLabel }}
+              </label>
+              <select
+                id="region-select"
+                name="region"
+                [(ngModel)]="selectedRegion"
+                class="region-select"
+                [attr.aria-label]="i18n.hero.regionAriaLabel"
+              >
+                <option value="eu">EU (Europa)</option>
+                <option value="na">NA (Norteamérica)</option>
+                <option value="ap">AP (Asia-Pacífico)</option>
+                <option value="kr">KR (Corea)</option>
+                <option value="latam">LATAM (Latinoamérica)</option>
+                <option value="br">BR (Brasil)</option>
+              </select>
+            </div>
+
             <button type="submit" class="btn-primary hero-btn" [disabled]="loading()">
               {{ loading() ? i18n.hero.searching : i18n.hero.searchButton }}
             </button>
@@ -82,10 +102,16 @@ import {
         [subtitle]="i18n.bento.acsCard.subtitle"
       >
         <div class="metric-display">
-          <span class="featured-number">{{ calculatedAcs() }}</span>
-          <div class="metric-diff" aria-label="Diferencia frente a la media anterior">
-            <span class="diff-tag positive">{{ i18n.bento.acsCard.diffPositive }} (+18.4)</span>
-          </div>
+          <span class="featured-number">{{ calculatedAcs() !== null ? calculatedAcs() : '—' }}</span>
+          @if (calculatedAcs() !== null) {
+            <div class="metric-diff" aria-label="Media basada en partidas analizadas">
+              <span class="diff-tag positive">{{ i18n.bento.acsCard.diffPositive }}</span>
+            </div>
+          } @else {
+            <div class="metric-diff" aria-label="Sin datos de combate suficientes">
+              <span class="diff-tag">{{ i18n.bento.acsCard.noData }}</span>
+            </div>
+          }
         </div>
       </app-bento-card>
 
@@ -173,7 +199,7 @@ import {
               </svg>
 
               <p class="chart-text-description" id="econ-trend-desc">
-                {{ i18n.bento.economyCard.chartAccessibleSummary }} <strong>72.5%</strong>. En rondas semi-eco se recomienda priorizar Sheriff/Ghost para no descompensar compras de equipo.
+                {{ economyTrendSummary() }}
               </p>
             } @else {
               <!-- Round-by-Round SVG Chart -->
@@ -197,7 +223,7 @@ import {
               </svg>
 
               <p class="chart-text-description" id="econ-rounds-desc">
-                Análisis de la última partida: Caída económica en ronda 4 tras derrota forzada. Recuperación de banco en ronda 6 (3900 créditos) manteniendo compras completas hasta el cambio de bando (8-4).
+                {{ economyRoundsSummary() }}
               </p>
             }
           </div>
@@ -230,28 +256,32 @@ import {
                     </th>
                     <td>{{ m.map_name }}</td>
                     <td>{{ m.agent_name }}</td>
-                    <td>13 - 9</td>
+                    <td>{{ m.round_score || '—' }}</td>
                     <td>{{ m.kills }} / {{ m.deaths }} / {{ m.assists }}</td>
-                    <td>{{ m.score || 240 }}</td>
+                    <td>{{ m.score !== null && m.score !== undefined ? m.score : '—' }}</td>
                   </tr>
                 }
+              } @else if (playerProfile()) {
+                <tr>
+                  <td colspan="6" class="empty-matches-cell">{{ i18n.bento.matchesCard.empty }}</td>
+                </tr>
               } @else {
-                <!-- Default semantic mock row when no search query has been entered yet -->
+                <!-- Default semantic preview rows when no player search has been performed yet -->
                 <tr>
                   <th scope="row"><span class="text-victory">{{ i18n.bento.matchesCard.victory }}</span></th>
                   <td>Ascent</td>
                   <td>Jett</td>
-                  <td>13 - 7</td>
+                  <td>—</td>
                   <td>22 / 11 / 4</td>
-                  <td>284</td>
+                  <td>—</td>
                 </tr>
                 <tr>
                   <th scope="row"><span class="text-defeat">{{ i18n.bento.matchesCard.defeat }}</span></th>
                   <td>Haven</td>
                   <td>Sova</td>
-                  <td>9 - 13</td>
+                  <td>—</td>
                   <td>16 / 15 / 9</td>
-                  <td>198</td>
+                  <td>—</td>
                 </tr>
               }
             </tbody>
@@ -267,7 +297,7 @@ import {
       >
         <div class="role-coach-content">
           <p class="role-summary">
-            <strong>Duelista Primario (Jett / Reyna):</strong> Alta eficiencia en entrada y apertura de sitios (78% First Bloods). Se detecta oportunidad de rotación cuando el ancla centinela cae en el sitio opuesto.
+            {{ roleCoachSummary() }}
           </p>
         </div>
       </app-bento-card>
@@ -344,13 +374,19 @@ import {
       gap: 6px;
     }
 
+    .region-field {
+      flex: 0 1 180px;
+      min-width: 140px;
+    }
+
     .input-label {
       font-size: 13px;
       font-weight: 600;
       color: var(--color-text-secondary);
     }
 
-    .search-input {
+    .search-input,
+    .region-select {
       background-color: var(--color-bg-page);
       border: 1px solid var(--color-border-input);
       border-radius: var(--radius-control);
@@ -358,10 +394,19 @@ import {
       color: var(--color-text-primary);
       min-height: var(--min-touch-target);
       transition: border-color var(--transition-fast);
+      font-family: inherit;
+      font-size: 14px;
     }
 
-    .search-input:focus-visible {
+    .region-select {
+      cursor: pointer;
+    }
+
+    .search-input:focus-visible,
+    .region-select:focus-visible {
       border-color: var(--color-focus);
+      outline: 2px solid var(--color-focus);
+      outline-offset: 2px;
     }
 
     .hero-btn {
@@ -568,6 +613,7 @@ export class SummaryComponent {
   private readonly api = inject(ApiClientService);
 
   searchQuery = 'TenZ#0001';
+  selectedRegion = 'eu';
   readonly loading = signal(false);
   readonly syncing = signal(false);
   readonly errorMessage = signal<string | null>(null);
@@ -579,14 +625,124 @@ export class SummaryComponent {
   readonly uploadedFileName = signal<string | null>(null);
   readonly economyMode = signal<'trend' | 'rounds'>('trend');
   readonly latestPlanItems = signal<{ title: string; description: string }[]>([]);
+  readonly latestReport = signal<CoachingReportSummary | null>(null);
 
-  calculatedAcs(): number {
-    const s = this.stats();
-    if (s && s.kd_ratio) {
-      return Math.round(s.kd_ratio * 180);
+  calculatedAcs(): number | null {
+    const mList = this.matches();
+    const acsValues: number[] = [];
+    for (const m of mList) {
+      let rounds: number | null = null;
+      if (m.round_score) {
+        const parts = m.round_score.split('-').map((s) => parseInt(s.trim(), 10));
+        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+          const sum = parts[0] + parts[1];
+          if (sum > 0) {
+            rounds = sum;
+          }
+        }
+      }
+
+      if (typeof m.score === 'number' && m.score >= 0) {
+        if (rounds !== null && rounds > 0) {
+          acsValues.push(Math.round(m.score / rounds));
+        }
+      } else if (
+        m.provider === 'vision' &&
+        typeof m.provider_score === 'number' &&
+        m.provider_score >= 0
+      ) {
+        acsValues.push(Math.round(m.provider_score));
+      }
     }
-    return 231;
+    if (acsValues.length > 0) {
+      return Math.round(
+        acsValues.reduce((sum, val) => sum + val, 0) / acsValues.length
+      );
+    }
+    const st = this.stats();
+    if (st && typeof (st as any).avg_score === 'number' && (st as any).avg_score >= 0) {
+      const avg = (st as any).avg_score;
+      if (avg <= 500) {
+        return Math.round(avg);
+      }
+    }
+    return null;
   }
+
+  readonly economyTrendSummary = computed(() => {
+    const report = this.latestReport();
+    if (report && report.payload) {
+      const flaws = (report.payload['critical_flaws'] as string[]) || [];
+      const econFlaw = flaws.find((f: string) => f.toLowerCase().includes('econom'));
+      if (econFlaw) {
+        return `Diagnóstico del coach: ${econFlaw}`;
+      }
+      const plan = (report.payload['training_plan'] as string[]) || [];
+      const econPlan = plan.find((p: string) => p.toLowerCase().includes('finanzas') || p.toLowerCase().includes('econom'));
+      if (econPlan) {
+        return `Recomendación financiera: ${econPlan}`;
+      }
+    }
+    const st = this.stats();
+    if (st && typeof st.win_pct === 'number' && st.win_pct > 0) {
+      const winPctStr = (st.win_pct * (st.win_pct <= 1 ? 100 : 1)).toFixed(1);
+      return `Tendencia de rendimiento global: Tasa de victoria del ${winPctStr}%. Mantén la disciplina financiera en compras completas.`;
+    }
+    return 'Sin telemetría económica suficiente. Sincroniza partidas o genera un informe táctico para analizar la disciplina de compra.';
+  });
+
+  readonly economyRoundsSummary = computed(() => {
+    const report = this.latestReport();
+    if (report && report.payload) {
+      const plan = (report.payload['training_plan'] as string[]) || [];
+      const econPlan = plan.find((p: string) => p.toLowerCase().includes('finanzas') || p.toLowerCase().includes('econom'));
+      if (econPlan) {
+        return `Análisis de la última partida: ${econPlan}`;
+      }
+      const summary = report.summary || (report.payload['executive_summary'] as string);
+      if (summary) {
+        return `Resumen táctico de partida: ${summary.slice(0, 140)}...`;
+      }
+    }
+    const m = this.matches();
+    if (m.length > 0) {
+      const last = m[0];
+      return `Última partida registrada en ${last.map_name} con ${last.agent_name} (${last.result}). Revisa el desglose de rondas para optimizar el gasto de créditos.`;
+    }
+    return 'No hay datos de rondas disponibles para la última partida. Juega una partida o sube un marcador para visualizar la evolución económica.';
+  });
+
+  readonly roleCoachSummary = computed(() => {
+    const report = this.latestReport();
+    if (report && report.payload) {
+      const flaws = (report.payload['critical_flaws'] as string[]) || [];
+      const roleFlaw = flaws.find((f: string) => f.toLowerCase().includes('rol'));
+      if (roleFlaw) {
+        return `Diagnóstico de rol: ${roleFlaw}`;
+      }
+    }
+    const m = this.matches();
+    if (m.length > 0) {
+      const agentCounts = new Map<string, number>();
+      for (const match of m) {
+        if (match.agent_name) {
+          agentCounts.set(match.agent_name, (agentCounts.get(match.agent_name) || 0) + 1);
+        }
+      }
+      let topAgent = '';
+      let topCount = 0;
+      for (const [agent, count] of agentCounts.entries()) {
+        if (count > topCount) {
+          topAgent = agent;
+          topCount = count;
+        }
+      }
+      if (topAgent) {
+        return `Agente más jugado recientemente: ${topAgent} (${topCount} partida${topCount > 1 ? 's' : ''}). Mantén sinergia con la composición de tu equipo y solicita utilidad de apoyo.`;
+      }
+    }
+    return 'Sincroniza tus partidas para obtener un análisis personalizado de tu rol y utilidad en cada mapa.';
+  });
 
   onSearch(): void {
     const trimmed = this.searchQuery.trim();
@@ -600,12 +756,13 @@ export class SummaryComponent {
     this.loading.set(true);
 
     const [gameName, tagLine] = trimmed.split('#');
-    this.api.getPlayer(gameName, tagLine).subscribe({
+    this.api.getPlayer(gameName, tagLine, this.selectedRegion).subscribe({
       next: (profile: PlayerProfile) => {
         this.playerProfile.set(profile);
-        this.loadRecentMatches(gameName, tagLine);
+        const effectiveRegion: string | undefined = this.selectedRegion || (profile.region ? String(profile.region) : undefined);
+        this.loadRecentMatches(gameName, tagLine, effectiveRegion);
         this.loadStats(gameName, tagLine);
-        this.loadCoachingReport(gameName, tagLine);
+        this.loadCoachingReport(gameName, tagLine, effectiveRegion);
       },
       error: () => {
         this.loading.set(false);
@@ -621,11 +778,12 @@ export class SummaryComponent {
     this.syncing.set(true);
     this.syncMessage.set(null);
 
-    this.api.syncPlayer(profile.game_name, profile.tag_line).subscribe({
+    const effectiveRegion: string | undefined = this.selectedRegion || (profile.region ? String(profile.region) : undefined);
+    this.api.syncPlayer(profile.game_name, profile.tag_line, effectiveRegion).subscribe({
       next: (_res: { status: string; new_report_generated: boolean; report_id?: string }) => {
         this.syncing.set(false);
         this.syncMessage.set('Sincronización completada exitosamente.');
-        this.loadRecentMatches(profile.game_name, profile.tag_line);
+        this.loadRecentMatches(profile.game_name, profile.tag_line, effectiveRegion);
         this.loadStats(profile.game_name, profile.tag_line);
       },
       error: (err: { error?: { detail?: string } }) => {
@@ -635,8 +793,8 @@ export class SummaryComponent {
     });
   }
 
-  private loadRecentMatches(gameName: string, tagLine: string): void {
-    this.api.getPlayerMatches(gameName, tagLine, 5).subscribe({
+  private loadRecentMatches(gameName: string, tagLine: string, region?: string): void {
+    this.api.getPlayerMatches(gameName, tagLine, 5, region).subscribe({
       next: (res: { matches: PlayerMatch[]; count: number }) => {
         this.matches.set(res.matches || []);
         this.loading.set(false);
@@ -654,17 +812,29 @@ export class SummaryComponent {
     });
   }
 
-  private loadCoachingReport(gameName: string, tagLine: string): void {
-    this.api.getCoachingReports(gameName, tagLine, 1).subscribe({
+  private loadCoachingReport(gameName: string, tagLine: string, region?: string): void {
+    this.api.getCoachingReports(gameName, tagLine, 1, region).subscribe({
       next: (res: { reports: CoachingReportSummary[]; count: number }) => {
         if (res.reports && res.reports.length > 0) {
           const report = res.reports[0];
-          if (report.strengths && report.weaknesses) {
-            this.latestPlanItems.set([
-              { title: 'Fortaleza clave', description: report.strengths.slice(0, 80) },
-              { title: 'Área de mejora', description: report.weaknesses.slice(0, 80) },
-              { title: 'Recomendación táctica', description: (report.summary ?? '').slice(0, 80) },
-            ]);
+          this.latestReport.set(report);
+          const payload = (report.payload || {}) as Record<string, any>;
+          const strengths = report.strengths || (Array.isArray(payload['key_strengths']) ? (payload['key_strengths'] as string[]).join(', ') : '');
+          const weaknesses = report.weaknesses || (Array.isArray(payload['critical_flaws']) ? (payload['critical_flaws'] as string[]).join(', ') : '');
+          const summary = report.summary || (typeof payload['executive_summary'] === 'string' ? payload['executive_summary'] : '');
+
+          const items: { title: string; description: string }[] = [];
+          if (strengths) {
+            items.push({ title: 'Fortaleza clave', description: strengths.slice(0, 120) });
+          }
+          if (weaknesses) {
+            items.push({ title: 'Área de mejora', description: weaknesses.slice(0, 120) });
+          }
+          if (summary) {
+            items.push({ title: 'Recomendación táctica', description: summary.slice(0, 120) });
+          }
+          if (items.length > 0) {
+            this.latestPlanItems.set(items);
           }
         }
       },

@@ -80,13 +80,14 @@ class PlayerService:
         )
 
     async def get_complete_player_profile(
-        self, game_name: str, tag_line: str
+        self, game_name: str, tag_line: str, *, region: str | None = None
     ) -> PlayerProfile:
-        profile = await self.get_player(game_name, tag_line)
+        profile = await self.get_player(game_name, tag_line, region=region)
+        effective_region = region or profile.region
         if not profile.rank_name:
             try:
                 rank = await self.get_rank(
-                    game_name, tag_line, puuid=profile.puuid, region=profile.region
+                    game_name, tag_line, puuid=profile.puuid, region=effective_region
                 )
                 profile.rank_name = rank.tier_name
                 profile.rank_icon_url = rank.rank_icon_url
@@ -94,7 +95,9 @@ class PlayerService:
                 logger.debug("Rank enrichment unavailable")
         return profile
 
-    async def get_player(self, game_name: str, tag_line: str) -> PlayerProfile:
+    async def get_player(
+        self, game_name: str, tag_line: str, *, region: str | None = None
+    ) -> PlayerProfile:
         errors: list[Exception] = []
         if self.tracker is not None:
             try:
@@ -113,6 +116,7 @@ class PlayerService:
                 return PlayerProfile(
                     game_name=game_name,
                     tag_line=tag_line,
+                    region=region,
                     avatar_url=data.identity.avatar_url,
                     rank_name=rank_name,
                     rank_icon_url=rank_icon,
@@ -128,7 +132,7 @@ class PlayerService:
                     puuid=data.puuid,
                     game_name=data.name,
                     tag_line=data.tag,
-                    region=data.region,
+                    region=region or data.region,
                     account_level=data.account_level,
                     source="henrik",
                 )
@@ -142,7 +146,7 @@ class PlayerService:
                     puuid=data.puuid,
                     game_name=data.game_name,
                     tag_line=data.tag_line,
-                    region=data.region,
+                    region=region or data.region,
                     account_level=data.account_level,
                     source="riot",
                 )
@@ -152,9 +156,9 @@ class PlayerService:
         self._raise_failure(errors, "Player")
 
     async def get_player_identity(
-        self, game_name: str, tag_line: str
+        self, game_name: str, tag_line: str, *, region: str | None = None
     ) -> PlayerIdentity:
-        profile = await self.get_player(game_name, tag_line)
+        profile = await self.get_player(game_name, tag_line, region=region)
         return PlayerIdentity.model_validate(profile.model_dump())
 
     async def get_stats_overview(
@@ -189,17 +193,23 @@ class PlayerService:
         self._raise_failure(errors, "Lifetime statistics")
 
     async def get_player_overview(
-        self, game_name: str, tag_line: str, *, limit: int = 10
+        self,
+        game_name: str,
+        tag_line: str,
+        *,
+        region: str | None = None,
+        limit: int = 10,
     ) -> CompletePlayerProfile:
-        identity = await self.get_player_identity(game_name, tag_line)
+        identity = await self.get_player_identity(game_name, tag_line, region=region)
+        effective_region = region or identity.region
         results = await asyncio.gather(
-            self.get_rank(game_name, tag_line, region=identity.region),
+            self.get_rank(game_name, tag_line, region=effective_region),
             self.get_stats_overview(game_name, tag_line),
             self.get_recent_matches(
                 game_name,
                 tag_line,
                 puuid=identity.puuid,
-                region=identity.region,
+                region=effective_region,
                 limit=limit,
             ),
             return_exceptions=True,
@@ -224,8 +234,13 @@ class PlayerService:
     ) -> str:
         if region:
             return region
-        account = await self.henrik.get_account(game_name, tag_line)
-        return account.region
+        if self.henrik is not None:
+            try:
+                account = await self.henrik.get_account(game_name, tag_line)
+                return account.region
+            except Exception:
+                pass
+        return "eu"
 
     async def get_rank(
         self,
@@ -311,6 +326,7 @@ class PlayerService:
                         deaths=m.deaths,
                         assists=m.assists,
                         score=m.score,
+                        round_score=getattr(m, "round_score", None),
                         provider="tracker",
                         agent_name=m.agent_name,
                     )
@@ -328,6 +344,7 @@ class PlayerService:
                 summaries = []
                 for match in matches[:limit]:
                     result = "Unknown"
+                    round_score = None
                     if match.stats.team.lower() in ("red", "blue"):
                         own, other = (
                             (match.teams.red, match.teams.blue)
@@ -340,6 +357,7 @@ class PlayerService:
                                 if own > other
                                 else "Defeat" if own < other else "Draw"
                             )
+                            round_score = f"{own} - {other}"
                     summaries.append(
                         PlayerMatch(
                             match_id=match.metadata.id,
@@ -351,6 +369,7 @@ class PlayerService:
                             deaths=match.stats.deaths,
                             assists=match.stats.assists,
                             score=None,
+                            round_score=round_score,
                             provider="henrik",
                             provider_score=match.stats.score,
                             agent_name=match.stats.character.name,
@@ -377,6 +396,7 @@ class PlayerService:
                         deaths=m.player_stats.deaths,
                         assists=m.player_stats.assists,
                         score=m.player_stats.score,
+                        round_score=getattr(m, "round_score", None),
                         provider="riot",
                         agent_name=resolve_agent_name(m.player_stats.agent_name),
                     )
@@ -471,9 +491,18 @@ class PlayerService:
             ),
             AgentContext(),
         )
-        return output.report or {}
+        report = output.report or {}
+        if report and "created_at" not in report:
+            report["created_at"] = datetime.now(UTC).isoformat()
+        return report
 
-    async def get_coaching_report(self, report_id: str) -> dict[str, Any] | None:
+    async def get_coaching_report(
+        self,
+        report_id: str,
+        *,
+        game_name: str | None = None,
+        tag_line: str | None = None,
+    ) -> dict[str, Any] | None:
         return None
 
     async def list_coaching_reports(
@@ -543,7 +572,52 @@ class PlayerService:
             matches = []
         reports = await self.list_coaching_reports(game_name, tag_line, limit=10)
 
+        def _is_actual_weakness(text: str) -> bool:
+            t = text.lower().strip()
+            if not t:
+                return False
+            ignored_phrases = [
+                "no se detectaron",
+                "insuficiente",
+                "no disponible",
+                "sin errores",
+                "sin fallos",
+                "sin debilidades",
+                "sin compras",
+                "sin telemetría",
+                "sugerencia",
+            ]
+            return not any(phrase in t for phrase in ignored_phrases)
+
+        def _extract_focus_areas(
+            reps: list[dict[str, Any]],
+        ) -> tuple[list[str], list[str]]:
+            all_w: list[str] = []
+            latest_w: list[str] = []
+            if reps:
+                for i, rep in enumerate(reps):
+                    payload = rep.get("payload", {})
+                    crit = (
+                        payload.get("critical_flaws")
+                        or payload.get("critical_weaknesses")
+                        or []
+                    )
+                    weakness_texts = [
+                        w if isinstance(w, str) else w.get("area", str(w)) for w in crit
+                    ]
+                    valid_weaknesses = [
+                        w for w in weakness_texts if _is_actual_weakness(w)
+                    ]
+                    if i == 0:
+                        latest_w.extend(valid_weaknesses)
+                    else:
+                        all_w.extend(valid_weaknesses)
+            resolved = [area for area in set(all_w) if area not in latest_w]
+            return latest_w, resolved
+
         if not matches:
+            latest_weaknesses, resolved_areas = _extract_focus_areas(reports)
+
             return {
                 "game_name": game_name,
                 "tag_line": tag_line,
@@ -573,8 +647,8 @@ class PlayerService:
                     "change_pct": 0.0,
                     "data_points": [],
                 },
-                "resolved_focus_areas": [],
-                "active_focus_areas": [],
+                "resolved_focus_areas": resolved_areas,
+                "active_focus_areas": latest_weaknesses,
                 "agent_trends": {},
                 "trajectory_narrative": (
                     f"No recent matches recorded for {game_name}#{tag_line} yet. "
@@ -584,7 +658,7 @@ class PlayerService:
 
         sorted_matches = sorted(
             matches,
-            key=lambda m: (m.timestamp if isinstance(m.timestamp, (int, float)) else 0),
+            key=lambda m: m.timestamp if isinstance(m.timestamp, (int, float)) else 0,
         )
 
         kd_points = []
@@ -667,31 +741,7 @@ class PlayerService:
             for agent, s in agent_stats.items()
         }
 
-        all_weaknesses: list[str] = []
-        latest_weaknesses: list[str] = []
-        if reports:
-            for i, rep in enumerate(reports):
-                payload = rep.get("payload", {})
-                crit = payload.get("critical_weaknesses", [])
-                weakness_texts = [
-                    w if isinstance(w, str) else w.get("area", str(w)) for w in crit
-                ]
-                if i == 0:
-                    latest_weaknesses.extend(weakness_texts)
-                else:
-                    all_weaknesses.extend(weakness_texts)
-
-        resolved_areas = [
-            area for area in set(all_weaknesses) if area not in latest_weaknesses
-        ]
-
-        if not latest_weaknesses and not resolved_areas:
-            latest_weaknesses = [
-                "First Duel Conversion",
-                "Eco-Round Buy Discipline",
-            ]
-            if kd_trend == "improving":
-                resolved_areas = ["Crosshair Placement at Mid Range"]
+        latest_weaknesses, resolved_areas = _extract_focus_areas(reports)
 
         best_agent = (
             max(agent_trends.items(), key=lambda x: x[1]["win_pct"])[0]

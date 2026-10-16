@@ -21,7 +21,6 @@ frontend/web/dist/
 frontend/web/.angular/
 frontend/web/tests-results/
 frontend/web/playwright-report/
-frontend/streamlit_app/.streamlit/
 
 scraper/
 docs/

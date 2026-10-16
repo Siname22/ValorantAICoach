@@ -31,15 +31,6 @@ dependencies = [
     "python-multipart>=0.0.20",
 ]
 
-[project.optional-dependencies]
-frontend = [
-    "streamlit>=1.39.0",
-    "requests>=2.32.0",
-    "plotly>=5.18.0",
-    "pandas>=2.2.0",
-    "httpx>=0.28.1",
-]
-
 [dependency-groups]
 dev = [
     "black>=25.0.0",
@@ -69,7 +60,7 @@ target-version = ["py312"]
 [tool.ruff]
 line-length = 88
 target-version = "py312"
-src = ["backend", "tests", "agents", "frontend/streamlit_app"]
+src = ["backend", "tests", "agents"]
 
 [tool.ruff.lint]
 select = [
@@ -81,10 +72,6 @@ select = [
     "B",   # flake8-bugbear (likely bugs)
     "SIM", # flake8-simplify
 ]
-
-[tool.ruff.lint.per-file-ignores]
-# Preserve the reviewed multiline coaching instruction text verbatim.
-"frontend/streamlit_app/utils/coach_persona.py" = ["E501"]
 
 # ------------------------------------------------------------------------------
 # pytest

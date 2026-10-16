@@ -312,6 +312,7 @@ async def test_riot_history_fetches_real_details_for_selected_player(
     assert match.game_mode == "/Game/GameModes/Bomb/BombGameMode.BombGameMode_C"
     assert match.game_start_time == 1712345678000
     assert match.result == "Victory"
+    assert match.round_score == "13 - 7"
     assert match.player_stats.kills == 23
     assert match.player_stats.deaths == 7
     assert match.player_stats.assists == 4

@@ -188,6 +188,23 @@ class RiotProvider(BasePlayerDataProvider):
                     and all(t.get("won") is False for t in teams)
                 ):
                     result = "Draw"
+
+            other_team = next(
+                (
+                    t
+                    for t in teams
+                    if isinstance(team_id, str)
+                    and team_id
+                    and t.get("teamId") != team_id
+                ),
+                {},
+            )
+            round_score = None
+            if (
+                team.get("roundsWon") is not None
+                and other_team.get("roundsWon") is not None
+            ):
+                round_score = f"{team.get('roundsWon')} - {other_team.get('roundsWon')}"
             return Match(
                 matchId=info["matchId"],
                 mapId=info["mapId"],
@@ -195,6 +212,7 @@ class RiotProvider(BasePlayerDataProvider):
                 gameStartTimeMillis=info["gameStartMillis"],
                 result=result,
                 player_stats=player_stats,
+                round_score=round_score,
             )
         except (KeyError, TypeError, ValueError):
             logger.warning("Skipping incomplete Riot match detail")

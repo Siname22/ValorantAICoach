@@ -103,9 +103,9 @@ class TimelineService:
         # Build player metadata lookup (puuid -> name, team, agent)
         players = match_detail.get("players", [])
         player_lookup: dict[str, dict[str, str]] = {}
-        friendly_team: str | None = None
-
         norm_ident = player_identifier.lower().strip() if player_identifier else None
+        friendly_team_exact: str | None = None
+        friendly_team_fallback: str | None = None
 
         for p in players:
             puuid = str(p.get("puuid", ""))
@@ -120,14 +120,27 @@ class TimelineService:
                 "puuid": puuid,
             }
 
-            if norm_ident and (
-                norm_ident == puuid.lower()
-                or norm_ident == display_name.lower()
-                or norm_ident == gname.lower()
-            ):
-                friendly_team = team_id
+            if norm_ident:
+                # 1. Exact match by PUUID or full Riot ID "Name#Tag"
+                if (puuid and norm_ident == puuid.lower()) or (
+                    norm_ident == display_name.lower()
+                ):
+                    friendly_team_exact = team_id
+                elif (
+                    # If identifier has tag ("name#tag"), only match by name if
+                    # player has NO tagLine (never match conflicting tags)
+                    "#" in norm_ident
+                    and not tag
+                    and gname
+                    and norm_ident.split("#")[0] == gname.lower()
+                ) or ("#" not in norm_ident and gname and norm_ident == gname.lower()):
+                    friendly_team_fallback = team_id
 
-        if not friendly_team and players:
+        friendly_team = friendly_team_exact or friendly_team_fallback
+
+        if not friendly_team and match_detail.get("friendlyTeam"):
+            friendly_team = str(match_detail["friendlyTeam"])
+        elif not friendly_team and not norm_ident and players:
             friendly_team = str(players[0].get("teamId", "Blue"))
 
         raw_rounds = match_detail.get("roundResults", [])

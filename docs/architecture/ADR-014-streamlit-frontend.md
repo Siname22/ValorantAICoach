@@ -1,7 +1,7 @@
 # ADR-014: Selección de Streamlit como Frontend Interactivo frente a Alternativas SPA
 
 ## Estado
-Aceptado
+Supercedido por [ADR-015](ADR-015-angular-hud-bento-frontend-migration.md)
 
 ## Contexto
 El proyecto Valorant AI Coach requería una interfaz de usuario interactiva y profesional para presentar el análisis táctico, visualizaciones de mapas y trayectorias, análisis de repeticiones y chat en tiempo real con el AI Coach de Gemini. Se evaluaron las siguientes alternativas principales:

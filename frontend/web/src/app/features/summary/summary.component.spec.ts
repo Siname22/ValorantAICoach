@@ -112,6 +112,219 @@ describe('SummaryComponent', () => {
 
     component.onSearch();
 
-    expect(apiSpy.getPlayer).toHaveBeenCalledWith('TestPlayer', 'EUW');
+    expect(apiSpy.getPlayer).toHaveBeenCalledWith('TestPlayer', 'EUW', 'eu');
+  });
+
+  it('should calculate ACS accurately from scored matches and not fabricate 231 or kd*180', () => {
+    // When no matches or stats, calculatedAcs should be null
+    component.matches.set([]);
+    component.stats.set(null);
+    expect(component.calculatedAcs()).toBeNull();
+
+    // When matches have total scores and round_score, divide total score by rounds
+    component.matches.set([
+      {
+        match_id: 'm1',
+        map_name: 'Ascent',
+        result: 'Victory',
+        kills: 20,
+        deaths: 10,
+        assists: 5,
+        score: 6000,
+        round_score: '13 - 7', // 20 rounds -> ACS 300
+        agent_name: 'Jett',
+      },
+      {
+        match_id: 'm2',
+        map_name: 'Bind',
+        result: 'Defeat',
+        kills: 15,
+        deaths: 15,
+        assists: 2,
+        score: 4000,
+        round_score: '7 - 13', // 20 rounds -> ACS 200
+        agent_name: 'Raze',
+      },
+    ]);
+    expect(component.calculatedAcs()).toBe(250);
+
+    // Total score of 400 with 24 rounds ('13 - 11') calculates 17 ACS (never 400)
+    component.matches.set([
+      {
+        match_id: 'm-low-score',
+        map_name: 'Ascent',
+        result: 'Defeat',
+        kills: 2,
+        deaths: 18,
+        assists: 1,
+        score: 400,
+        round_score: '13 - 11',
+        agent_name: 'Cypher',
+      },
+    ]);
+    expect(component.calculatedAcs()).toBe(17);
+
+    // Total score of 400 WITHOUT round count must NOT be assumed to be 400 ACS
+    component.matches.set([
+      {
+        match_id: 'm-no-rounds-low',
+        map_name: 'Ascent',
+        result: 'Defeat',
+        kills: 2,
+        deaths: 18,
+        assists: 1,
+        score: 400,
+        agent_name: 'Cypher',
+      },
+    ]);
+    expect(component.calculatedAcs()).toBeNull();
+
+    // Vision provider matches provide direct ACS via provider_score
+    component.matches.set([
+      {
+        match_id: 'm-vision',
+        map_name: 'Split',
+        result: 'Victory',
+        kills: 22,
+        deaths: 12,
+        assists: 4,
+        score: null,
+        provider_score: 285,
+        provider: 'vision',
+        round_score: '13 - 9',
+        agent_name: 'Reyna',
+      },
+    ]);
+    expect(component.calculatedAcs()).toBe(285);
+
+    // Two matches with ACS 0 and 250 must average to 125 (never discarding 0 score)
+    component.matches.set([
+      {
+        match_id: 'm-zero',
+        map_name: 'Ascent',
+        result: 'Defeat',
+        kills: 0,
+        deaths: 15,
+        assists: 0,
+        score: 0,
+        round_score: '13 - 11', // 24 rounds -> ACS 0
+        agent_name: 'Sova',
+      },
+      {
+        match_id: 'm-250',
+        map_name: 'Bind',
+        result: 'Victory',
+        kills: 20,
+        deaths: 10,
+        assists: 5,
+        score: 6000,
+        round_score: '13 - 11', // 24 rounds -> ACS 250
+        agent_name: 'Jett',
+      },
+    ]);
+    expect(component.calculatedAcs()).toBe(125);
+
+    // When no scored matches but stats has avg_score
+    component.matches.set([]);
+    component.stats.set({
+      game_name: 'Test',
+      tag_line: 'EUW',
+      kills: 10,
+      deaths: 10,
+      assists: 5,
+      kd_ratio: 1.0,
+      win_pct: 0.5,
+      headshot_pct: 0.2,
+      avg_score: 275,
+    } as any);
+    expect(component.calculatedAcs()).toBe(275);
+
+    // Total match score of 6000 without round count must NOT return 6000
+    component.stats.set(null);
+    component.matches.set([
+      {
+        match_id: 'm-high',
+        map_name: 'Haven',
+        result: 'Victory',
+        kills: 25,
+        deaths: 12,
+        assists: 5,
+        score: 6000,
+        agent_name: 'Jett',
+      },
+    ]);
+    expect(component.calculatedAcs()).toBeNull();
+
+    // Total match score of 6000 WITH round_score '13 - 11' (24 rounds) divides correctly
+    component.matches.set([
+      {
+        match_id: 'm-high-rounds',
+        map_name: 'Haven',
+        result: 'Victory',
+        kills: 25,
+        deaths: 12,
+        assists: 5,
+        score: 6000,
+        round_score: '13 - 11',
+        agent_name: 'Jett',
+      },
+    ]);
+    expect(component.calculatedAcs()).toBe(250);
+
+    // Ensure damage_per_round is never multiplied by 1.45 to invent ACS
+    component.matches.set([]);
+    component.stats.set({
+      game_name: 'Test',
+      tag_line: 'EUW',
+      kills: 10,
+      deaths: 10,
+      assists: 5,
+      kd_ratio: 1.0,
+      win_pct: 0.5,
+      headshot_pct: 0.2,
+      damage_per_round: 150,
+    } as any);
+    expect(component.calculatedAcs()).toBeNull();
+  });
+
+  it('should render real match metrics and not display hardcoded 13 - 9 or fake 240', () => {
+    component.matches.set([
+      {
+        match_id: 'm1',
+        map_name: 'Split',
+        result: 'Victory',
+        kills: 18,
+        deaths: 12,
+        assists: 7,
+        score: 265,
+        round_score: '13 - 6',
+        agent_name: 'Omen',
+      },
+      {
+        match_id: 'm2',
+        map_name: 'Lotus',
+        result: 'Defeat',
+        kills: 10,
+        deaths: 14,
+        assists: 3,
+        agent_name: 'Fade',
+      },
+    ]);
+    fixture.detectChanges();
+
+    const tableText = fixture.nativeElement.querySelector('table').textContent;
+    // Real match 1
+    expect(tableText).toContain('13 - 6');
+    expect(tableText).toContain('265');
+    // Real match 2 without score or round_score should render dash, not 13 - 9 or 240
+    expect(tableText).not.toContain('13 - 9');
+    expect(tableText).not.toContain('240');
+  });
+
+  it('should not display hardcoded 72.5% economy narrative', () => {
+    fixture.detectChanges();
+    const trendDesc = fixture.nativeElement.querySelector('#econ-trend-desc');
+    expect(trendDesc.textContent).not.toContain('72.5%');
   });
 });
+

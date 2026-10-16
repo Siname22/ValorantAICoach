@@ -48,8 +48,11 @@ async def get_player_profile(
     game_name: GameName,
     tag_line: TagLine,
     service: Service,
+    region: RegionQuery = None,
 ) -> PlayerProfileResponse:
-    profile = await service.get_complete_player_profile(game_name, tag_line)
+    profile = await service.get_complete_player_profile(
+        game_name, tag_line, region=region
+    )
     return PlayerProfileResponse(**profile.model_dump())
 
 
@@ -112,9 +115,12 @@ async def get_player_overview(
     game_name: GameName,
     tag_line: TagLine,
     service: Service,
+    region: RegionQuery = None,
     limit: Annotated[int, Query(ge=1, le=20)] = 10,
 ) -> CompletePlayerProfile:
-    return await service.get_player_overview(game_name, tag_line, limit=limit)
+    return await service.get_player_overview(
+        game_name, tag_line, region=region, limit=limit
+    )
 
 
 @router.post(
@@ -184,7 +190,9 @@ async def get_coaching_report(
     report_id: Annotated[str, Path(min_length=1, max_length=64)],
     service: Service,
 ) -> CoachingReportResponse:
-    report = await service.get_coaching_report(report_id)
+    report = await service.get_coaching_report(
+        report_id, game_name=game_name, tag_line=tag_line
+    )
     if report is None:
         raise HTTPException(status_code=404, detail="Coaching report not found.")
     return CoachingReportResponse(**report)
