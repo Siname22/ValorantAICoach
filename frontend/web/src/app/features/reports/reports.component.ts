@@ -266,6 +266,8 @@ export function toReportSummary(rep: ReportLike): CoachingReportSummary {
 export class ReportsComponent implements OnInit {
   private readonly api = inject(ApiClientService);
   private readonly activePlayer = inject(ActivePlayerService);
+  private historyRequestVersion = 0;
+  private progressionRequestVersion = 0;
   readonly i18n = I18N_ES;
 
   readonly player = this.activePlayer.player;
@@ -281,6 +283,7 @@ export class ReportsComponent implements OnInit {
   }
 
   loadHistory(): void {
+    const requestVersion = ++this.historyRequestVersion;
     const p = this.activePlayer.player();
     const version = this.activePlayer.version();
     this.reports.set([]);
@@ -291,13 +294,15 @@ export class ReportsComponent implements OnInit {
     this.loadingHistory.set(true);
     this.api.getCoachingReports(p.gameName, p.tagLine, 20, p.region).subscribe({
       next: (res: { reports: CoachingReportSummary[]; count: number }) => {
-        if (!this.activePlayer.isCurrent(p.gameName, p.tagLine, p.region, version)) return;
+        if (requestVersion !== this.historyRequestVersion ||
+            !this.activePlayer.isCurrent(p.gameName, p.tagLine, p.region, version)) return;
         this.reports.set((res.reports || []).map(toReportSummary));
         this.loadingHistory.set(false);
         this.loadProgression(version);
       },
       error: () => {
-        if (!this.activePlayer.isCurrent(p.gameName, p.tagLine, p.region, version)) return;
+        if (requestVersion !== this.historyRequestVersion ||
+            !this.activePlayer.isCurrent(p.gameName, p.tagLine, p.region, version)) return;
         this.loadingHistory.set(false);
         this.historyError.set(
           'No se pudo cargar el historial de informes de ' +
@@ -308,11 +313,13 @@ export class ReportsComponent implements OnInit {
   }
 
   loadProgression(version = this.activePlayer.version()): void {
+    const requestVersion = ++this.progressionRequestVersion;
     const p = this.activePlayer.player();
     if (!p) return;
     this.api.getPlayerProgression(p.gameName, p.tagLine, p.region).subscribe({
       next: (prog: PlayerProgressionResponse) => {
-        if (this.activePlayer.isCurrent(p.gameName, p.tagLine, p.region, version)) this.progression.set(prog);
+        if (requestVersion === this.progressionRequestVersion &&
+            this.activePlayer.isCurrent(p.gameName, p.tagLine, p.region, version)) this.progression.set(prog);
       },
       error: () => {
         // Progression is optional; absence is shown as "no data".
@@ -332,6 +339,7 @@ export class ReportsComponent implements OnInit {
         if (!this.activePlayer.isCurrent(p.gameName, p.tagLine, p.region, version)) return;
         this.generating.set(false);
         if (detail && detail.id && detail.payload) {
+          ++this.historyRequestVersion;
           this.statusMessage.set('¡Informe de coaching generado con éxito!');
           const item = toReportSummary(detail);
           this.reports.update((list) => [item, ...list.filter((r) => r.id !== item.id)]);

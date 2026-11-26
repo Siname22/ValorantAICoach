@@ -81,9 +81,12 @@ class PersistentPlayerService(PlayerService):
         self, game_name: str, tag_line: str, *, region: str | None = None
     ) -> PlayerProfile:
         fetch = super().get_player
+        parameters = {"game_name": game_name, "tag_line": tag_line, "region": region}
+        if region:
+            parameters["region_validation_version"] = 2
         return await self._cached(
             "profile",
-            {"game_name": game_name, "tag_line": tag_line, "region": region},
+            parameters,
             TypeAdapter(PlayerProfile),
             lambda: self._model_result(
                 lambda: fetch(game_name, tag_line, region=region)
@@ -99,14 +102,17 @@ class PersistentPlayerService(PlayerService):
         region: str | None = None,
     ) -> PlayerRank:
         fetch = super().get_rank
+        parameters = {
+            "game_name": game_name,
+            "tag_line": tag_line,
+            "puuid": puuid,
+            "region": region,
+        }
+        if region:
+            parameters["region_validation_version"] = 2
         return await self._cached(
             "rank",
-            {
-                "game_name": game_name,
-                "tag_line": tag_line,
-                "puuid": puuid,
-                "region": region,
-            },
+            parameters,
             TypeAdapter(PlayerRank),
             lambda: self._model_result(
                 lambda: fetch(game_name, tag_line, puuid, region=region)
@@ -142,15 +148,18 @@ class PersistentPlayerService(PlayerService):
             )
             return matches, [provider]
 
+        parameters = {
+            "game_name": game_name,
+            "tag_line": tag_line,
+            "puuid": puuid,
+            "region": region,
+            "limit": limit,
+        }
+        if region:
+            parameters["region_validation_version"] = 2
         return await self._cached(
             "matches",
-            {
-                "game_name": game_name,
-                "tag_line": tag_line,
-                "puuid": puuid,
-                "region": region,
-                "limit": limit,
-            },
+            parameters,
             TypeAdapter(list[PlayerMatch]),
             fetch,
         )
@@ -178,6 +187,7 @@ class PersistentPlayerService(PlayerService):
         *,
         region: str | None = None,
         limit: int = 5,
+        user_id: str | None = None,
     ) -> dict[str, Any]:
         report = await super().generate_coaching_report(
             game_name, tag_line, region=region, limit=limit
@@ -195,11 +205,12 @@ class PersistentPlayerService(PlayerService):
             "orchestrator",
             report_id,
             {"game_name": game_name, "tag_line": tag_line},
+            user_id,
         )
         saved_record = None
         try:
             saved_record = await self.get_coaching_report(
-                saved_id, game_name=game_name, tag_line=tag_line
+                saved_id, game_name=game_name, tag_line=tag_line, user_id=user_id
             )
         except PlayerServiceUnavailableError:
             logger.warning(
@@ -224,9 +235,19 @@ class PersistentPlayerService(PlayerService):
         *,
         game_name: str | None = None,
         tag_line: str | None = None,
+        user_id: str | None = None,
+        region: str | None = None,
     ) -> dict[str, Any] | None:
         report = await self._storage_call(self.store.get_coaching_report, report_id)
         if report is None:
+            return None
+        if user_id is not None and report.get("owner_user_id") != user_id:
+            return None
+        if (
+            region is not None
+            and (report.get("payload") or {}).get("region", "").lower()
+            != region.lower()
+        ):
             return None
         if game_name and tag_line:
             payload = report.get("payload") or {}
@@ -265,6 +286,7 @@ class PersistentPlayerService(PlayerService):
         *,
         region: str | None = None,
         limit: int = 10,
+        user_id: str | None = None,
     ) -> list[dict[str, Any]]:
         player_id = request_key(
             "identity", {"game_name": game_name, "tag_line": tag_line}
@@ -276,6 +298,7 @@ class PersistentPlayerService(PlayerService):
             game_name,
             tag_line,
             region,
+            user_id,
         )
 
     async def ready(self) -> dict[str, Any]:
@@ -348,9 +371,16 @@ class PersistentPlayerService(PlayerService):
         )
 
     async def sync_player_coaching(
-        self, game_name: str, tag_line: str, *, region: str | None = None
+        self,
+        game_name: str,
+        tag_line: str,
+        *,
+        region: str | None = None,
+        user_id: str | None = None,
     ) -> dict[str, Any]:
-        result = await super().sync_player_coaching(game_name, tag_line, region=region)
+        result = await super().sync_player_coaching(
+            game_name, tag_line, region=region, user_id=user_id
+        )
         await self._storage_call(
             self.store.update_account_sync_time, game_name, tag_line
         )

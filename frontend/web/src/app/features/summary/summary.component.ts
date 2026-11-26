@@ -546,6 +546,7 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SummaryComponent implements OnInit {
+  private matchRequestVersion = 0;
   readonly i18n = I18N_ES;
   private readonly api = inject(ApiClientService);
   private readonly activePlayer = inject(ActivePlayerService);
@@ -716,6 +717,7 @@ export class SummaryComponent implements OnInit {
     const active = this.activePlayer.player();
     if (!active) return;
     const version = this.activePlayer.version();
+    ++this.matchRequestVersion;
     this.syncing.set(true);
     this.syncMessage.set(null);
     const { gameName, tagLine, region: effectiveRegion } = active;
@@ -735,14 +737,17 @@ export class SummaryComponent implements OnInit {
   }
 
   private loadRecentMatches(gameName: string, tagLine: string, region: string, version: number): void {
+    const requestVersion = ++this.matchRequestVersion;
     this.api.getPlayerMatches(gameName, tagLine, 5, region).subscribe({
       next: (res: { matches: PlayerMatch[]; count: number }) => {
-        if (!this.activePlayer.isCurrent(gameName, tagLine, region, version)) return;
+        if (requestVersion !== this.matchRequestVersion ||
+            !this.activePlayer.isCurrent(gameName, tagLine, region, version)) return;
         this.matches.set(res.matches || []);
         this.loading.set(false);
       },
       error: () => {
-        if (!this.activePlayer.isCurrent(gameName, tagLine, region, version)) return;
+        if (requestVersion !== this.matchRequestVersion ||
+            !this.activePlayer.isCurrent(gameName, tagLine, region, version)) return;
         this.loading.set(false);
         this.dataError.set(
           'No se pudieron cargar las partidas recientes. No se muestran datos de ejemplo.'

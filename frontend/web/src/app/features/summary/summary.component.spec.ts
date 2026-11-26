@@ -171,6 +171,25 @@ describe('SummaryComponent', () => {
     expect(apiSpy.getPlayerMatches).toHaveBeenCalledWith('Alpha', 'EU1', 5, 'eu');
   });
 
+  it('does not let an earlier match response replace post-sync matches', () => {
+    const pending = new Subject<{ matches: import('../../core/api/api-models').PlayerMatch[]; count: number }>();
+    const freshMatch = {
+      match_id: 'fresh', map_name: 'Ascent', result: 'Victory',
+      kills: 2, deaths: 1, assists: 1, agent_name: 'Sova',
+    };
+    const oldMatch = { ...freshMatch, match_id: 'old' };
+    apiSpy.getPlayer.and.returnValue(of({ game_name: 'Alpha', tag_line: 'TEST', region: 'eu' }));
+    apiSpy.getPlayerMatches.and.returnValues(pending, of({ matches: [freshMatch], count: 1 }));
+    apiSpy.getCoachingReports.and.returnValue(of({ reports: [], count: 0 }));
+    apiSpy.syncPlayer.and.returnValue(of({ status: 'ok', new_report_generated: false }));
+    component.searchQuery = 'Alpha#TEST';
+    component.selectedRegion = 'eu';
+    component.onSearch();
+    component.onSync();
+    pending.next({ matches: [oldMatch], count: 1 });
+    expect(component.matches().map((match) => match.match_id)).toEqual(['fresh']);
+  });
+
   it('should calculate ACS accurately from scored matches and not fabricate 231 or kd*180', () => {
     // When no matches, calculatedAcs should be null.
     component.matches.set([]);

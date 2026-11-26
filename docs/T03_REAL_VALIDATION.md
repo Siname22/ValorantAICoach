@@ -34,7 +34,11 @@ Registra fecha, commit, versiones, proveedor utilizado (sin clave), regiones, re
 
 ## Informes anteriores
 
-Los informes guardados antes de T03 no tienen región. Permanecen en la base de datos y en la consulta API **sin** parámetro `region`; las consultas regionales y la vista actual no los atribuyen a ninguna región. No se migran automáticamente porque la región original no se puede deducir de forma fiable.
+Los informes guardados antes de T03 no tienen región ni propietario verificable. Permanecen en la base de datos, pero las consultas API autenticadas filtran por el usuario que generó cada informe: los registros antiguos sin propietario no aparecen ni se recuperan por ID. No se atribuyen automáticamente a una región o usuario porque esos datos no se pueden deducir de forma fiable. La migración `20261126_01` añade el propietario nullable y conserva los registros anteriores.
+
+Las lecturas de historial, progresión y detalle requieren sesión. Los informes nuevos solo son visibles para el usuario que los generó y, cuando se solicita una región, para esa región. La vinculación de una cuenta de jugador sigue siendo una declaración del usuario; verificar que es su titular exige el proceso de permisos previsto en T02/T06.
+
+Para una región seleccionada, HenrikDev verifica la región real de la cuenta antes de utilizar datos de HenrikDev, Tracker o Riot. Si no hay un verificador regional disponible, la API devuelve un error explícito en vez de asignar la región configurada de Riot a la cuenta. Las instantáneas regionales anteriores quedan fuera de la nueva versión de claves de caché y expiran por su TTL normal.
 
 Al terminar, `docker compose --env-file .env.t03 down` detiene los contenedores y conserva el volumen PostgreSQL. No uses `down -v` si necesitas conservar los datos de la prueba.
 
@@ -53,5 +57,7 @@ El 26 de noviembre de 2026 se instaló Docker Desktop por usuario y se verificar
 - Compilación y lint del frontend, 66 pruebas del frontend y 491 pruebas del backend pasaron. También pasaron Ruff, Black y `git diff --check`.
 
 **Resultado:** los criterios funcionales de T03 se verificaron con HenrikDev y PostgreSQL reales. Esta aceptación no certifica otros proveedores ni el detalle por rondas cuando el proveedor no lo entrega. En esta base de prueba no había informes anteriores sin región; su tratamiento se verificó en código y pruebas, no con un registro histórico real.
+
+La prueba real anterior corresponde al código previo a la revisión de la PR #13. Tras añadir la migración de propiedad y los controles de lectura, se deben repetir el registro/inicio de sesión, la generación y la recuperación de un informe con el proveedor y PostgreSQL reales antes de aceptar funcionalmente el nuevo commit. La CI verifica la migración y la persistencia en PostgreSQL con datos sintéticos.
 
 El commit `ca32238` modifica solo archivos de `lol-mod/map-dimensional/` y está en la base de `feature/t03-player-identity`. Se conserva expresamente en la rama local `codex/preserve-lol-map-audit-ca32238`. No muevas ni restablezcas la rama T03 mientras tenga cambios sin confirmar. Cuando termine la validación real, confirma **solo** los archivos de T03 y prepara una rama de integración nueva desde `d353aea` mediante `git cherry-pick` del commit T03. Comprueba que el diff de la rama nueva no contenga `lol-mod/` y repite las pruebas. Mantén la rama y el worktree actuales hasta verificar esa copia; así el commit de mapas y todos los cambios de T03 conservan sus referencias originales.

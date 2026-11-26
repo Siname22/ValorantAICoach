@@ -206,6 +206,7 @@ class SQLPlayerStore:
         provider: str = "orchestrator",
         report_id: str | None = None,
         identity: dict[str, str] | None = None,
+        owner_user_id: str | None = None,
     ) -> str:
         rep_id = report_id or str(uuid.uuid4())
         json.dumps(payload, allow_nan=False)
@@ -247,6 +248,7 @@ class SQLPlayerStore:
                 {
                     "id": rep_id,
                     "player_id": player_id,
+                    "owner_user_id": owner_user_id,
                     "schema_version": 1,
                     "provider": provider,
                     "payload": payload,
@@ -269,6 +271,7 @@ class SQLPlayerStore:
             return {
                 "id": record.id,
                 "player_id": record.player_id,
+                "owner_user_id": record.owner_user_id,
                 "player_name": player.game_name if player else None,
                 "player_tag": player.tag_line if player else None,
                 "schema_version": record.schema_version,
@@ -343,6 +346,7 @@ class SQLPlayerStore:
         game_name: str | None = None,
         tag_line: str | None = None,
         region: str | None = None,
+        owner_user_id: str | None = None,
     ) -> list[dict[str, Any]]:
         with Session(self.engine) as session:
             target_ids = {player_id}
@@ -364,6 +368,10 @@ class SQLPlayerStore:
                 statement = statement.where(
                     func.lower(CoachingReportRecord.payload["region"].as_string())
                     == region.lower()
+                )
+            if owner_user_id is not None:
+                statement = statement.where(
+                    CoachingReportRecord.owner_user_id == owner_user_id
                 )
             records = session.execute(statement).scalars().all()
             return [

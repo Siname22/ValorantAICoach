@@ -129,6 +129,70 @@ async def test_henrik_matches_reject_wrong_region(mock_henrik):
 
 
 @pytest.mark.asyncio
+async def test_tracker_cannot_bypass_requested_region(mock_tracker, mock_henrik):
+    mock_henrik.get_account.return_value = HenrikPlayer(
+        puuid="synthetic-puuid", name="Alpha", tag="TEST", region="eu", account_level=20
+    )
+    service = PlayerService(henrik_provider=mock_henrik, tracker_provider=mock_tracker)
+    with pytest.raises(PlayerNotFoundError):
+        await service.get_player("Alpha", "TEST", region="na")
+    with pytest.raises(PlayerNotFoundError):
+        await service.get_recent_matches("Alpha", "TEST", region="na")
+    with pytest.raises(PlayerNotFoundError):
+        await service.get_rank("Alpha", "TEST", puuid="synthetic-puuid", region="na")
+    mock_tracker.get_player_profile.assert_not_called()
+    mock_tracker.get_recent_matches.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_riot_configured_shard_is_not_verified_account_region(mock_riot):
+    mock_riot.get_player_by_riot_id.return_value = RiotPlayer(
+        puuid="synthetic-puuid", gameName="Alpha", tagLine="TEST", region="eu"
+    )
+    service = PlayerService(riot_provider=mock_riot)
+    with pytest.raises(PlayerServiceError, match="region"):
+        await service.get_player("Alpha", "TEST", region="na")
+    with pytest.raises(PlayerServiceError, match="region"):
+        await service.get_recent_matches(
+            "Alpha", "TEST", puuid="synthetic-puuid", region="na"
+        )
+
+
+@pytest.mark.asyncio
+async def test_regional_profile_uses_verified_henrik_not_unscoped_tracker(
+    mock_tracker, mock_henrik
+):
+    mock_henrik.get_account.return_value = HenrikPlayer(
+        puuid="synthetic-puuid", name="Alpha", tag="TEST", region="eu", account_level=20
+    )
+    mock_tracker.get_player_profile.return_value = TrackerPlayerModel(
+        identity=TrackerIdentity(
+            platformId="riot",
+            platformUserHandle="Alpha#TEST",
+            platformUserIdentifier="synthetic-puuid",
+        )
+    )
+    service = PlayerService(henrik_provider=mock_henrik, tracker_provider=mock_tracker)
+    profile = await service.get_player("Alpha", "TEST", region="eu")
+    assert profile.source == "henrik"
+    mock_tracker.get_player_profile.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_riot_match_shard_must_match_verified_region(mock_henrik, mock_riot):
+    mock_henrik.get_account.return_value = HenrikPlayer(
+        puuid="synthetic-puuid", name="Alpha", tag="TEST", region="na", account_level=20
+    )
+    mock_henrik.get_matches.side_effect = ServerError("unavailable")
+    mock_riot.config.region = "eu"
+    mock_riot.get_player_match_history.return_value = []
+    service = PlayerService(riot_provider=mock_riot, henrik_provider=mock_henrik)
+    with pytest.raises(PlayerServiceError):
+        await service.get_recent_matches("Alpha", "TEST", region="na")
+    mock_riot.get_player_match_history.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_get_player_fallback_to_riot(
     player_service, mock_tracker, mock_henrik, mock_riot
 ):

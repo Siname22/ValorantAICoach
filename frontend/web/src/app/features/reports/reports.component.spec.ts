@@ -142,6 +142,19 @@ describe('ReportsComponent', () => {
     expect(f.componentInstance.statusMessage()).toContain('éxito');
   });
 
+  it('does not let an earlier history response hide a newly generated report', () => {
+    const pending = new Subject<{ reports: CoachingReportSummary[]; count: number }>();
+    apiSpy.getCoachingReports.and.returnValue(pending);
+    apiSpy.generateCoachingReport.and.returnValue(of({
+      id: 'fresh-report', payload: { executive_summary: 'Nuevo' },
+      created_at: '2026-11-25T10:00:00Z',
+    } satisfies CoachingReportDetailResponse));
+    const f = create();
+    f.componentInstance.onGenerateReport();
+    pending.next({ reports: [], count: 0 });
+    expect(f.componentInstance.reports().map((report) => report.id)).toEqual(['fresh-report']);
+  });
+
   it('does not claim success when the backend returns no report', () => {
     apiSpy.generateCoachingReport.and.returnValue(of({ status: 'insufficient_data' } as CoachingReportDetailResponse));
     const f = create();

@@ -101,12 +101,15 @@ class PlayerMatchHistory(Base):
 
 
 class CoachingReportRecord(Base):
-    """Storage schema only; grounded report generation/ownership is not exposed yet."""
+    """Persisted report, optionally bound to the user who generated it."""
 
     __tablename__ = "coaching_reports"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     player_id: Mapped[str] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"))
+    owner_user_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, index=True
+    )
     schema_version: Mapped[int] = mapped_column(Integer)
     provider: Mapped[str] = mapped_column(String(32))
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)

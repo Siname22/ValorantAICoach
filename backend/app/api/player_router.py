@@ -142,7 +142,7 @@ async def generate_coaching_report(
     limit: Annotated[int, Query(ge=1, le=20)] = 5,
 ) -> CoachingReportResponse:
     report = await service.generate_coaching_report(
-        game_name, tag_line, region=region, limit=limit
+        game_name, tag_line, region=region, limit=limit, user_id=_user["id"]
     )
     rep_id = report.get("id") or report.get("report_id") or "report-gen"
     payload = report.get("payload") or report
@@ -169,11 +169,12 @@ async def list_coaching_reports(
     game_name: GameName,
     tag_line: TagLine,
     service: Service,
+    _user: CurrentUser,
     region: RegionQuery = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
 ) -> CoachingReportsListResponse:
     reports = await service.list_coaching_reports(
-        game_name, tag_line, region=region, limit=limit
+        game_name, tag_line, region=region, limit=limit, user_id=_user["id"]
     )
     return CoachingReportsListResponse(
         reports=[CoachingReportResponse(**r) for r in reports],
@@ -192,9 +193,15 @@ async def get_coaching_report(
     tag_line: TagLine,
     report_id: Annotated[str, Path(min_length=1, max_length=64)],
     service: Service,
+    _user: CurrentUser,
+    region: RegionQuery = None,
 ) -> CoachingReportResponse:
     report = await service.get_coaching_report(
-        report_id, game_name=game_name, tag_line=tag_line
+        report_id,
+        game_name=game_name,
+        tag_line=tag_line,
+        region=region,
+        user_id=_user["id"],
     )
     if report is None:
         raise HTTPException(status_code=404, detail="Coaching report not found.")
@@ -235,10 +242,11 @@ async def get_player_progression(
     game_name: GameName,
     tag_line: TagLine,
     service: Service,
+    _user: CurrentUser,
     region: RegionQuery = None,
 ) -> PlayerProgressionResponse:
     progression = await service.get_player_progression(
-        game_name, tag_line, region=region
+        game_name, tag_line, region=region, user_id=_user["id"]
     )
     return PlayerProgressionResponse(**progression)
 
@@ -260,7 +268,9 @@ async def sync_player(
     _user: CurrentUser,
     region: RegionQuery = None,
 ) -> PlayerSyncResponse:
-    sync_result = await service.sync_player_coaching(game_name, tag_line, region=region)
+    sync_result = await service.sync_player_coaching(
+        game_name, tag_line, region=region, user_id=_user["id"]
+    )
     return PlayerSyncResponse(**sync_result)
 
 

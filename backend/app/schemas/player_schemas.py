@@ -177,7 +177,7 @@ class PlayerProgressionResponse(BaseModel):
         ..., description="Historical coaching reports count"
     )
     kd_metric: PlayerProgressionMetric
-    headshot_metric: PlayerProgressionMetric
+    headshot_metric: PlayerProgressionMetric | None = None
     win_rate_metric: PlayerProgressionMetric
     resolved_focus_areas: list[str] = Field(
         default_factory=list,

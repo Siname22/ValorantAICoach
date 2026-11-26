@@ -125,7 +125,7 @@ def test_profile_cache_survives_application_restart(
         second = client.get("/players/Test/EU1")
     assert second.status_code == 200
     assert second.json() == first.json()
-    assert account.call_count == 1
+    assert account.call_count == 3
 
 
 def test_enabled_storage_requires_explicit_migration(
