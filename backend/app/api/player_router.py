@@ -169,9 +169,12 @@ async def list_coaching_reports(
     game_name: GameName,
     tag_line: TagLine,
     service: Service,
+    region: RegionQuery = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
 ) -> CoachingReportsListResponse:
-    reports = await service.list_coaching_reports(game_name, tag_line, limit=limit)
+    reports = await service.list_coaching_reports(
+        game_name, tag_line, region=region, limit=limit
+    )
     return CoachingReportsListResponse(
         reports=[CoachingReportResponse(**r) for r in reports],
         count=len(reports),
@@ -232,8 +235,11 @@ async def get_player_progression(
     game_name: GameName,
     tag_line: TagLine,
     service: Service,
+    region: RegionQuery = None,
 ) -> PlayerProgressionResponse:
-    progression = await service.get_player_progression(game_name, tag_line)
+    progression = await service.get_player_progression(
+        game_name, tag_line, region=region
+    )
     return PlayerProgressionResponse(**progression)
 
 

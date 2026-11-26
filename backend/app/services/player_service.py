@@ -128,6 +128,8 @@ class PlayerService:
         if self.henrik is not None:
             try:
                 data = await self.henrik.get_account(game_name, tag_line)
+                if region and region.lower() != data.region.lower():
+                    raise NotFoundError("Player not found in the selected region")
                 return PlayerProfile(
                     puuid=data.puuid,
                     game_name=data.name,
@@ -142,6 +144,8 @@ class PlayerService:
         if self.riot is not None:
             try:
                 data = await self.riot.get_player_by_riot_id(game_name, tag_line)
+                if region and data.region and region.lower() != data.region.lower():
+                    raise NotFoundError("Player not found in the selected region")
                 return PlayerProfile(
                     puuid=data.puuid,
                     game_name=data.game_name,
@@ -233,7 +237,10 @@ class PlayerService:
         self, game_name: str, tag_line: str, region: str | None
     ) -> str:
         if region:
-            return region
+            account = await self.henrik.get_account(game_name, tag_line)
+            if region.lower() != account.region.lower():
+                raise NotFoundError("Player not found in the selected region")
+            return account.region
         if self.henrik is not None:
             try:
                 account = await self.henrik.get_account(game_name, tag_line)
@@ -270,7 +277,11 @@ class PlayerService:
         # Riot's official API does not expose a player's current rank or RR.
         if self.henrik is not None:
             try:
-                account_region = await self._henrik_region(game_name, tag_line, region)
+                account_region = (
+                    region
+                    if region and puuid
+                    else await self._henrik_region(game_name, tag_line, region)
+                )
                 rank = await self.henrik.get_rank(account_region, game_name, tag_line)
                 return PlayerRank(
                     tier_name=rank.tier_name,
@@ -473,11 +484,12 @@ class PlayerService:
             pass
 
         stats_dict = None
-        try:
-            stats = await self.get_stats_overview(game_name, tag_line)
-            stats_dict = stats.model_dump()
-        except Exception:
-            pass
+        if region is None:
+            try:
+                stats = await self.get_stats_overview(game_name, tag_line)
+                stats_dict = stats.model_dump()
+            except Exception:
+                pass
 
         matches_data = [match.model_dump() for match in matches]
         orchestrator = OrchestratorAgent()
@@ -492,6 +504,8 @@ class PlayerService:
             AgentContext(),
         )
         report = output.report or {}
+        if report and region:
+            report["region"] = region.lower()
         if report and "created_at" not in report:
             report["created_at"] = datetime.now(UTC).isoformat()
         return report
@@ -506,7 +520,12 @@ class PlayerService:
         return None
 
     async def list_coaching_reports(
-        self, game_name: str, tag_line: str, *, limit: int = 10
+        self,
+        game_name: str,
+        tag_line: str,
+        *,
+        region: str | None = None,
+        limit: int = 10,
     ) -> list[dict[str, Any]]:
         return []
 
@@ -564,13 +583,17 @@ class PlayerService:
         return False
 
     async def get_player_progression(
-        self, game_name: str, tag_line: str
+        self, game_name: str, tag_line: str, *, region: str | None = None
     ) -> dict[str, Any]:
         try:
-            matches = await self.get_recent_matches(game_name, tag_line, limit=20)
+            matches = await self.get_recent_matches(
+                game_name, tag_line, region=region, limit=20
+            )
         except Exception:
             matches = []
-        reports = await self.list_coaching_reports(game_name, tag_line, limit=10)
+        reports = await self.list_coaching_reports(
+            game_name, tag_line, region=region, limit=10
+        )
 
         def _is_actual_weakness(text: str) -> bool:
             t = text.lower().strip()

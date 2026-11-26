@@ -259,7 +259,12 @@ class PersistentPlayerService(PlayerService):
         return report
 
     async def list_coaching_reports(
-        self, game_name: str, tag_line: str, *, limit: int = 10
+        self,
+        game_name: str,
+        tag_line: str,
+        *,
+        region: str | None = None,
+        limit: int = 10,
     ) -> list[dict[str, Any]]:
         player_id = request_key(
             "identity", {"game_name": game_name, "tag_line": tag_line}
@@ -270,6 +275,7 @@ class PersistentPlayerService(PlayerService):
             limit,
             game_name,
             tag_line,
+            region,
         )
 
     async def ready(self) -> dict[str, Any]:

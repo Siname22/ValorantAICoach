@@ -3,7 +3,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { SummaryComponent } from './summary.component';
 import { ApiClientService } from '../../core/api/api-client.service';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
+import { PlayerProfile } from '../../core/api/api-models';
 
 describe('SummaryComponent', () => {
   let component: SummaryComponent;
@@ -11,6 +12,7 @@ describe('SummaryComponent', () => {
   let apiSpy: jasmine.SpyObj<ApiClientService>;
 
   beforeEach(async () => {
+    sessionStorage.clear();
     apiSpy = jasmine.createSpyObj('ApiClientService', [
       'getPlayer',
       'getPlayerMatches',
@@ -37,6 +39,14 @@ describe('SummaryComponent', () => {
     expect(component).toBeTruthy();
   });
 
+  it('shows no example matches, ACS comparison, or drawn economy trend before a search', () => {
+    const text: string = fixture.nativeElement.textContent;
+    expect(text).not.toContain('Ascent');
+    expect(text).not.toContain('22 / 11 / 4');
+    expect(text).not.toContain('por encima de la media de tu rango');
+    expect(fixture.nativeElement.querySelector('.economy-chart-svg')).toBeNull();
+  });
+
   it('should render hero search form with role="search" and associated label', () => {
     const searchForm: HTMLElement = fixture.nativeElement.querySelector('form[role="search"]');
     expect(searchForm).toBeTruthy();
@@ -59,10 +69,16 @@ describe('SummaryComponent', () => {
     expect(colHeaders.length).toBe(6);
 
     const rowHeaders = table.querySelectorAll('th[scope="row"]');
-    expect(rowHeaders.length).toBeGreaterThan(0);
+    expect(rowHeaders.length).toBe(0);
+    expect(table.textContent).toContain('Busca un jugador');
   });
 
   it('should not indicate victory or defeat using color alone', () => {
+    component.matches.set([
+      { match_id: 'm-win', map_name: 'Ascent', agent_name: 'Jett', result: 'Victory', kills: 1, deaths: 0, assists: 1 },
+      { match_id: 'm-loss', map_name: 'Bind', agent_name: 'Sova', result: 'Defeat', kills: 0, deaths: 1, assists: 0 },
+    ]);
+    fixture.detectChanges();
     const victorySpan: HTMLElement = fixture.nativeElement.querySelector('.text-victory');
     expect(victorySpan).toBeTruthy();
     expect(victorySpan.textContent).toContain('▲');
@@ -101,8 +117,12 @@ describe('SummaryComponent', () => {
         game_name: 'TestPlayer',
         tag_line: 'EUW',
         region: 'eu',
+        kills: 20,
+        deaths: 10,
+        assists: 5,
         matches_played: 10,
         win_rate: 0.6,
+        win_pct: 0.6,
         kd_ratio: 1.4,
         avg_score: 250,
         headshot_pct: 0.25,
@@ -115,10 +135,45 @@ describe('SummaryComponent', () => {
     expect(apiSpy.getPlayer).toHaveBeenCalledWith('TestPlayer', 'EUW', 'eu');
   });
 
+  it('ignores an old search response after switching player, region, and back', () => {
+    const first = new Subject<PlayerProfile>();
+    const second = new Subject<PlayerProfile>();
+    const third = new Subject<PlayerProfile>();
+    apiSpy.getPlayer.and.returnValues(first, second, third);
+    apiSpy.getPlayerMatches.and.returnValue(of({ matches: [], count: 0 }));
+    apiSpy.getPlayerStats.and.returnValue(of({
+      kills: 0, deaths: 0, assists: 0, kd_ratio: 0, win_pct: 0, headshot_pct: 0,
+    }));
+    apiSpy.getCoachingReports.and.returnValue(of({ reports: [], count: 0 }));
+
+    component.searchQuery = 'Alpha#EU1';
+    component.selectedRegion = 'eu';
+    component.onSearch();
+    fixture.detectChanges();
+    const submitButton: HTMLButtonElement = fixture.nativeElement.querySelector('.hero-btn');
+    expect(submitButton.disabled).toBeFalse();
+    expect(submitButton.textContent).toContain('ACTUALIZAR BÚSQUEDA');
+    component.searchQuery = 'Beta#NA1';
+    component.selectedRegion = 'na';
+    component.onSearch();
+    component.searchQuery = 'Alpha#EU1';
+    component.selectedRegion = 'eu';
+    component.onSearch();
+
+    first.next({ game_name: 'Alpha', tag_line: 'EU1', region: 'eu' });
+    second.next({ game_name: 'Beta', tag_line: 'NA1', region: 'na' });
+    expect(component.playerProfile()).toBeNull();
+    expect(apiSpy.getPlayerMatches).not.toHaveBeenCalled();
+
+    third.next({ game_name: 'Alpha', tag_line: 'EU1', region: 'eu' });
+    expect(component.playerProfile()?.game_name).toBe('Alpha');
+    expect(apiSpy.getPlayerMatches).toHaveBeenCalledTimes(1);
+    expect(apiSpy.getPlayerMatches).toHaveBeenCalledWith('Alpha', 'EU1', 5, 'eu');
+  });
+
   it('should calculate ACS accurately from scored matches and not fabricate 231 or kd*180', () => {
-    // When no matches or stats, calculatedAcs should be null
+    // When no matches, calculatedAcs should be null.
     component.matches.set([]);
-    component.stats.set(null);
     expect(component.calculatedAcs()).toBeNull();
 
     // When matches have total scores and round_score, divide total score by rounds
@@ -224,23 +279,7 @@ describe('SummaryComponent', () => {
     ]);
     expect(component.calculatedAcs()).toBe(125);
 
-    // When no scored matches but stats has avg_score
-    component.matches.set([]);
-    component.stats.set({
-      game_name: 'Test',
-      tag_line: 'EUW',
-      kills: 10,
-      deaths: 10,
-      assists: 5,
-      kd_ratio: 1.0,
-      win_pct: 0.5,
-      headshot_pct: 0.2,
-      avg_score: 275,
-    } as any);
-    expect(component.calculatedAcs()).toBe(275);
-
     // Total match score of 6000 without round count must NOT return 6000
-    component.stats.set(null);
     component.matches.set([
       {
         match_id: 'm-high',
@@ -271,20 +310,6 @@ describe('SummaryComponent', () => {
     ]);
     expect(component.calculatedAcs()).toBe(250);
 
-    // Ensure damage_per_round is never multiplied by 1.45 to invent ACS
-    component.matches.set([]);
-    component.stats.set({
-      game_name: 'Test',
-      tag_line: 'EUW',
-      kills: 10,
-      deaths: 10,
-      assists: 5,
-      kd_ratio: 1.0,
-      win_pct: 0.5,
-      headshot_pct: 0.2,
-      damage_per_round: 150,
-    } as any);
-    expect(component.calculatedAcs()).toBeNull();
   });
 
   it('should render real match metrics and not display hardcoded 13 - 9 or fake 240', () => {
@@ -296,7 +321,7 @@ describe('SummaryComponent', () => {
         kills: 18,
         deaths: 12,
         assists: 7,
-        score: 265,
+        score: 5035,
         round_score: '13 - 6',
         agent_name: 'Omen',
       },

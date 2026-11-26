@@ -76,14 +76,6 @@ def storage_providers(monkeypatch):
         monkeypatch.setenv(f"{provider}_RETRIES", "0")
     monkeypatch.setenv("HENRIK_API_KEY", "synthetic-storage-test")
     monkeypatch.setenv("HENRIK_BASE_URL", "https://api.henrikdev.xyz/valorant/v1")
-
-
-@respx.mock
-def test_profile_cache_survives_application_restart(
-    storage_database, storage_providers
-):
-    config, engine, _ = storage_database
-    command.upgrade(config, "head")
     account = respx.get(
         "https://api.henrikdev.xyz/valorant/v1/account/Test/EU1"
     ).respond(
@@ -99,6 +91,29 @@ def test_profile_cache_survives_application_restart(
             },
         },
     )
+    respx.get("https://api.henrikdev.xyz/valorant/v1/account/Other/EU1").respond(
+        200,
+        json={
+            "status": 200,
+            "data": {
+                "puuid": "player-storage-2",
+                "name": "Other",
+                "tag": "EU1",
+                "region": "eu",
+                "account_level": 20,
+            },
+        },
+    )
+    return account
+
+
+@respx.mock
+def test_profile_cache_survives_application_restart(
+    storage_database, storage_providers
+):
+    config, engine, _ = storage_database
+    command.upgrade(config, "head")
+    account = storage_providers
     respx.get("https://api.henrikdev.xyz/valorant/v2/mmr/eu/Test/EU1").respond(
         404, json={"status": 404}
     )
@@ -359,9 +374,6 @@ def test_cache_isolates_history_region_limit_and_identity(
     eu = respx.get(
         "https://api.henrikdev.xyz/valorant/v1/stored-matches/eu/Test/EU1"
     ).respond(200, json={"status": 200, "data": []})
-    na = respx.get(
-        "https://api.henrikdev.xyz/valorant/v1/stored-matches/na/Test/EU1"
-    ).respond(200, json={"status": 200, "data": []})
     other = respx.get(
         "https://api.henrikdev.xyz/valorant/v1/stored-matches/eu/Other/EU1"
     ).respond(200, json={"status": 200, "data": []})
@@ -374,11 +386,14 @@ def test_cache_isolates_history_region_limit_and_identity(
     with TestClient(app) as client:
         for path in paths + paths:
             response = client.get(path)
-            assert response.status_code == 200
-            assert response.json() == {"matches": [], "count": 0}
-    assert (eu.call_count, na.call_count, other.call_count) == (2, 1, 1)
+            if "region=na" in path:
+                assert response.status_code == 404
+            else:
+                assert response.status_code == 200
+                assert response.json() == {"matches": [], "count": 0}
+    assert (eu.call_count, other.call_count) == (2, 1)
     with Session(engine) as session:
-        assert len(session.scalars(select(PlayerSnapshot)).all()) == 4
+        assert len(session.scalars(select(PlayerSnapshot)).all()) == 3
 
 
 def test_match_upserts_preserve_player_stats_raw_dates_and_detail(storage_database):

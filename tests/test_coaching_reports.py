@@ -156,6 +156,30 @@ def test_sql_player_store_report_crud(storage_database):
         store.close()
 
 
+def test_report_history_filters_region_before_limit(storage_database):
+    url, _ = storage_database
+    store = SQLPlayerStore(url, ttl_seconds=300, test_mode=True)
+    player_id = request_key("identity", {"game_name": "Alpha", "tag_line": "EU1"})
+    identity = {"game_name": "Alpha", "tag_line": "EU1"}
+    try:
+        eu_id = store.save_coaching_report(
+            player_id, {"region": "eu", "title": "EU"}, [], identity=identity
+        )
+        store.save_coaching_report(
+            player_id, {"region": "na", "title": "NA"}, [], identity=identity
+        )
+        store.save_coaching_report(
+            player_id, {"title": "Legacy"}, [], identity=identity
+        )
+        eu_reports = store.list_coaching_reports(
+            player_id, limit=1, game_name="Alpha", tag_line="EU1", region="eu"
+        )
+        assert [report["id"] for report in eu_reports] == [eu_id]
+        assert len(store.list_coaching_reports(player_id, limit=10)) == 3
+    finally:
+        store.close()
+
+
 @pytest.mark.asyncio
 async def test_persistent_player_service_generate_and_list_reports(storage_database):
     url, _ = storage_database
@@ -192,6 +216,15 @@ async def test_persistent_player_service_generate_and_list_reports(storage_datab
         history = await mock_service.list_coaching_reports("Derke", "FNC")
         assert len(history) == 1
         assert history[0]["id"] == report["id"]
+
+        regional_report = await mock_service.generate_coaching_report(
+            "Derke", "FNC", region="na"
+        )
+        assert regional_report["payload"]["region"] == "na"
+        regional_history = await mock_service.list_coaching_reports(
+            "Derke", "FNC", region="na"
+        )
+        assert [item["id"] for item in regional_history] == [regional_report["id"]]
 
         # Retrieve report by ID with correct player
         found = await mock_service.get_coaching_report(
@@ -366,6 +399,18 @@ def test_complete_coaching_report_lifecycle_api(storage_database):
             == report_data["payload"]["title"]
         )
 
+        regional_post = client.post("/players/Chronicle/FNC/reports?region=eu")
+        assert regional_post.status_code == 200
+        assert regional_post.json()["payload"]["region"] == "eu"
+        regional_list = client.get("/players/Chronicle/FNC/reports?region=eu")
+        assert regional_list.status_code == 200
+        assert [item["id"] for item in regional_list.json()["reports"]] == [
+            regional_post.json()["id"]
+        ]
+        assert (
+            client.get("/players/Chronicle/FNC/reports?region=na").json()["count"] == 0
+        )
+
         # 3. Get specific report via GET endpoint
         get_resp = client.get(f"/players/Chronicle/FNC/reports/{rep_id}")
         assert get_resp.status_code == 200
@@ -384,6 +429,11 @@ def test_complete_coaching_report_lifecycle_api(storage_database):
         assert prog_resp.status_code == 200
         prog_data = prog_resp.json()
         assert prog_data["total_reports_generated"] >= 1
+        regional_progression = client.get(
+            "/players/Chronicle/FNC/progression?region=eu"
+        )
+        assert regional_progression.status_code == 200
+        assert regional_progression.json()["total_reports_generated"] == 1
 
         # 6. Provider failure during generation returns 503
         persistent_service.get_recent_matches = AsyncMock(

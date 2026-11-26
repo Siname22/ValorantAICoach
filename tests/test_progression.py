@@ -425,12 +425,15 @@ def test_get_player_progression_api_endpoint():
     app.dependency_overrides[get_player_service] = lambda: mock_svc
     try:
         with TestClient(app) as client:
-            res = client.get("/players/Derke/VITALITY/progression")
+            res = client.get("/players/Derke/VITALITY/progression?region=na")
             assert res.status_code == 200
             data = res.json()
             assert data["game_name"] == "Derke"
             assert data["kd_metric"]["trend"] == "improving"
             assert data["resolved_focus_areas"] == ["First Bullet Accuracy"]
+            mock_svc.get_player_progression.assert_awaited_once_with(
+                "Derke", "VITALITY", region="na"
+            )
     finally:
         app.dependency_overrides.clear()
 

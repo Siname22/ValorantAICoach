@@ -342,6 +342,7 @@ class SQLPlayerStore:
         limit: int = 10,
         game_name: str | None = None,
         tag_line: str | None = None,
+        region: str | None = None,
     ) -> list[dict[str, Any]]:
         with Session(self.engine) as session:
             target_ids = {player_id}
@@ -359,6 +360,11 @@ class SQLPlayerStore:
                 .order_by(CoachingReportRecord.created_at.desc())
                 .limit(limit)
             )
+            if region:
+                statement = statement.where(
+                    func.lower(CoachingReportRecord.payload["region"].as_string())
+                    == region.lower()
+                )
             records = session.execute(statement).scalars().all()
             return [
                 {

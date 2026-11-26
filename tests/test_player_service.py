@@ -105,6 +105,30 @@ async def test_get_player_fallback_to_henrik(player_service, mock_tracker, mock_
 
 
 @pytest.mark.asyncio
+async def test_henrik_profile_rejects_wrong_region(mock_henrik):
+    mock_henrik.get_account.return_value = HenrikPlayer(
+        puuid="h-123", name="Test", tag="EU1", region="eu", account_level=20
+    )
+    service = PlayerService(henrik_provider=mock_henrik)
+
+    with pytest.raises(PlayerNotFoundError):
+        await service.get_player("Test", "EU1", region="na")
+
+
+@pytest.mark.asyncio
+async def test_henrik_matches_reject_wrong_region(mock_henrik):
+    mock_henrik.get_account.return_value = HenrikPlayer(
+        puuid="h-123", name="Test", tag="EU1", region="eu", account_level=20
+    )
+    service = PlayerService(henrik_provider=mock_henrik)
+
+    with pytest.raises(PlayerNotFoundError):
+        await service.get_recent_matches("Test", "EU1", region="na")
+
+    mock_henrik.get_matches.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_get_player_fallback_to_riot(
     player_service, mock_tracker, mock_henrik, mock_riot
 ):
