@@ -48,8 +48,13 @@ describe('VisionComponent', () => {
 
     apiSpy.postVisionScoreboardAnalyze.and.returnValue(
       of({
-        status: 'success',
-        extracted_data: { players: [] },
+        match_id: 'test-match',
+        map_name: 'Ascent',
+        result: 'Victory',
+        rounds_won: 13,
+        rounds_lost: 9,
+        extractor_engine: 'test',
+        scoreboard_rows: [],
       })
     );
 

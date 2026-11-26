@@ -1,16 +1,21 @@
 import httpx
 import pytest
 import respx
+from backend.app.core.config import get_settings
 from backend.main import app
 from fastapi.testclient import TestClient
 
 
 @pytest.fixture
 def provider_environment(monkeypatch):
+    get_settings.cache_clear()
+    monkeypatch.setenv("DATABASE_ENABLED", "false")
     for provider in ("RIOT", "HENRIK", "TRACKER"):
         monkeypatch.setenv(f"{provider}_API_KEY", "")
         monkeypatch.setenv(f"{provider}_ENABLED", "true")
         monkeypatch.setenv(f"{provider}_RETRIES", "0")
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.mark.parametrize(
@@ -172,6 +177,7 @@ def test_malformed_upstream_data_returns_502(
     monkeypatch.setenv(
         "TRACKER_BASE_URL", "https://public-api.tracker.gg/v2/valorant/standard"
     )
+    respx.routes.clear()
     respx.get(url__regex=r"https://.*").respond(200, json={"private": "upstream-body"})
     with TestClient(app) as client:
         response = client.get("/players/Test/EU1")

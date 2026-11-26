@@ -163,6 +163,40 @@ async def test_get_player_progression_empty_matches(mock_isolated_service):
 
 
 @pytest.mark.asyncio
+async def test_regional_progression_omits_unscoped_headshot_stats(
+    mock_isolated_service,
+):
+    mock_isolated_service.get_recent_matches = AsyncMock(
+        return_value=_sample_matches("improving")
+    )
+    mock_isolated_service.list_coaching_reports = AsyncMock(return_value=[])
+    mock_isolated_service.get_stats_overview = AsyncMock(
+        return_value=PlayerStatsOverview(
+            kills=10, deaths=5, assists=2, kd_ratio=2.0, win_pct=50.0, headshot_pct=77.0
+        )
+    )
+    result = await mock_isolated_service.get_player_progression(
+        "Alpha", "TEST", region="eu"
+    )
+    assert result["headshot_metric"] is None
+    mock_isolated_service.get_stats_overview.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_regional_progression_and_sync_propagate_wrong_region(
+    mock_isolated_service,
+):
+    mock_isolated_service.get_recent_matches = AsyncMock(
+        side_effect=PlayerNotFoundError("Wrong region")
+    )
+    mock_isolated_service.list_coaching_reports = AsyncMock(return_value=[])
+    with pytest.raises(PlayerNotFoundError):
+        await mock_isolated_service.get_player_progression("Alpha", "TEST", region="na")
+    with pytest.raises(PlayerNotFoundError):
+        await mock_isolated_service.sync_player_coaching("Alpha", "TEST", region="na")
+
+
+@pytest.mark.asyncio
 async def test_get_player_progression_improving_trend(mock_isolated_service):
     matches = _sample_matches("improving")
     mock_isolated_service.get_recent_matches = AsyncMock(return_value=matches)
@@ -384,6 +418,8 @@ async def test_progression_without_recent_matches_filters_disclaimers(
 
 
 def test_get_player_progression_api_endpoint():
+    from backend.app.dependencies.auth_deps import get_current_user
+
     mock_svc = AsyncMock()
     mock_svc.get_player_progression.return_value = {
         "game_name": "Derke",
@@ -423,24 +459,39 @@ def test_get_player_progression_api_endpoint():
     }
 
     app.dependency_overrides[get_player_service] = lambda: mock_svc
+    app.dependency_overrides[get_current_user] = lambda: {
+        "id": "synthetic-user",
+        "email": "test@example.invalid",
+        "is_active": True,
+    }
     try:
         with TestClient(app) as client:
-            res = client.get("/players/Derke/VITALITY/progression")
+            res = client.get("/players/Derke/VITALITY/progression?region=na")
             assert res.status_code == 200
             data = res.json()
             assert data["game_name"] == "Derke"
             assert data["kd_metric"]["trend"] == "improving"
             assert data["resolved_focus_areas"] == ["First Bullet Accuracy"]
+            mock_svc.get_player_progression.assert_awaited_once_with(
+                "Derke", "VITALITY", region="na", user_id="synthetic-user"
+            )
     finally:
         app.dependency_overrides.clear()
 
 
 def test_get_player_progression_api_error_mappings():
+    from backend.app.dependencies.auth_deps import get_current_user
+
     mock_svc = AsyncMock()
     mock_svc.get_player_progression.side_effect = PlayerNotFoundError(
         "Player not found"
     )
     app.dependency_overrides[get_player_service] = lambda: mock_svc
+    app.dependency_overrides[get_current_user] = lambda: {
+        "id": "synthetic-user",
+        "email": "test@example.invalid",
+        "is_active": True,
+    }
     try:
         with TestClient(app) as client:
             res = client.get("/players/Unknown/000/progression")
@@ -488,6 +539,9 @@ def test_sync_player_api_endpoint():
             assert data["synced"] is True
             assert data["new_report_generated"] is True
             assert data["report_id"] == "rep-xyz"
+            mock_svc.sync_player_coaching.assert_awaited_once_with(
+                "TenZ", "SEN", region="na", user_id="u-sync"
+            )
     finally:
         app.dependency_overrides.clear()
 

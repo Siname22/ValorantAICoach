@@ -223,7 +223,7 @@ export interface PlayerProgressionResponse {
   total_matches_analyzed: number;
   total_reports_generated: number;
   kd_metric: PlayerProgressionMetric;
-  headshot_metric: PlayerProgressionMetric;
+  headshot_metric: PlayerProgressionMetric | null;
   win_rate_metric: PlayerProgressionMetric;
   resolved_focus_areas?: string[];
   active_focus_areas?: string[];

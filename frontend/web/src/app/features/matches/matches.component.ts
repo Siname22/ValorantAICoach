@@ -1,15 +1,17 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { BentoCardComponent } from '../../shared/ui/bento-card/bento-card.component';
 import { I18N_ES } from '../../core/i18n/es';
 import { ApiClientService } from '../../core/api/api-client.service';
+import { ActivePlayerService } from '../../core/player/active-player.service';
 import { MatchTimelineResponse, PlayerMatch } from '../../core/api/api-models';
 
 @Component({
   selector: 'app-matches',
   standalone: true,
-  imports: [CommonModule, FormsModule, BentoCardComponent],
+  imports: [CommonModule, FormsModule, RouterLink, BentoCardComponent],
   template: `
     <div class="matches-page">
       <app-bento-card span="full" customId="matches-heading">
@@ -19,6 +21,11 @@ import { MatchTimelineResponse, PlayerMatch } from '../../core/api/api-models';
             <p class="page-subtitle">
               Historial completo de partidas competitivas y telemetría por ronda.
             </p>
+            @if (player(); as p) {
+              <p class="active-player" data-testid="active-player">
+                Jugador: <strong>{{ p.gameName }}#{{ p.tagLine }}</strong> · Región {{ p.region | uppercase }}
+              </p>
+            }
           </div>
 
           <!-- Filter Controls -->
@@ -38,6 +45,25 @@ import { MatchTimelineResponse, PlayerMatch } from '../../core/api/api-models';
         </div>
       </app-bento-card>
 
+      @if (!player()) {
+        <app-bento-card span="full">
+          <p class="state-msg" role="status" data-testid="no-player">
+            Aún no has seleccionado un jugador.
+            <a routerLink="/resumen">Busca un Riot ID en Resumen</a> para ver sus partidas.
+          </p>
+        </app-bento-card>
+      } @else if (loading()) {
+        <app-bento-card span="full">
+          <p class="state-msg" role="status" data-testid="loading">Cargando partidas...</p>
+        </app-bento-card>
+      } @else if (loadError()) {
+        <app-bento-card span="full">
+          <p class="state-msg state-error" role="alert" data-testid="load-error">
+            {{ loadError() }}
+          </p>
+          <button type="button" class="btn-primary" (click)="loadMatches()">Reintentar</button>
+        </app-bento-card>
+      } @else {
       <!-- Matches Table Card -->
       <app-bento-card span="full" title="Partidas Recientes" subtitle="Últimas partidas disputadas">
         <div class="table-responsive-container">
@@ -83,7 +109,9 @@ import { MatchTimelineResponse, PlayerMatch } from '../../core/api/api-models';
               } @empty {
                 <tr>
                   <td colspan="7" class="empty-state">
-                    No hay partidas que coincidan con los filtros seleccionados.
+                    {{ allMatches().length === 0
+                      ? 'No hay partidas registradas para este jugador. Sincroniza desde Resumen.'
+                      : 'No hay partidas que coincidan con los filtros seleccionados.' }}
                   </td>
                 </tr>
               }
@@ -91,6 +119,19 @@ import { MatchTimelineResponse, PlayerMatch } from '../../core/api/api-models';
           </table>
         </div>
       </app-bento-card>
+
+      @if (timelineError()) {
+        <app-bento-card span="full">
+          <p class="state-msg state-error" role="alert" data-testid="timeline-error">
+            {{ timelineError() }}
+          </p>
+        </app-bento-card>
+      }
+      @if (timelineLoading()) {
+        <app-bento-card span="full">
+          <p class="state-msg" role="status">Cargando rondas...</p>
+        </app-bento-card>
+      }
 
       <!-- Match Timeline Detail (when selected) -->
       @if (selectedTimeline()) {
@@ -122,6 +163,7 @@ import { MatchTimelineResponse, PlayerMatch } from '../../core/api/api-models';
           </div>
         </app-bento-card>
       }
+      }
     </div>
   `,
   styles: [`
@@ -145,6 +187,9 @@ import { MatchTimelineResponse, PlayerMatch } from '../../core/api/api-models';
       color: var(--color-text-secondary);
       font-size: 14px;
     }
+    .active-player { font-size: 14px; margin-top: 4px; }
+    .state-msg { color: var(--color-text-secondary); font-size: 14px; padding: 12px 0; }
+    .state-error { color: var(--color-loss); }
     .filter-controls {
       display: flex;
       align-items: center;
@@ -252,60 +297,51 @@ import { MatchTimelineResponse, PlayerMatch } from '../../core/api/api-models';
 })
 export class MatchesComponent implements OnInit {
   private readonly api = inject(ApiClientService);
+  private readonly activePlayer = inject(ActivePlayerService);
   readonly i18n = I18N_ES;
 
-  readonly allMatches = signal<PlayerMatch[]>([
-    {
-      match_id: 'match-101',
-      map_name: 'Ascent',
-      agent_name: 'Jett',
-      result: 'Victory',
-      score: 284,
-      kills: 22,
-      deaths: 11,
-      assists: 4,
-      headshots: 8,
-      mode: 'Competitive',
-      timestamp: 1760292000000,
-      created_at: '2026-10-12T18:00:00Z',
-    },
-    {
-      match_id: 'match-102',
-      map_name: 'Haven',
-      agent_name: 'Sova',
-      result: 'Defeat',
-      score: 198,
-      kills: 16,
-      deaths: 15,
-      assists: 9,
-      headshots: 5,
-      mode: 'Competitive',
-      timestamp: 1760292000000,
-      created_at: '2026-10-12T19:30:00Z',
-    },
-    {
-      match_id: 'match-103',
-      map_name: 'Bind',
-      agent_name: 'Brimstone',
-      result: 'Victory',
-      score: 245,
-      kills: 19,
-      deaths: 12,
-      assists: 11,
-      headshots: 6,
-      mode: 'Competitive',
-      timestamp: 1760292000000,
-      created_at: '2026-10-12T21:00:00Z',
-    },
-  ]);
-
+  readonly player = this.activePlayer.player;
+  readonly allMatches = signal<PlayerMatch[]>([]);
+  readonly loading = signal(false);
+  readonly loadError = signal<string | null>(null);
   readonly filteredMatches = signal<PlayerMatch[]>([]);
   readonly selectedTimeline = signal<MatchTimelineResponse | null>(null);
   readonly selectedMatchId = signal<string | null>(null);
+  readonly timelineLoading = signal(false);
+  readonly timelineError = signal<string | null>(null);
   filterResult = 'all';
 
   ngOnInit(): void {
-    this.applyFilter();
+    this.loadMatches();
+  }
+
+  loadMatches(): void {
+    const p = this.activePlayer.player();
+    const version = this.activePlayer.version();
+    this.allMatches.set([]);
+    this.filteredMatches.set([]);
+    this.closeTimeline();
+    this.loadError.set(null);
+    if (!p) return;
+
+    this.loading.set(true);
+    this.api.getPlayerMatches(p.gameName, p.tagLine, 20, p.region).subscribe({
+      next: (res: { matches: PlayerMatch[]; count: number }) => {
+        if (!this.activePlayer.isCurrent(p.gameName, p.tagLine, p.region, version)) return;
+        this.allMatches.set(res.matches || []);
+        this.applyFilter();
+        this.loading.set(false);
+      },
+      error: () => {
+        if (!this.activePlayer.isCurrent(p.gameName, p.tagLine, p.region, version)) return;
+        this.loading.set(false);
+        this.loadError.set(
+          'No se pudieron cargar las partidas de ' +
+            p.gameName + '#' + p.tagLine +
+            '. Inténtalo de nuevo; no se muestran datos de ejemplo.'
+        );
+      },
+    });
   }
 
   applyFilter(): void {
@@ -318,68 +354,29 @@ export class MatchesComponent implements OnInit {
   }
 
   inspectTimeline(matchId: string): void {
+    const p = this.activePlayer.player();
+    if (!p) return;
+    const version = this.activePlayer.version();
     this.selectedMatchId.set(matchId);
+    this.selectedTimeline.set(null);
+    this.timelineError.set(null);
+    this.timelineLoading.set(true);
     this.api.getMatchTimeline(matchId).subscribe({
-      next: (tl: MatchTimelineResponse) => this.selectedTimeline.set(tl),
+      next: (tl: MatchTimelineResponse) => {
+        if (this.selectedMatchId() !== matchId || !this.activePlayer.isCurrent(p.gameName, p.tagLine, p.region, version)) return;
+        this.timelineLoading.set(false);
+        if (!tl.rounds || tl.rounds.length === 0) {
+          this.timelineError.set('Esta partida no tiene desglose por rondas disponible.');
+          return;
+        }
+        this.selectedTimeline.set(tl);
+      },
       error: () => {
-        // Fallback demo timeline data
-        this.selectedTimeline.set({
-          match_id: matchId,
-          map_name: 'Ascent',
-          total_rounds: 5,
-          rounds: [
-            {
-              round_num: 1,
-              round_number: 1,
-              result: 'Won',
-              winning_team: 'Team A',
-              winning_side: 'attack',
-              win_type: 'Eliminated',
-              loadout_value: 800,
-              spent_credits: 700,
-            },
-            {
-              round_num: 2,
-              round_number: 2,
-              result: 'Won',
-              winning_team: 'Team A',
-              winning_side: 'attack',
-              win_type: 'Eliminated',
-              loadout_value: 3200,
-              spent_credits: 2400,
-            },
-            {
-              round_num: 3,
-              round_number: 3,
-              result: 'Lost',
-              winning_team: 'Team B',
-              winning_side: 'attack',
-              win_type: 'Eliminated',
-              loadout_value: 4100,
-              spent_credits: 3900,
-            },
-            {
-              round_num: 4,
-              round_number: 4,
-              result: 'Lost',
-              winning_team: 'Team B',
-              winning_side: 'attack',
-              win_type: 'Eliminated',
-              loadout_value: 1900,
-              spent_credits: 1400,
-            },
-            {
-              round_num: 5,
-              round_number: 5,
-              result: 'Won',
-              winning_team: 'Team A',
-              winning_side: 'attack',
-              win_type: 'Eliminated',
-              loadout_value: 4500,
-              spent_credits: 3800,
-            },
-          ],
-        });
+        if (this.selectedMatchId() !== matchId || !this.activePlayer.isCurrent(p.gameName, p.tagLine, p.region, version)) return;
+        this.timelineLoading.set(false);
+        this.timelineError.set(
+          'No se pudo cargar el desglose por rondas de esta partida. No se muestran datos de ejemplo.'
+        );
       },
     });
   }
@@ -387,5 +384,7 @@ export class MatchesComponent implements OnInit {
   closeTimeline(): void {
     this.selectedTimeline.set(null);
     this.selectedMatchId.set(null);
+    this.timelineError.set(null);
+    this.timelineLoading.set(false);
   }
 }

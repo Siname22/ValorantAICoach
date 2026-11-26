@@ -27,7 +27,6 @@ import { LinkedAccountResponse, TokenResponse, UserResponse } from '../../core/a
           <div class="profile-card">
             @if (user()) {
               <div class="profile-details">
-                <p><strong>Usuario:</strong> {{ user()?.username }}</p>
                 <p><strong>Email:</strong> {{ user()?.email }}</p>
                 <p><strong>Rol:</strong> {{ user()?.is_admin ? 'Administrador' : 'Jugador' }}</p>
                 <p><strong>Riot ID principal:</strong> {{ user()?.riot_id || 'Ninguno vinculado' }}</p>
@@ -165,32 +164,17 @@ import { LinkedAccountResponse, TokenResponse, UserResponse } from '../../core/a
               class="auth-form"
             >
               <div class="input-field">
-                <label for="auth-username" class="input-label">{{ i18n.auth.username }}</label>
+                <label for="auth-email" class="input-label">{{ i18n.auth.email }}</label>
                 <input
-                  id="auth-username"
-                  name="username"
-                  type="text"
-                  [(ngModel)]="username"
+                  id="auth-email"
+                  name="email"
+                  type="email"
+                  [(ngModel)]="email"
                   class="form-input"
                   required
-                  autocomplete="username"
+                  autocomplete="email"
                 />
               </div>
-
-              @if (isRegisterMode()) {
-                <div class="input-field">
-                  <label for="auth-email" class="input-label">{{ i18n.auth.email }}</label>
-                  <input
-                    id="auth-email"
-                    name="email"
-                    type="email"
-                    [(ngModel)]="email"
-                    class="form-input"
-                    required
-                    autocomplete="email"
-                  />
-                </div>
-              }
 
               <div class="input-field">
                 <label for="auth-password" class="input-label">{{ i18n.auth.password }}</label>
@@ -434,7 +418,6 @@ export class AccountComponent implements OnInit {
   readonly user = signal<UserResponse | null>(null);
   readonly linkedAccounts = signal<LinkedAccountResponse[]>([]);
 
-  username = '';
   email = '';
   password = '';
 
@@ -467,7 +450,7 @@ export class AccountComponent implements OnInit {
   loadLinkedAccounts(): void {
     this.api.getLinkedAccounts().subscribe({
       next: (accs: LinkedAccountResponse[]) => this.linkedAccounts.set(accs),
-      error: () => {}
+      error: () => this.linkedAccounts.set([])
     });
   }
 
@@ -478,7 +461,6 @@ export class AccountComponent implements OnInit {
 
     if (this.isRegisterMode()) {
       this.api.postAuthRegister({
-        username: this.username,
         email: this.email,
         password: this.password
       }).subscribe({
@@ -494,7 +476,7 @@ export class AccountComponent implements OnInit {
       });
     } else {
       this.api.postAuthLogin({
-        username: this.username,
+        email: this.email,
         password: this.password
       }).subscribe({
         next: (token: TokenResponse) => {
