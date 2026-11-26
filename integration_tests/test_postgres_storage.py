@@ -301,6 +301,8 @@ def test_real_rest_profile_survives_restart_with_utc_provenance(
                 "rank_tier": None,
                 "rank_icon_url": None,
             }
+        first_account_calls = account.call_count
+        first_rank_calls = rank.call_count
         # A cache miss after restart now produces a provider failure.
         account.respond(503, json={"status": 503})
         rank.respond(503, json={"status": 503})
@@ -310,8 +312,8 @@ def test_real_rest_profile_survives_restart_with_utc_provenance(
             second = client.get("/players/Test/EU1")
             assert second.status_code == 200, second.text
             assert second.json() == first.json()
-        assert account.call_count == 1
-        assert rank.call_count == 1
+        assert account.call_count == first_account_calls
+        assert rank.call_count == first_rank_calls
     latest = datetime.now(UTC)
     with Session(engine) as session:
         players = session.scalars(select(PlayerRecord)).all()

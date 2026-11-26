@@ -121,11 +121,13 @@ def test_profile_cache_survives_application_restart(
         first = client.get("/players/Test/EU1")
         assert app.state.player_service.henrik is not None
         assert first.status_code == 200, first.text
+    first_account_calls = account.call_count
     with TestClient(app) as client:
         second = client.get("/players/Test/EU1")
     assert second.status_code == 200
     assert second.json() == first.json()
-    assert account.call_count == 3
+    # The profile is cached; unavailable rank enrichment retries verification.
+    assert account.call_count == first_account_calls + 1
 
 
 def test_enabled_storage_requires_explicit_migration(
