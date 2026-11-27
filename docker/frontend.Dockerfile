@@ -19,14 +19,18 @@ RUN npm run build && \
 FROM nginx:1.27-alpine
 
 # Remove default nginx website
-RUN rm -rf /usr/share/nginx/html/*
+RUN rm -rf /usr/share/nginx/html/* && \
+    sed -i 's|pid        /run/nginx.pid;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf && \
+    chown -R nginx:nginx /var/cache/nginx /usr/share/nginx/html
 
-COPY --from=builder /app/dist-final /usr/share/nginx/html
+COPY --chown=nginx:nginx --from=builder /app/dist-final /usr/share/nginx/html
 COPY docker/nginx-spa.conf /etc/nginx/conf.d/default.conf
 
-EXPOSE 80
+USER nginx
+
+EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://127.0.0.1/health || exit 1
+    CMD wget --quiet --tries=1 --spider http://127.0.0.1:8080/health || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]

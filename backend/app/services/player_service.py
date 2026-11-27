@@ -270,18 +270,10 @@ class PlayerService:
     async def _henrik_region(
         self, game_name: str, tag_line: str, region: str | None
     ) -> str:
-        if region:
-            account = await self.henrik.get_account(game_name, tag_line)
-            if region.lower() != account.region.lower():
-                raise NotFoundError("Player not found in the selected region")
-            return account.region
-        if self.henrik is not None:
-            try:
-                account = await self.henrik.get_account(game_name, tag_line)
-                return account.region
-            except Exception:
-                pass
-        return "eu"
+        account = await self.henrik.get_account(game_name, tag_line)
+        if region and region.lower() != account.region.lower():
+            raise NotFoundError("Player not found in the selected region")
+        return account.region
 
     async def get_rank(
         self,

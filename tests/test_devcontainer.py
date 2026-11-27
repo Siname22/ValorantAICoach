@@ -28,9 +28,7 @@ def test_devcontainer_structure(devcontainer):
 
 def test_post_attach_backend_launch(devcontainer):
     command = shlex.split(devcontainer["postAttachCommand"]["backend"])
-    assert command[0] == "uv"
-    assert "uvicorn" in command
-    assert "backend.main:app" in command
+    assert command[:4] == ["uv", "run", "uvicorn", "backend.main:app"]
     assert "--port" in command
     port_index = command.index("--port")
     assert command[port_index + 1] == "8000"

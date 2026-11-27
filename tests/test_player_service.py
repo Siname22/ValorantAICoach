@@ -367,6 +367,20 @@ async def test_rank_can_use_henrik_without_riot_or_tracker(mock_henrik):
 
 
 @pytest.mark.asyncio
+async def test_henrik_account_failure_does_not_query_default_region(mock_henrik):
+    mock_henrik.get_account.side_effect = ServerError("account lookup unavailable")
+    service = PlayerService(henrik_provider=mock_henrik)
+
+    with pytest.raises(PlayerServiceError):
+        await service.get_rank("Player", "TAG")
+    with pytest.raises(PlayerServiceError):
+        await service.get_recent_matches("Player", "TAG")
+
+    mock_henrik.get_rank.assert_not_called()
+    mock_henrik.get_matches.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_health_isolates_provider_exception(
     player_service, mock_tracker, mock_henrik, mock_riot
 ):

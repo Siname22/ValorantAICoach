@@ -5,7 +5,7 @@
   "description": "HUD Bento Angular SPA for Valorant AI Coach with strict WCAG 2.2 AA accessibility",
   "scripts": {
     "ng": "ng",
-    "start": "ng serve --port 4200",
+    "start": "ng serve --port 4200 --proxy-config proxy.conf.json",
     "build": "ng build --configuration production",
     "watch": "ng build --watch --configuration development",
     "test": "ng test --watch=false --browsers=ChromeHeadless",

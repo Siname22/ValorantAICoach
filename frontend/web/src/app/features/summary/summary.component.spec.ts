@@ -130,9 +130,14 @@ describe('SummaryComponent', () => {
     );
     apiSpy.getCoachingReports.and.returnValue(of({ reports: [], count: 0 }));
 
+    const regionSelect: HTMLSelectElement = fixture.nativeElement.querySelector('#region-select');
+    regionSelect.value = 'na';
+    regionSelect.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
     component.onSearch();
 
-    expect(apiSpy.getPlayer).toHaveBeenCalledWith('TestPlayer', 'EUW', 'eu');
+    expect(component.selectedRegion).toBe('na');
+    expect(apiSpy.getPlayer).toHaveBeenCalledWith('TestPlayer', 'EUW', 'na');
   });
 
   it('ignores an old search response after switching player, region, and back', () => {
