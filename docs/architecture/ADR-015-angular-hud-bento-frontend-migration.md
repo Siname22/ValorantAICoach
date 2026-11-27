@@ -23,6 +23,6 @@ Se decide reemplazar completamente el frontend de Streamlit por una Single Page 
   - Eliminación de 21 dependencias obsoletas en Python (`streamlit`, `pandas`, `plotly`, etc.), reduciendo sustancialmente el tamaño de las imágenes y la superficie de ataque.
   - Tiempos de carga casi instantáneos y navegación fluida entre vistas (HUD Dashboard, Búsqueda de Jugador, Informes de Coach, Análisis de Marcadores, Historial).
   - Cumplimiento verificado de accesibilidad WCAG 2.2 AA y rendimiento web óptimo.
-  - Docker Compose simplificado: el servicio `frontend` ahora sirve la SPA en Nginx en el puerto 8080 (mapeado a 80 internamente).
+  - Docker Compose simplificado: el servicio `frontend` sirve la SPA en Nginx en el puerto 8080, tanto en el contenedor como en el puerto local predeterminado.
 - **Negativas**:
   - Requiere Node.js / npm para el desarrollo local del frontend en `frontend/web/`.

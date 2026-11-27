@@ -376,4 +376,3 @@ describe('SummaryComponent', () => {
     expect(trendDesc.textContent).not.toContain('72.5%');
   });
 });
-
