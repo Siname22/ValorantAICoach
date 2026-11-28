@@ -48,6 +48,9 @@ class PlayerMatchResponse(BaseModel):
     score: int | None = Field(
         None, description="Total match score, when its meaning is confirmed"
     )
+    round_score: str | None = Field(
+        None, description="Match round score string, e.g. '13 - 11'"
+    )
     agent_name: str = Field(..., description="Agent played in this match")
     provider: Literal["tracker", "henrik", "riot", "vision"] | None = Field(
         None, description="Source of the match summary"
@@ -174,7 +177,7 @@ class PlayerProgressionResponse(BaseModel):
         ..., description="Historical coaching reports count"
     )
     kd_metric: PlayerProgressionMetric
-    headshot_metric: PlayerProgressionMetric
+    headshot_metric: PlayerProgressionMetric | None = None
     win_rate_metric: PlayerProgressionMetric
     resolved_focus_areas: list[str] = Field(
         default_factory=list,

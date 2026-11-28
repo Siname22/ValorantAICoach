@@ -29,11 +29,28 @@ class MatchAnalystAgent(BaseAgent[MatchAnalystInput, MatchAnalystOutput]):
         stats: dict[str, Any] = data.player_stats or {}
         match_info: dict[str, Any] = data.match_data or {}
 
-        kills = int(stats.get("kills", 0))
-        deaths = int(stats.get("deaths", 0))
-        assists = int(stats.get("assists", 0))
-        score = int(stats.get("score", 0))
-        rounds = int(stats.get("rounds_played") or match_info.get("rounds_played") or 0)
+        # Prioritize match-level statistics over career aggregate player_stats
+        kills = int(
+            match_info.get("kills")
+            if match_info.get("kills") is not None
+            else stats.get("kills", 0)
+        )
+        deaths = int(
+            match_info.get("deaths")
+            if match_info.get("deaths") is not None
+            else stats.get("deaths", 0)
+        )
+        assists = int(
+            match_info.get("assists")
+            if match_info.get("assists") is not None
+            else stats.get("assists", 0)
+        )
+        score = int(
+            match_info.get("score")
+            if match_info.get("score") is not None
+            else stats.get("score", 0)
+        )
+        rounds = int(match_info.get("rounds_played") or stats.get("rounds_played") or 0)
         result = str(match_info.get("result") or stats.get("result") or "Unknown")
 
         if not stats and not match_info:
@@ -62,7 +79,7 @@ class MatchAnalystAgent(BaseAgent[MatchAnalystInput, MatchAnalystOutput]):
         kd_ratio = round(kills / safe_deaths, 2)
         kda_ratio = round((kills + assists) / safe_deaths, 2)
         acs = round(score / max(rounds, 1), 1) if rounds > 0 and score > 0 else None
-        trade_rate = round(assists / safe_deaths, 2)
+        assist_death_ratio = round(assists / safe_deaths, 2)
 
         computed_metrics: dict[str, Any] = {
             "match_id": data.match_id,
@@ -72,7 +89,7 @@ class MatchAnalystAgent(BaseAgent[MatchAnalystInput, MatchAnalystOutput]):
             "assists": assists,
             "kd_ratio": kd_ratio,
             "kda_ratio": kda_ratio,
-            "trade_rate": trade_rate,
+            "assist_death_ratio": assist_death_ratio,
             "acs": acs,
             "result": result,
         }
@@ -80,23 +97,28 @@ class MatchAnalystAgent(BaseAgent[MatchAnalystInput, MatchAnalystOutput]):
         evidence: list[dict[str, Any]] = [
             {"metric": "kd_ratio", "value": kd_ratio, "benchmark": 1.0},
             {"metric": "kda_ratio", "value": kda_ratio, "benchmark": 1.3},
-            {"metric": "trade_rate", "value": trade_rate, "benchmark": 0.35},
+            {
+                "metric": "assist_death_ratio",
+                "value": assist_death_ratio,
+                "benchmark": 0.35,
+            },
         ]
 
         if kd_ratio < 0.9:
             diagnosis = (
-                f"Dificultad en duelos de apertura y baja tasa de tradeo "
-                f"(K/D {kd_ratio}, trade rate {trade_rate}). "
-                "Se pierden rondas por desventaja numérica temprana."
+                f"Dificultad en balance de duelos individuales y bajo ratio de "
+                f"asistencias/tradeo (K/D {kd_ratio}, "
+                f"ratio de asistencias {assist_death_ratio})."
             )
             main_mistake = (
-                "Tomar duelos aislados en ángulos abiertos sin utilidad de "
-                "cobertura o sin un compañero listo para re-fraguear."
+                f"Déficit en el balance de bajas/muertes ({kills} bajas frente a "
+                f"{deaths} muertes). Sin telemetría de eventos por ronda, no se "
+                "registra si se debió a duelos aislados o falta de soporte del equipo."
             )
             practical_change = (
-                "Jugar en contacto con el segundo jugador del sitio. "
+                "Sugerencia: Jugar en contacto con el segundo jugador del sitio. "
                 "Si tu compañero toma contacto, asómate de inmediato dentro "
-                "de los primeros 2 segundos."
+                "de los primeros 2 segundos para asegurar el re-frag."
             )
             drill = (
                 "Entrenamiento de tradeos 2v2 en partidas personalizadas o "
@@ -109,17 +131,18 @@ class MatchAnalystAgent(BaseAgent[MatchAnalystInput, MatchAnalystOutput]):
                 "(derrota). Impacto disperso."
             )
             main_mistake = (
-                "Bajas conseguidas tarde en la ronda ('exit frags') o exceso "
-                "de agresividad en situaciones de ventaja numérica "
-                "(sobre-extensión tras plantar la Spike)."
+                "Baja conversión de eliminaciones a rondas ganadas. Sin telemetría de "
+                "eventos por ronda, no es posible confirmar si las bajas generaron "
+                "ventaja temprana o si ocurrieron tarde en la ronda ('exit frags') o "
+                "tras plantar la Spike (post-plant)."
             )
             practical_change = (
-                "Priorizar el control de mapa y el tiempo de la Spike en post-plant "
-                "en lugar de buscar duelos finales en solitario."
+                "Sugerencia: Priorizar el control de mapa y el tiempo de la Spike en "
+                "post-plant en lugar de buscar duelos finales en solitario."
             )
             drill = (
                 "Revisión de rondas post-plant: comprobar posición cruzada con el "
-                "equipo en al menos el 80% de las situaciones con Spike plantada."
+                "equipo en situaciones con Spike plantada."
             )
         else:
             diagnosis = (
@@ -127,16 +150,16 @@ class MatchAnalystAgent(BaseAgent[MatchAnalystInput, MatchAnalystOutput]):
                 f"KDA {kda_ratio}). Fundamentos consistentes en combate."
             )
             main_mistake = (
-                "Pequeños fallos de disciplina económica y uso de utilidad "
-                "en rondas de transición."
+                "Sin errores críticos de combate evidentes únicamente a partir del "
+                "marcador global."
             )
             practical_change = (
-                "Mantener la disciplina de compra en equipo (respetar compras "
-                "eco y semi-buy) para garantizar compra completa en rondas clave."
+                "Sugerencia: Mantener la disciplina en duelos de apertura y "
+                "coordinar utilidad en rondas clave."
             )
             drill = (
-                "Práctica de rutinas de utilidad en servidor vacío en los primeros "
-                "10 segundos de ronda en el mapa jugado."
+                "Práctica de rutinas de calentamiento de 10-15 minutos en The Range "
+                "enfocada en colocación de mira a primer disparo."
             )
 
         summary = (

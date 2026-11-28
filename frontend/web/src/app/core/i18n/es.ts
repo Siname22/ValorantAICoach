@@ -17,6 +17,7 @@ export const I18N_ES = {
     summary: 'Resumen',
     matches: 'Partidas',
     reports: 'Informes del coach',
+    coach: 'AI Coach',
     vision: 'Marcador por imagen',
     account: 'Cuenta',
   },
@@ -29,6 +30,8 @@ export const I18N_ES = {
     searchButton: 'ANALIZAR',
     searching: 'Analizando telemetría...',
     errorEmpty: 'Por favor, introduce tu Riot ID con formato Nombre#Tag.',
+    regionLabel: 'Región',
+    regionAriaLabel: 'Seleccionar región del servidor de Valorant',
   },
   bento: {
     acsCard: {

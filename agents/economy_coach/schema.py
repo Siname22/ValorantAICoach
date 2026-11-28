@@ -13,8 +13,8 @@ class EconomyCoachInput(AgentModel):
 class EconomyCoachOutput(AgentModel):
     """Structured coaching output for economic performance."""
 
-    economy_rating: float
-    buy_discipline_score: float
+    economy_rating: float | None = None
+    buy_discipline_score: float | None = None
     main_mistake: str
     practical_rule: str
     drill: str

@@ -89,11 +89,14 @@ describe('AccountComponent', () => {
     );
     apiSpy.getLinkedAccounts.and.returnValue(of([]));
 
-    component.username = 'testplayer';
+    component.email = 'test@example.com';
     component.password = 'Secret123!';
     component.onSubmit();
 
-    expect(apiSpy.postAuthLogin).toHaveBeenCalled();
+    expect(apiSpy.postAuthLogin).toHaveBeenCalledWith({
+      email: 'test@example.com',
+      password: 'Secret123!',
+    });
     expect(tokenService.hasToken()).toBeTrue();
   });
 });

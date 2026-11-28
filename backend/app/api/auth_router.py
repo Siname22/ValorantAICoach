@@ -45,11 +45,19 @@ async def register(
     """Create a new user with an email and secure hashed password."""
     try:
         settings = get_settings()
-        is_admin = request.email.strip().lower() in settings.admin_email_set
+        clean_email = request.email.strip().lower()
+        if clean_email in settings.admin_email_set:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Registration with administrator email addresses is reserved. "
+                    "Contact an administrator for provisioning."
+                ),
+            )
         user = await service.create_user(
             email=request.email,
             password_hash=get_password_hash(request.password),
-            is_admin=is_admin,
+            is_admin=False,
         )
         return UserResponse(**user)
     except ValueError:

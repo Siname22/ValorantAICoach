@@ -206,6 +206,7 @@ export class SidebarComponent {
     { path: '/resumen', label: I18N_ES.nav.summary, icon: '⊞' },
     { path: '/partidas', label: I18N_ES.nav.matches, icon: '⚔' },
     { path: '/informes', label: I18N_ES.nav.reports, icon: '📋' },
+    { path: '/coach', label: I18N_ES.nav.coach, icon: '🤖' },
     { path: '/marcador', label: I18N_ES.nav.vision, icon: '📷' },
     { path: '/cuenta', label: I18N_ES.nav.account, icon: '👤' },
   ];

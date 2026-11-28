@@ -16,7 +16,7 @@ class OrchestratorTool(BaseTool):
 
     async def execute(self, **kwargs: Any) -> dict[str, Any]:
         return {
-            "result": f"Executed OrchestratorTool with command: {kwargs.get("command")}"
+            "result": f"Executed OrchestratorTool with command: {kwargs.get('command')}"
         }
 
 

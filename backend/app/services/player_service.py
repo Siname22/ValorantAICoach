@@ -79,14 +79,45 @@ class PlayerService:
             "or retry when its API is available."
         )
 
+    async def _verified_account_region(
+        self, game_name: str, tag_line: str, region: str, puuid: str | None = None
+    ):
+        """Verify a player's region using Henrik account data.
+
+        Tracker has no account region and Riot's account model contains the server's
+        configured shard, not the player's confirmed region. Fail closed if the
+        independent account lookup cannot establish the requested region.
+        """
+        if self.henrik is None:
+            raise PlayerServiceUnavailableError(
+                "Selected player region cannot be verified by the configured providers."
+            )
+        try:
+            account = await self.henrik.get_account(game_name, tag_line)
+        except NotFoundError as error:
+            raise PlayerNotFoundError(
+                "Player not found in the selected region."
+            ) from error
+        except Exception as error:
+            logger.warning("Region verification failed: %s", type(error).__name__)
+            raise PlayerServiceUnavailableError(
+                "Selected player region could not be verified."
+            ) from None
+        if account.region.lower() != region.lower() or (
+            puuid and account.puuid != puuid
+        ):
+            raise PlayerNotFoundError("Player not found in the selected region.")
+        return account
+
     async def get_complete_player_profile(
-        self, game_name: str, tag_line: str
+        self, game_name: str, tag_line: str, *, region: str | None = None
     ) -> PlayerProfile:
-        profile = await self.get_player(game_name, tag_line)
+        profile = await self.get_player(game_name, tag_line, region=region)
+        effective_region = region or profile.region
         if not profile.rank_name:
             try:
                 rank = await self.get_rank(
-                    game_name, tag_line, puuid=profile.puuid, region=profile.region
+                    game_name, tag_line, puuid=profile.puuid, region=effective_region
                 )
                 profile.rank_name = rank.tier_name
                 profile.rank_icon_url = rank.rank_icon_url
@@ -94,9 +125,16 @@ class PlayerService:
                 logger.debug("Rank enrichment unavailable")
         return profile
 
-    async def get_player(self, game_name: str, tag_line: str) -> PlayerProfile:
+    async def get_player(
+        self, game_name: str, tag_line: str, *, region: str | None = None
+    ) -> PlayerProfile:
+        verified_account = (
+            await self._verified_account_region(game_name, tag_line, region)
+            if region
+            else None
+        )
         errors: list[Exception] = []
-        if self.tracker is not None:
+        if self.tracker is not None and region is None:
             try:
                 data = await self.tracker.get_player_profile(
                     "riot", f"{game_name}#{tag_line}"
@@ -113,6 +151,7 @@ class PlayerService:
                 return PlayerProfile(
                     game_name=game_name,
                     tag_line=tag_line,
+                    region=region,
                     avatar_url=data.identity.avatar_url,
                     rank_name=rank_name,
                     rank_icon_url=rank_icon,
@@ -123,12 +162,14 @@ class PlayerService:
 
         if self.henrik is not None:
             try:
-                data = await self.henrik.get_account(game_name, tag_line)
+                data = verified_account or await self.henrik.get_account(
+                    game_name, tag_line
+                )
                 return PlayerProfile(
                     puuid=data.puuid,
                     game_name=data.name,
                     tag_line=data.tag,
-                    region=data.region,
+                    region=region or data.region,
                     account_level=data.account_level,
                     source="henrik",
                 )
@@ -138,11 +179,12 @@ class PlayerService:
         if self.riot is not None:
             try:
                 data = await self.riot.get_player_by_riot_id(game_name, tag_line)
+                # Riot's model.region is its configured shard, not account evidence.
                 return PlayerProfile(
                     puuid=data.puuid,
                     game_name=data.game_name,
                     tag_line=data.tag_line,
-                    region=data.region,
+                    region=region or data.region,
                     account_level=data.account_level,
                     source="riot",
                 )
@@ -152,9 +194,9 @@ class PlayerService:
         self._raise_failure(errors, "Player")
 
     async def get_player_identity(
-        self, game_name: str, tag_line: str
+        self, game_name: str, tag_line: str, *, region: str | None = None
     ) -> PlayerIdentity:
-        profile = await self.get_player(game_name, tag_line)
+        profile = await self.get_player(game_name, tag_line, region=region)
         return PlayerIdentity.model_validate(profile.model_dump())
 
     async def get_stats_overview(
@@ -189,17 +231,23 @@ class PlayerService:
         self._raise_failure(errors, "Lifetime statistics")
 
     async def get_player_overview(
-        self, game_name: str, tag_line: str, *, limit: int = 10
+        self,
+        game_name: str,
+        tag_line: str,
+        *,
+        region: str | None = None,
+        limit: int = 10,
     ) -> CompletePlayerProfile:
-        identity = await self.get_player_identity(game_name, tag_line)
+        identity = await self.get_player_identity(game_name, tag_line, region=region)
+        effective_region = region or identity.region
         results = await asyncio.gather(
-            self.get_rank(game_name, tag_line, region=identity.region),
+            self.get_rank(game_name, tag_line, region=effective_region),
             self.get_stats_overview(game_name, tag_line),
             self.get_recent_matches(
                 game_name,
                 tag_line,
                 puuid=identity.puuid,
-                region=identity.region,
+                region=effective_region,
                 limit=limit,
             ),
             return_exceptions=True,
@@ -222,9 +270,9 @@ class PlayerService:
     async def _henrik_region(
         self, game_name: str, tag_line: str, region: str | None
     ) -> str:
-        if region:
-            return region
         account = await self.henrik.get_account(game_name, tag_line)
+        if region and region.lower() != account.region.lower():
+            raise NotFoundError("Player not found in the selected region")
         return account.region
 
     async def get_rank(
@@ -235,8 +283,13 @@ class PlayerService:
         *,
         region: str | None = None,
     ) -> PlayerRank:
+        verified_account = (
+            await self._verified_account_region(game_name, tag_line, region, puuid)
+            if region
+            else None
+        )
         errors: list[Exception] = []
-        if self.tracker is not None:
+        if self.tracker is not None and region is None:
             try:
                 stats = await self.tracker.get_lifetime_stats(
                     "riot", f"{game_name}#{tag_line}"
@@ -255,7 +308,11 @@ class PlayerService:
         # Riot's official API does not expose a player's current rank or RR.
         if self.henrik is not None:
             try:
-                account_region = await self._henrik_region(game_name, tag_line, region)
+                account_region = (
+                    verified_account.region
+                    if verified_account
+                    else await self._henrik_region(game_name, tag_line, region)
+                )
                 rank = await self.henrik.get_rank(account_region, game_name, tag_line)
                 return PlayerRank(
                     tier_name=rank.tier_name,
@@ -294,8 +351,10 @@ class PlayerService:
     ) -> tuple[list[PlayerMatch], str]:
         if not 1 <= limit <= 20:
             raise ValueError("Match limit must be between 1 and 20")
+        if region:
+            await self._verified_account_region(game_name, tag_line, region, puuid)
         errors: list[Exception] = []
-        if self.tracker is not None:
+        if self.tracker is not None and region is None:
             try:
                 matches = await self.tracker.get_recent_matches(
                     "riot", f"{game_name}#{tag_line}"
@@ -311,6 +370,7 @@ class PlayerService:
                         deaths=m.deaths,
                         assists=m.assists,
                         score=m.score,
+                        round_score=getattr(m, "round_score", None),
                         provider="tracker",
                         agent_name=m.agent_name,
                     )
@@ -328,6 +388,7 @@ class PlayerService:
                 summaries = []
                 for match in matches[:limit]:
                     result = "Unknown"
+                    round_score = None
                     if match.stats.team.lower() in ("red", "blue"):
                         own, other = (
                             (match.teams.red, match.teams.blue)
@@ -340,6 +401,7 @@ class PlayerService:
                                 if own > other
                                 else "Defeat" if own < other else "Draw"
                             )
+                            round_score = f"{own} - {other}"
                     summaries.append(
                         PlayerMatch(
                             match_id=match.metadata.id,
@@ -351,6 +413,7 @@ class PlayerService:
                             deaths=match.stats.deaths,
                             assists=match.stats.assists,
                             score=None,
+                            round_score=round_score,
                             provider="henrik",
                             provider_score=match.stats.score,
                             agent_name=match.stats.character.name,
@@ -360,7 +423,9 @@ class PlayerService:
             except Exception as error:
                 self._record_failure("henrik", error, errors)
 
-        if self.riot is not None:
+        if self.riot is not None and (
+            region is None or getattr(self.riot.config, "region", None) == region
+        ):
             try:
                 if not puuid:
                     player = await self.riot.get_player_by_riot_id(game_name, tag_line)
@@ -377,6 +442,7 @@ class PlayerService:
                         deaths=m.player_stats.deaths,
                         assists=m.player_stats.assists,
                         score=m.player_stats.score,
+                        round_score=getattr(m, "round_score", None),
                         provider="riot",
                         agent_name=resolve_agent_name(m.player_stats.agent_name),
                     )
@@ -437,6 +503,7 @@ class PlayerService:
         *,
         region: str | None = None,
         limit: int = 5,
+        user_id: str | None = None,
     ) -> dict[str, Any]:
         from agents.orchestrator.agent import OrchestratorAgent
         from agents.orchestrator.schema import OrchestratorInput
@@ -453,11 +520,12 @@ class PlayerService:
             pass
 
         stats_dict = None
-        try:
-            stats = await self.get_stats_overview(game_name, tag_line)
-            stats_dict = stats.model_dump()
-        except Exception:
-            pass
+        if region is None:
+            try:
+                stats = await self.get_stats_overview(game_name, tag_line)
+                stats_dict = stats.model_dump()
+            except Exception:
+                pass
 
         matches_data = [match.model_dump() for match in matches]
         orchestrator = OrchestratorAgent()
@@ -471,13 +539,32 @@ class PlayerService:
             ),
             AgentContext(),
         )
-        return output.report or {}
+        report = output.report or {}
+        if report and region:
+            report["region"] = region.lower()
+        if report and "created_at" not in report:
+            report["created_at"] = datetime.now(UTC).isoformat()
+        return report
 
-    async def get_coaching_report(self, report_id: str) -> dict[str, Any] | None:
+    async def get_coaching_report(
+        self,
+        report_id: str,
+        *,
+        game_name: str | None = None,
+        tag_line: str | None = None,
+        user_id: str | None = None,
+        region: str | None = None,
+    ) -> dict[str, Any] | None:
         return None
 
     async def list_coaching_reports(
-        self, game_name: str, tag_line: str, *, limit: int = 10
+        self,
+        game_name: str,
+        tag_line: str,
+        *,
+        region: str | None = None,
+        limit: int = 10,
+        user_id: str | None = None,
     ) -> list[dict[str, Any]]:
         return []
 
@@ -535,15 +622,73 @@ class PlayerService:
         return False
 
     async def get_player_progression(
-        self, game_name: str, tag_line: str
+        self,
+        game_name: str,
+        tag_line: str,
+        *,
+        region: str | None = None,
+        user_id: str | None = None,
     ) -> dict[str, Any]:
         try:
-            matches = await self.get_recent_matches(game_name, tag_line, limit=20)
+            matches = await self.get_recent_matches(
+                game_name, tag_line, region=region, limit=20
+            )
+        except PlayerServiceError:
+            if region:
+                raise
+            matches = []
         except Exception:
             matches = []
-        reports = await self.list_coaching_reports(game_name, tag_line, limit=10)
+        reports = await self.list_coaching_reports(
+            game_name, tag_line, region=region, limit=10, user_id=user_id
+        )
+
+        def _is_actual_weakness(text: str) -> bool:
+            t = text.lower().strip()
+            if not t:
+                return False
+            ignored_phrases = [
+                "no se detectaron",
+                "insuficiente",
+                "no disponible",
+                "sin errores",
+                "sin fallos",
+                "sin debilidades",
+                "sin compras",
+                "sin telemetría",
+                "sugerencia",
+            ]
+            return not any(phrase in t for phrase in ignored_phrases)
+
+        def _extract_focus_areas(
+            reps: list[dict[str, Any]],
+        ) -> tuple[list[str], list[str]]:
+            all_w: list[str] = []
+            latest_w: list[str] = []
+            if reps:
+                for i, rep in enumerate(reps):
+                    payload = rep.get("payload", {})
+                    crit = (
+                        payload.get("critical_flaws")
+                        or payload.get("critical_weaknesses")
+                        or []
+                    )
+                    weakness_texts = [
+                        w if isinstance(w, str) else w.get("area", str(w)) for w in crit
+                    ]
+                    valid_weaknesses = [
+                        w for w in weakness_texts if _is_actual_weakness(w)
+                    ]
+                    if i == 0:
+                        latest_w.extend(valid_weaknesses)
+                    else:
+                        all_w.extend(valid_weaknesses)
+            resolved = [area for area in set(all_w) if area not in latest_w]
+            return latest_w, resolved
 
         if not matches:
+            latest_weaknesses, resolved_areas = _extract_focus_areas(reports)
+
             return {
                 "game_name": game_name,
                 "tag_line": tag_line,
@@ -557,14 +702,7 @@ class PlayerService:
                     "change_pct": 0.0,
                     "data_points": [],
                 },
-                "headshot_metric": {
-                    "name": "Headshot %",
-                    "current": 20.0,
-                    "historical_avg": 20.0,
-                    "trend": "stable",
-                    "change_pct": 0.0,
-                    "data_points": [],
-                },
+                "headshot_metric": None,
                 "win_rate_metric": {
                     "name": "Win Rate %",
                     "current": 50.0,
@@ -573,8 +711,8 @@ class PlayerService:
                     "change_pct": 0.0,
                     "data_points": [],
                 },
-                "resolved_focus_areas": [],
-                "active_focus_areas": [],
+                "resolved_focus_areas": resolved_areas,
+                "active_focus_areas": latest_weaknesses,
                 "agent_trends": {},
                 "trajectory_narrative": (
                     f"No recent matches recorded for {game_name}#{tag_line} yet. "
@@ -584,7 +722,7 @@ class PlayerService:
 
         sorted_matches = sorted(
             matches,
-            key=lambda m: (m.timestamp if isinstance(m.timestamp, (int, float)) else 0),
+            key=lambda m: m.timestamp if isinstance(m.timestamp, (int, float)) else 0,
         )
 
         kd_points = []
@@ -632,15 +770,13 @@ class PlayerService:
         else:
             win_trend = "stable"
 
-        try:
-            stats = await self.get_stats_overview(game_name, tag_line)
-            hs_val = float(stats.headshot_pct or 20.0)
-        except Exception:
-            hs_val = 20.0
-
-        hs_points = [
-            {"timestamp": m.timestamp, "value": hs_val} for m in sorted_matches
-        ]
+        hs_val = None
+        if region is None:
+            try:
+                stats = await self.get_stats_overview(game_name, tag_line)
+                hs_val = float(stats.headshot_pct)
+            except Exception:
+                pass
 
         agent_stats: dict[str, dict[str, Any]] = {}
         for match in sorted_matches:
@@ -667,31 +803,7 @@ class PlayerService:
             for agent, s in agent_stats.items()
         }
 
-        all_weaknesses: list[str] = []
-        latest_weaknesses: list[str] = []
-        if reports:
-            for i, rep in enumerate(reports):
-                payload = rep.get("payload", {})
-                crit = payload.get("critical_weaknesses", [])
-                weakness_texts = [
-                    w if isinstance(w, str) else w.get("area", str(w)) for w in crit
-                ]
-                if i == 0:
-                    latest_weaknesses.extend(weakness_texts)
-                else:
-                    all_weaknesses.extend(weakness_texts)
-
-        resolved_areas = [
-            area for area in set(all_weaknesses) if area not in latest_weaknesses
-        ]
-
-        if not latest_weaknesses and not resolved_areas:
-            latest_weaknesses = [
-                "First Duel Conversion",
-                "Eco-Round Buy Discipline",
-            ]
-            if kd_trend == "improving":
-                resolved_areas = ["Crosshair Placement at Mid Range"]
+        latest_weaknesses, resolved_areas = _extract_focus_areas(reports)
 
         best_agent = (
             max(agent_trends.items(), key=lambda x: x[1]["win_pct"])[0]
@@ -719,14 +831,18 @@ class PlayerService:
                 "change_pct": kd_change,
                 "data_points": kd_points,
             },
-            "headshot_metric": {
-                "name": "Headshot %",
-                "current": hs_val,
-                "historical_avg": hs_val,
-                "trend": "stable",
-                "change_pct": 0.0,
-                "data_points": hs_points,
-            },
+            "headshot_metric": (
+                {
+                    "name": "Headshot %",
+                    "current": hs_val,
+                    "historical_avg": hs_val,
+                    "trend": "stable",
+                    "change_pct": 0.0,
+                    "data_points": [],
+                }
+                if hs_val is not None
+                else None
+            ),
             "win_rate_metric": {
                 "name": "Win Rate %",
                 "current": avg_win_recent,
@@ -742,21 +858,32 @@ class PlayerService:
         }
 
     async def sync_player_coaching(
-        self, game_name: str, tag_line: str, *, region: str | None = None
+        self,
+        game_name: str,
+        tag_line: str,
+        *,
+        region: str | None = None,
+        user_id: str | None = None,
     ) -> dict[str, Any]:
         await self.invalidate_player_cache(game_name, tag_line)
         try:
             matches = await self.get_recent_matches(
                 game_name, tag_line, region=region, limit=20
             )
+        except PlayerServiceError:
+            if region:
+                raise
+            matches = []
         except Exception:
             matches = []
-        reports = await self.list_coaching_reports(game_name, tag_line, limit=1)
+        reports = await self.list_coaching_reports(
+            game_name, tag_line, region=region, limit=1, user_id=user_id
+        )
         new_report_needed = len(reports) == 0 or len(matches) > 0
         report_id = None
         if new_report_needed and matches:
             report = await self.generate_coaching_report(
-                game_name, tag_line, region=region, limit=5
+                game_name, tag_line, region=region, limit=5, user_id=user_id
             )
             report_id = report.get("id")
 

@@ -134,6 +134,7 @@ class MatchSummary(BaseModel):
     deaths: int
     assists: int
     score: int
+    round_score: str | None = Field(None, alias="roundScore")
     timestamp: str
 
 

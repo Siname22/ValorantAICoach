@@ -32,40 +32,110 @@ class ReportWriterAgent(BaseAgent[ReportWriterInput, ReportWriterOutput]):
         report_id = str(uuid.uuid4())
         title = f"Informe de Rendimiento Táctico: {player_name}#{player_tag} ({rank})"
 
-        kd = match_an.get("kd_ratio", 1.0)
-        econ_rating = econ_an.get("economy_rating", 70.0)
+        match_metrics = match_an.get("metrics") or {}
+        kd: float | None = None
+        if "kd_ratio" in match_metrics and match_metrics["kd_ratio"] is not None:
+            kd = float(match_metrics["kd_ratio"])
+        elif "kd_ratio" in match_an and match_an["kd_ratio"] is not None:
+            kd = float(match_an["kd_ratio"])
+        else:
+            for ev in match_an.get("evidence", []):
+                if ev.get("metric") == "kd_ratio" and ev.get("value") is not None:
+                    kd = float(ev["value"])
+                    break
+
+        econ_raw = econ_an.get("economy_rating")
+        econ_rating = float(econ_raw) if econ_raw is not None else None
+
         role_name = role_an.get("role", "Flex")
-        role_score = role_an.get("role_score", 70.0)
+        role_raw = role_an.get("role_score")
+        role_score = float(role_raw) if role_raw is not None else None
 
         # Executive summary
+        if kd is not None:
+            kd_phrase = f"un ratio K/D de {kd}"
+        else:
+            kd_phrase = "rendimiento táctico sin ratio K/D registrado"
+
+        econ_phrase = (
+            f"una valoración económica de {econ_rating}/100"
+            if econ_rating is not None
+            else "sin datos económicos suficientes"
+        )
+        role_phrase = (
+            f"una efectividad en su rol de {role_name} de {role_score}/100"
+            if role_score is not None
+            else f"desempeño de rol ({role_name}) sin métricas detalladas"
+        )
+
         summary = (
             f"Análisis de rendimiento para {player_name}#{player_tag} en rango {rank}. "
-            f"El jugador muestra un ratio K/D de {kd}, con una valoración económica "
-            f"de {econ_rating}/100 y una efectividad en su rol de {role_name} "
-            f"de {role_score}/100."
+            f"El jugador muestra {kd_phrase}, con {econ_phrase} y {role_phrase}."
         )
 
         strengths: list[str] = []
-        if kd >= 1.0:
+        if kd is not None and kd >= 1.0:
             strengths.append(f"Solvencia en duelos individuales con K/D de {kd}.")
         else:
-            strengths.append("Capacidad para generar asistencias y apoyo al equipo.")
+            assists_val = match_metrics.get("assists")
+            if assists_val is None:
+                for ev in match_an.get("evidence", []):
+                    if ev.get("metric") == "assists" and ev.get("value") is not None:
+                        assists_val = ev["value"]
+                        break
+            if assists_val is not None and int(assists_val) >= 3:
+                strengths.append(
+                    "Capacidad para generar asistencias y apoyo al equipo "
+                    f"({assists_val} asistencias)."
+                )
 
-        if econ_rating >= 70.0:
-            strengths.append("Buena disciplina en rondas de compra completa y eco.")
-        else:
-            strengths.append("Conciencia del valor de la utilidad en rondas clave.")
+        if econ_rating is not None:
+            if econ_rating >= 70.0:
+                strengths.append("Buena disciplina en rondas de compra completa y eco.")
+            elif econ_rating >= 50.0:
+                strengths.append("Conciencia del valor de la utilidad en rondas clave.")
+
+        if role_score is not None and role_score >= 70.0:
+            strengths.append(
+                f"Alineación efectiva con las funciones del rol de {role_name}."
+            )
+
+        if not strengths:
+            strengths.append(
+                "Sin fortalezas estadísticas destacadas en la muestra analizada; "
+                "se recomienda consolidar fundamentos."
+            )
+
+        def _is_grounded_flaw(err: str | None) -> bool:
+            if not err:
+                return False
+            e = err.lower().strip()
+            ignored_terms = [
+                "insuficiente",
+                "no disponible",
+                "sin errores",
+                "sin fallos",
+                "sin déficit",
+                "sin compras forzadas",
+                "disciplina de compra adecuada",
+                "sin telemetría",
+                "como sugerencia",
+                "no se detectaron",
+            ]
+            return not any(term in e for term in ignored_terms)
 
         flaws: list[str] = []
-        if match_an.get("main_mistake"):
-            flaws.append(f"Combate: {match_an['main_mistake']}")
-        if econ_an.get("main_mistake"):
-            flaws.append(f"Economía: {econ_an['main_mistake']}")
-        if role_an.get("main_mistake"):
-            flaws.append(f"Rol ({role_name}): {role_an['main_mistake']}")
+        match_err = match_an.get("main_mistake")
+        if match_err and _is_grounded_flaw(match_err):
+            flaws.append(f"Combate: {match_err}")
 
-        if not flaws:
-            flaws.append("Tendencia a tomar duelos sin soporte de utilidad de equipo.")
+        econ_err = econ_an.get("main_mistake")
+        if econ_err and _is_grounded_flaw(econ_err):
+            flaws.append(f"Economía: {econ_err}")
+
+        role_err = role_an.get("main_mistake")
+        if role_err and _is_grounded_flaw(role_err):
+            flaws.append(f"Rol ({role_name}): {role_err}")
 
         training_plan: list[str] = []
         if match_an.get("drill"):

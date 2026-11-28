@@ -1,19 +1,38 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { BentoCardComponent } from '../../shared/ui/bento-card/bento-card.component';
 import { I18N_ES } from '../../core/i18n/es';
 import { ApiClientService } from '../../core/api/api-client.service';
+import { ActivePlayerService } from '../../core/player/active-player.service';
 import {
   CoachingReportDetailResponse,
   CoachingReportSummary,
   PlayerProgressionResponse,
 } from '../../core/api/api-models';
 
+/** Normalizes a stored report (flat fields or orchestrator payload) into a list item. */
+type ReportLike = Pick<CoachingReportSummary, 'id' | 'created_at' | 'summary' | 'strengths' | 'weaknesses' | 'payload'>;
+
+export function toReportSummary(rep: ReportLike): CoachingReportSummary {
+  const payload = rep.payload || {};
+  const join = (v: unknown): string => (Array.isArray(v) ? v.join('. ') : v ? String(v) : '');
+  return {
+    id: rep.id,
+    created_at: rep.created_at,
+    summary: String(
+      rep.summary || payload['executive_summary'] || payload['summary'] || 'Informe táctico'
+    ),
+    strengths: rep.strengths || join(payload['key_strengths'] ?? payload['strengths']),
+    weaknesses: rep.weaknesses || join(payload['critical_flaws'] ?? payload['weaknesses']),
+  };
+}
+
 @Component({
   selector: 'app-reports',
   standalone: true,
-  imports: [CommonModule, FormsModule, BentoCardComponent],
+  imports: [CommonModule, FormsModule, RouterLink, BentoCardComponent],
   template: `
     <div class="reports-page">
       <app-bento-card span="full" customId="reports-heading">
@@ -23,6 +42,11 @@ import {
             <p class="page-subtitle">
               Evaluación táctica multi-agente basada en Match Analyst, Economy Coach, Role Coach y Report Writer.
             </p>
+            @if (player(); as p) {
+              <p class="active-player" data-testid="active-player">
+                Jugador: <strong>{{ p.gameName }}#{{ p.tagLine }}</strong> · Región {{ p.region | uppercase }}
+              </p>
+            }
           </div>
 
           <div class="generate-control">
@@ -30,7 +54,7 @@ import {
               type="button"
               class="btn-primary"
               (click)="onGenerateReport()"
-              [disabled]="generating()"
+              [disabled]="generating() || !player()"
             >
               {{ generating() ? 'Generando análisis IA...' : '⚡ Generar Nuevo Informe' }}
             </button>
@@ -49,12 +73,8 @@ import {
         <!-- Match Analyst -->
         <app-bento-card title="Match Analyst" subtitle="Patrones tácticos y duelismo">
           <p class="agent-desc">
-            Analiza aperturas de sitio, porcentaje de primeros intercambios (First Bloods) y eficacia en retoma de rondas post-plant.
+            Describe aperturas de sitio, primeros intercambios (First Bloods) y retomas post-plant cuando hay datos suficientes.
           </p>
-          <div class="agent-stat">
-            <span class="stat-num">74%</span>
-            <span class="stat-label">Winrate en 5v4 favorable</span>
-          </div>
         </app-bento-card>
 
         <!-- Economy Coach -->
@@ -62,10 +82,6 @@ import {
           <p class="agent-desc">
             Supervisa la disciplina en rondas semi-eco, fuerza compras sincronizadas y minimiza pérdidas innecesarias de créditos.
           </p>
-          <div class="agent-stat">
-            <span class="stat-num">89%</span>
-            <span class="stat-label">Sincronización con el equipo</span>
-          </div>
         </app-bento-card>
 
         <!-- Role Coach -->
@@ -73,10 +89,6 @@ import {
           <p class="agent-desc">
             Optimiza el uso de utilidad táctica, posicionamiento de ancla en defensa y timing de apoyo en ataques coordinados.
           </p>
-          <div class="agent-stat">
-            <span class="stat-num">A-</span>
-            <span class="stat-label">Calificación de impacto de rol</span>
-          </div>
         </app-bento-card>
 
         <!-- Report Writer -->
@@ -84,10 +96,6 @@ import {
           <p class="agent-desc">
             Consolida las métricas de todos los agentes en recomendaciones accionables para tu próxima partida.
           </p>
-          <div class="agent-stat">
-            <span class="stat-num">3</span>
-            <span class="stat-label">Prioridades clave identificadas</span>
-          </div>
         </app-bento-card>
       </div>
 
@@ -96,13 +104,26 @@ import {
         <app-bento-card span="full" title="Progresión Táctica Histórica" subtitle="Evolución en el tiempo">
           <div class="progression-container">
             <p><strong>Jugador:</strong> {{ progression()?.game_name }}#{{ progression()?.tag_line }}</p>
-            <p><strong>Tendencia global:</strong> {{ progression()?.trajectory_narrative || progression()?.overall_trend || 'Favorable (+12.4 ACS en las últimas 5 partidas)' }}</p>
+            <p><strong>Tendencia global:</strong> {{ progression()?.trajectory_narrative || progression()?.overall_trend || 'Sin datos de tendencia suficientes.' }}</p>
           </div>
         </app-bento-card>
       }
 
       <!-- Reports History -->
       <app-bento-card span="full" title="Historial de Informes Generados" subtitle="Consultas anteriores">
+        @if (!player()) {
+          <p class="empty-reports" role="status" data-testid="no-player">
+            Aún no has seleccionado un jugador.
+            <a routerLink="/resumen">Busca un Riot ID en Resumen</a> para ver sus informes.
+          </p>
+        } @else if (loadingHistory()) {
+          <p class="empty-reports" role="status" data-testid="loading">Cargando historial de informes...</p>
+        } @else if (historyError()) {
+          <div class="empty-reports" role="alert" data-testid="history-error">
+            <p>{{ historyError() }}</p>
+            <button type="button" class="btn-primary" (click)="loadHistory()">Reintentar</button>
+          </div>
+        } @else {
         <ul class="reports-list" role="list">
           @for (r of reports(); track r.id) {
             <li class="report-item">
@@ -110,17 +131,22 @@ import {
                 <span class="report-date">{{ r.created_at | date:'dd/MM/yyyy HH:mm' }}</span>
                 <h2 class="report-summary-title">{{ r.summary }}</h2>
                 <div class="report-points">
-                  <span class="tag-strength">Fortalezas: {{ r.strengths }}</span>
-                  <span class="tag-weakness">A mejorar: {{ r.weaknesses }}</span>
+                  @if (r.strengths) {
+                    <span class="tag-strength">Fortalezas: {{ r.strengths }}</span>
+                  }
+                  @if (r.weaknesses) {
+                    <span class="tag-weakness">A mejorar: {{ r.weaknesses }}</span>
+                  }
                 </div>
               </div>
             </li>
           } @empty {
-            <li class="empty-reports">
-              No hay informes guardados aún. Haz clic en "Generar Nuevo Informe" para iniciar la evaluación multi-agente.
+            <li class="empty-reports" data-testid="empty-history">
+              No hay informes guardados para este jugador y región. Los informes antiguos sin región no aparecen aquí.
             </li>
           }
         </ul>
+        }
       </app-bento-card>
     </div>
   `,
@@ -130,6 +156,7 @@ import {
       flex-direction: column;
       gap: var(--main-gap);
     }
+    .active-player { font-size: 14px; margin-top: 4px; }
     .reports-header {
       display: flex;
       justify-content: space-between;
@@ -238,58 +265,91 @@ import {
 })
 export class ReportsComponent implements OnInit {
   private readonly api = inject(ApiClientService);
+  private readonly activePlayer = inject(ActivePlayerService);
+  private historyRequestVersion = 0;
+  private progressionRequestVersion = 0;
   readonly i18n = I18N_ES;
 
+  readonly player = this.activePlayer.player;
   readonly generating = signal(false);
   readonly statusMessage = signal('');
-  readonly reports = signal<CoachingReportSummary[]>([
-    {
-      id: 'report-demo-1',
-      created_at: '2026-10-12T20:00:00Z',
-      summary: 'Optimización de disciplina económica en compras tempranas y rutas de iniciador.',
-      strengths: 'Excelente índice de primeras bajas (78%) y control de mapa en Haven.',
-      weaknesses: 'Fuerzas de compra prematuras en rondas 3 tras perder ronda de pistolas.',
-    },
-  ]);
+  readonly reports = signal<CoachingReportSummary[]>([]);
+  readonly loadingHistory = signal(false);
+  readonly historyError = signal<string | null>(null);
   readonly progression = signal<PlayerProgressionResponse | null>(null);
 
-  gameName = 'TenZ';
-  tagLine = '0001';
-
   ngOnInit(): void {
-    this.loadProgression();
+    this.loadHistory();
   }
 
-  loadProgression(): void {
-    this.api.getPlayerProgression(this.gameName, this.tagLine).subscribe({
-      next: (prog: PlayerProgressionResponse) => this.progression.set(prog),
-      error: () => {},
+  loadHistory(): void {
+    const requestVersion = ++this.historyRequestVersion;
+    const p = this.activePlayer.player();
+    const version = this.activePlayer.version();
+    this.reports.set([]);
+    this.progression.set(null);
+    this.historyError.set(null);
+    if (!p) return;
+
+    this.loadingHistory.set(true);
+    this.api.getCoachingReports(p.gameName, p.tagLine, 20, p.region).subscribe({
+      next: (res: { reports: CoachingReportSummary[]; count: number }) => {
+        if (requestVersion !== this.historyRequestVersion ||
+            !this.activePlayer.isCurrent(p.gameName, p.tagLine, p.region, version)) return;
+        this.reports.set((res.reports || []).map(toReportSummary));
+        this.loadingHistory.set(false);
+        this.loadProgression(version);
+      },
+      error: () => {
+        if (requestVersion !== this.historyRequestVersion ||
+            !this.activePlayer.isCurrent(p.gameName, p.tagLine, p.region, version)) return;
+        this.loadingHistory.set(false);
+        this.historyError.set(
+          'No se pudo cargar el historial de informes de ' +
+            p.gameName + '#' + p.tagLine + '. No se muestran informes de ejemplo.'
+        );
+      },
+    });
+  }
+
+  loadProgression(version = this.activePlayer.version()): void {
+    const requestVersion = ++this.progressionRequestVersion;
+    const p = this.activePlayer.player();
+    if (!p) return;
+    this.api.getPlayerProgression(p.gameName, p.tagLine, p.region).subscribe({
+      next: (prog: PlayerProgressionResponse) => {
+        if (requestVersion === this.progressionRequestVersion &&
+            this.activePlayer.isCurrent(p.gameName, p.tagLine, p.region, version)) this.progression.set(prog);
+      },
+      error: () => {
+        // Progression is optional; absence is shown as "no data".
+      },
     });
   }
 
   onGenerateReport(): void {
+    const p = this.activePlayer.player();
+    if (!p) return;
+    const version = this.activePlayer.version();
     this.generating.set(true);
     this.statusMessage.set('Iniciando orquestación de agentes especializados...');
 
-    this.api.generateCoachingReport(this.gameName, this.tagLine, 5).subscribe({
+    this.api.generateCoachingReport(p.gameName, p.tagLine, 5, p.region).subscribe({
       next: (detail: CoachingReportDetailResponse) => {
+        if (!this.activePlayer.isCurrent(p.gameName, p.tagLine, p.region, version)) return;
         this.generating.set(false);
-        this.statusMessage.set('¡Informe de coaching generado con éxito!');
-        const rep = detail.report;
-        if (rep) {
-          this.reports.update((list) => [
-            {
-              id: rep.id,
-              created_at: rep.created_at,
-              summary: rep.summary,
-              strengths: rep.strengths,
-              weaknesses: rep.weaknesses,
-            },
-            ...list,
-          ]);
+        if (detail && detail.id && detail.payload) {
+          ++this.historyRequestVersion;
+          this.statusMessage.set('¡Informe de coaching generado con éxito!');
+          const item = toReportSummary(detail);
+          this.reports.update((list) => [item, ...list.filter((r) => r.id !== item.id)]);
+          this.loadProgression(version);
+        } else {
+          this.statusMessage.set('El servidor no devolvió un informe. No hay datos suficientes todavía.');
         }
       },
       error: (err: { error?: { detail?: string } }) => {
+        if (!this.activePlayer.isCurrent(p.gameName, p.tagLine, p.region, version)) return;
         this.generating.set(false);
         this.statusMessage.set(
           err?.error?.detail || 'Error al conectar con los agentes de coaching.'

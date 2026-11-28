@@ -1,6 +1,5 @@
 from typing import Annotated, Any
 
-from backend.app.core.config import get_settings
 from backend.app.core.security import decode_access_token
 from backend.app.dependencies.provider_deps import get_player_service
 from backend.app.services.player_service import PlayerService
@@ -57,11 +56,8 @@ async def get_current_user(
 
 
 def is_admin_user(user: dict[str, Any]) -> bool:
-    """Admin if flagged in the database or listed in ADMIN_EMAILS."""
-    if user.get("is_admin"):
-        return True
-    email = str(user.get("email", "")).strip().lower()
-    return bool(email) and email in get_settings().admin_email_set
+    """Admin if verified and flagged in the database."""
+    return bool(user.get("is_admin", False))
 
 
 async def require_admin(

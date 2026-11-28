@@ -14,7 +14,7 @@ describe('AppComponent', () => {
         provideRouter([]),
         {
           provide: RouteFocusService,
-          useValue: { init: () => {} },
+          useValue: { init: jasmine.createSpy('init') },
         },
       ],
     }).compileComponents();

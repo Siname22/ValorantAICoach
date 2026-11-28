@@ -11,11 +11,12 @@ from .schema import RoleCoachInput, RoleCoachOutput
 ROLE_FEEDBACK: dict[str, dict[str, str]] = {
     "Duelist": {
         "main_mistake": (
-            "Buscar duelos de entrada de forma aislada sin coordinar trades ni "
-            "esperar la utilidad de tu iniciador."
+            "Sin telemetría de primera sangre por ronda; como sugerencia de "
+            "rol: coordinar entradas al punto con la utilidad del equipo para "
+            "asegurar trades."
         ),
         "tactical_adaptation": (
-            "Sé el primero en traspasar el humo o cuello de botella tras el flash, "
+            "Sé el primero en traspasar el cuello de botella tras el flash, "
             "comunicando tu ruta para que tu equipo tradee tu muerte de inmediato."
         ),
         "drill": (
@@ -25,8 +26,9 @@ ROLE_FEEDBACK: dict[str, dict[str, str]] = {
     },
     "Controller": {
         "main_mistake": (
-            "Colocar humos demasiado temprano al inicio de ronda o morir primero, "
-            "dejando a tu equipo sin control de visión."
+            "Sin telemetría de habilidades en la API para registrar colocación "
+            "de humos; como sugerencia de rol: guardar al menos un humo para "
+            "el plantado o retake."
         ),
         "tactical_adaptation": (
             "Guarda al menos un humo para el momento exacto del plantado o "
@@ -39,8 +41,8 @@ ROLE_FEEDBACK: dict[str, dict[str, str]] = {
     },
     "Initiator": {
         "main_mistake": (
-            "Gastar la utilidad de reconocimiento sin compañeros posicionados para "
-            "capitalizar la información obtenida."
+            "Sin telemetría de habilidades en la API para medir timing de utilidad; "
+            "como sugerencia de rol: coordinar flashes e información antes de duelos."
         ),
         "tactical_adaptation": (
             "Coordina con tu duelista con una cuenta regresiva de 3 segundos antes "
@@ -53,8 +55,9 @@ ROLE_FEEDBACK: dict[str, dict[str, str]] = {
     },
     "Sentinel": {
         "main_mistake": (
-            "Pikear agresivamente en defensa antes de que los atacantes activen "
-            "tus trampas o cables, regalando la primera sangre."
+            "Sin telemetría de habilidades para registrar activación de trampas; "
+            "como sugerencia de defensa: jugar paciente tras el sonido de cables y no "
+            "regalar la primera sangre."
         ),
         "tactical_adaptation": (
             "Ancla el sitio pacientemente y juega exclusivamente tras el sonido o "
@@ -69,7 +72,8 @@ ROLE_FEEDBACK: dict[str, dict[str, str]] = {
 
 DEFAULT_FEEDBACK = {
     "main_mistake": (
-        "Falta de sincronización táctica entre tus habilidades y tu posicionamiento."
+        "Sin telemetría de habilidades específicas; como sugerencia de rol: "
+        "coordinar la utilidad para ganar ventaja antes de tomar duelos directos."
     ),
     "tactical_adaptation": (
         "Utiliza tu utilidad para ganar ventaja antes de tomar duelos directos."
@@ -104,9 +108,60 @@ class RoleCoachAgent(BaseAgent[RoleCoachInput, RoleCoachOutput]):
         match_data = data.match_data
         player_stats = data.player_stats or {}
 
-        kills = int(match_data.get("kills", player_stats.get("kills", 12)))
-        deaths = int(match_data.get("deaths", player_stats.get("deaths", 10)))
-        assists = int(match_data.get("assists", player_stats.get("assists", 4)))
+        has_stats = (
+            match_data.get("kills") is not None
+            or match_data.get("deaths") is not None
+            or match_data.get("assists") is not None
+            or player_stats.get("kills") is not None
+            or player_stats.get("deaths") is not None
+            or player_stats.get("assists") is not None
+        )
+
+        if not has_stats:
+            return RoleCoachOutput(
+                agent_name=resolved_name,
+                role=role,
+                role_score=None,
+                main_mistake=(
+                    "Estadísticas de agente insuficientes para evaluar "
+                    "desempeño de rol."
+                ),
+                tactical_adaptation=(
+                    "Registrar estadísticas detalladas de combate y habilidades "
+                    f"para evaluar el impacto específico como {role}."
+                ),
+                drill=(
+                    "Completar una partida competitiva registrando bajas y "
+                    f"asistencias con {resolved_name}."
+                ),
+                evidence=[
+                    {
+                        "agent": resolved_name,
+                        "role": role,
+                        "status": "insufficient_data",
+                        "reason": (
+                            "No combat or ability metrics provided for role "
+                            "execution analysis."
+                        ),
+                    }
+                ],
+            )
+
+        kills = int(
+            match_data.get("kills")
+            if match_data.get("kills") is not None
+            else player_stats.get("kills", 0)
+        )
+        deaths = int(
+            match_data.get("deaths")
+            if match_data.get("deaths") is not None
+            else player_stats.get("deaths", 0)
+        )
+        assists = int(
+            match_data.get("assists")
+            if match_data.get("assists") is not None
+            else player_stats.get("assists", 0)
+        )
 
         # Calculate a baseline role performance metric
         if role == "Duelist":

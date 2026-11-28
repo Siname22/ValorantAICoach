@@ -1,13 +1,13 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { BentoCardComponent } from '../../shared/ui/bento-card/bento-card.component';
 import { I18N_ES } from '../../core/i18n/es';
 import { ApiClientService } from '../../core/api/api-client.service';
+import { ActivePlayerService, parseRiotId } from '../../core/player/active-player.service';
 import {
   PlayerProfile,
   PlayerMatch,
-  PlayerStatsOverview,
   CoachingReportSummary,
 } from '../../core/api/api-models';
 
@@ -44,8 +44,28 @@ import {
               <span id="search-hint" class="sr-only">Introduce tu nombre de invocador y lema separados por almohadilla (ej. TenZ#0001).</span>
             </div>
 
-            <button type="submit" class="btn-primary hero-btn" [disabled]="loading()">
-              {{ loading() ? i18n.hero.searching : i18n.hero.searchButton }}
+            <div class="input-field region-field">
+              <label for="region-select" class="input-label">
+                {{ i18n.hero.regionLabel }}
+              </label>
+              <select
+                id="region-select"
+                name="region"
+                [(ngModel)]="selectedRegion"
+                class="region-select"
+                [attr.aria-label]="i18n.hero.regionAriaLabel"
+              >
+                <option value="eu">EU (Europa)</option>
+                <option value="na">NA (Norteamérica)</option>
+                <option value="ap">AP (Asia-Pacífico)</option>
+                <option value="kr">KR (Corea)</option>
+                <option value="latam">LATAM (Latinoamérica)</option>
+                <option value="br">BR (Brasil)</option>
+              </select>
+            </div>
+
+            <button type="submit" class="btn-primary hero-btn">
+              {{ loading() ? 'ACTUALIZAR BÚSQUEDA' : i18n.hero.searchButton }}
             </button>
 
             @if (playerProfile()) {
@@ -66,6 +86,9 @@ import {
               {{ errorMessage() }}
             </p>
           }
+          @if (dataError()) {
+            <p class="search-error" role="alert">{{ dataError() }}</p>
+          }
 
           @if (syncMessage()) {
             <p class="sync-status" role="status" aria-live="polite">
@@ -82,10 +105,16 @@ import {
         [subtitle]="i18n.bento.acsCard.subtitle"
       >
         <div class="metric-display">
-          <span class="featured-number">{{ calculatedAcs() }}</span>
-          <div class="metric-diff" aria-label="Diferencia frente a la media anterior">
-            <span class="diff-tag positive">{{ i18n.bento.acsCard.diffPositive }} (+18.4)</span>
-          </div>
+          <span class="featured-number">{{ calculatedAcs() !== null ? calculatedAcs() : '—' }}</span>
+          @if (calculatedAcs() !== null) {
+            <div class="metric-diff" aria-label="Media basada en partidas analizadas">
+              <span class="diff-tag">Calculado con partidas disponibles</span>
+            </div>
+          } @else {
+            <div class="metric-diff" aria-label="Sin datos de combate suficientes">
+              <span class="diff-tag">{{ i18n.bento.acsCard.noData }}</span>
+            </div>
+          }
         </div>
       </app-bento-card>
 
@@ -103,17 +132,7 @@ import {
             }
           </ol>
         } @else {
-          <ol class="plan-list" aria-label="Pasos de mejora recomendados">
-            <li class="plan-item">
-              <strong>Disciplina en Ronda 3:</strong> Guardar créditos tras derrota para asegurar compra completa en ronda 4.
-            </li>
-            <li class="plan-item">
-              <strong>Distancia de intercambio (&lt;3s):</strong> Mantén línea de visión con el iniciador en B Main.
-            </li>
-            <li class="plan-item">
-              <strong>Conservación de Ultimates:</strong> Evita usar habilidades definitivas en situaciones 4v1 o 5v2.
-            </li>
-          </ol>
+          <p class="empty-plan" role="status">{{ planEmptyMessage() }}</p>
         }
       </app-bento-card>
 
@@ -152,52 +171,12 @@ import {
 
           <div id="panel-econ-chart" role="tabpanel" [attr.aria-labelledby]="economyMode() === 'trend' ? 'tab-econ-trend' : 'tab-econ-rounds'">
             @if (economyMode() === 'trend') {
-              <!-- Trend SVG Chart -->
-              <svg
-                class="economy-chart-svg"
-                viewBox="0 0 300 80"
-                aria-hidden="true"
-                focusable="false"
-              >
-                <polyline
-                  fill="none"
-                  stroke="var(--color-action-primary)"
-                  stroke-width="3"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  points="10,65 50,45 90,60 130,20 170,25 210,55 250,15 290,20"
-                />
-                <circle cx="10" cy="65" r="4" fill="var(--color-action-primary)" />
-                <circle cx="130" cy="20" r="4" fill="var(--color-action-primary)" />
-                <circle cx="250" cy="15" r="4" fill="var(--color-action-primary)" />
-              </svg>
-
               <p class="chart-text-description" id="econ-trend-desc">
-                {{ i18n.bento.economyCard.chartAccessibleSummary }} <strong>72.5%</strong>. En rondas semi-eco se recomienda priorizar Sheriff/Ghost para no descompensar compras de equipo.
+                {{ economyTrendSummary() }}
               </p>
             } @else {
-              <!-- Round-by-Round SVG Chart -->
-              <svg
-                class="economy-chart-svg"
-                viewBox="0 0 300 80"
-                aria-hidden="true"
-                focusable="false"
-              >
-                <polyline
-                  fill="none"
-                  stroke="var(--color-primary)"
-                  stroke-width="2.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  points="10,30 35,50 60,25 85,70 110,40 135,15 160,20 185,55 210,30 235,20 260,15 285,10"
-                />
-                <circle cx="85" cy="70" r="4" fill="var(--color-loss)" />
-                <circle cx="135" cy="15" r="4" fill="var(--color-win)" />
-                <circle cx="285" cy="10" r="4" fill="var(--color-win)" />
-              </svg>
-
               <p class="chart-text-description" id="econ-rounds-desc">
-                Análisis de la última partida: Caída económica en ronda 4 tras derrota forzada. Recuperación de banco en ronda 6 (3900 créditos) manteniendo compras completas hasta el cambio de bando (8-4).
+                {{ economyRoundsSummary() }}
               </p>
             }
           </div>
@@ -230,29 +209,17 @@ import {
                     </th>
                     <td>{{ m.map_name }}</td>
                     <td>{{ m.agent_name }}</td>
-                    <td>13 - 9</td>
+                    <td>{{ m.round_score || '—' }}</td>
                     <td>{{ m.kills }} / {{ m.deaths }} / {{ m.assists }}</td>
-                    <td>{{ m.score || 240 }}</td>
+                    <td>{{ matchAcs(m) ?? '—' }}</td>
                   </tr>
                 }
+              } @else if (playerProfile()) {
+                <tr>
+                  <td colspan="6" class="empty-matches-cell">{{ i18n.bento.matchesCard.empty }}</td>
+                </tr>
               } @else {
-                <!-- Default semantic mock row when no search query has been entered yet -->
-                <tr>
-                  <th scope="row"><span class="text-victory">{{ i18n.bento.matchesCard.victory }}</span></th>
-                  <td>Ascent</td>
-                  <td>Jett</td>
-                  <td>13 - 7</td>
-                  <td>22 / 11 / 4</td>
-                  <td>284</td>
-                </tr>
-                <tr>
-                  <th scope="row"><span class="text-defeat">{{ i18n.bento.matchesCard.defeat }}</span></th>
-                  <td>Haven</td>
-                  <td>Sova</td>
-                  <td>9 - 13</td>
-                  <td>16 / 15 / 9</td>
-                  <td>198</td>
-                </tr>
+                <tr><td colspan="6" class="empty-matches-cell">Busca un jugador para ver sus partidas.</td></tr>
               }
             </tbody>
           </table>
@@ -267,7 +234,7 @@ import {
       >
         <div class="role-coach-content">
           <p class="role-summary">
-            <strong>Duelista Primario (Jett / Reyna):</strong> Alta eficiencia en entrada y apertura de sitios (78% First Bloods). Se detecta oportunidad de rotación cuando el ancla centinela cae en el sitio opuesto.
+            {{ roleCoachSummary() }}
           </p>
         </div>
       </app-bento-card>
@@ -344,13 +311,19 @@ import {
       gap: 6px;
     }
 
+    .region-field {
+      flex: 0 1 180px;
+      min-width: 140px;
+    }
+
     .input-label {
       font-size: 13px;
       font-weight: 600;
       color: var(--color-text-secondary);
     }
 
-    .search-input {
+    .search-input,
+    .region-select {
       background-color: var(--color-bg-page);
       border: 1px solid var(--color-border-input);
       border-radius: var(--radius-control);
@@ -358,10 +331,19 @@ import {
       color: var(--color-text-primary);
       min-height: var(--min-touch-target);
       transition: border-color var(--transition-fast);
+      font-family: inherit;
+      font-size: 14px;
     }
 
-    .search-input:focus-visible {
+    .region-select {
+      cursor: pointer;
+    }
+
+    .search-input:focus-visible,
+    .region-select:focus-visible {
       border-color: var(--color-focus);
+      outline: 2px solid var(--color-focus);
+      outline-offset: 2px;
     }
 
     .hero-btn {
@@ -563,11 +545,29 @@ import {
   `],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class SummaryComponent {
+export class SummaryComponent implements OnInit {
+  private matchRequestVersion = 0;
   readonly i18n = I18N_ES;
   private readonly api = inject(ApiClientService);
+  private readonly activePlayer = inject(ActivePlayerService);
 
-  searchQuery = 'TenZ#0001';
+  searchQuery = '';
+  selectedRegion = 'eu';
+  readonly dataError = signal<string | null>(null);
+  readonly planEmptyMessage = computed(() =>
+    this.playerProfile()
+      ? 'Aún no hay informe de coaching para este jugador. Genera uno en Informes.'
+      : 'Busca un jugador para ver su plan de mejora.'
+  );
+
+  ngOnInit(): void {
+    const active = this.activePlayer.player();
+    if (active) {
+      this.searchQuery = active.gameName + '#' + active.tagLine;
+      this.selectedRegion = active.region;
+      this.onSearch();
+    }
+  }
   readonly loading = signal(false);
   readonly syncing = signal(false);
   readonly errorMessage = signal<string | null>(null);
@@ -575,39 +575,135 @@ export class SummaryComponent {
 
   readonly playerProfile = signal<PlayerProfile | null>(null);
   readonly matches = signal<PlayerMatch[]>([]);
-  readonly stats = signal<PlayerStatsOverview | null>(null);
   readonly uploadedFileName = signal<string | null>(null);
   readonly economyMode = signal<'trend' | 'rounds'>('trend');
   readonly latestPlanItems = signal<{ title: string; description: string }[]>([]);
+  readonly latestReport = signal<CoachingReportSummary | null>(null);
 
-  calculatedAcs(): number {
-    const s = this.stats();
-    if (s && s.kd_ratio) {
-      return Math.round(s.kd_ratio * 180);
+  matchAcs(match: PlayerMatch): number | null {
+    if (match.provider === 'vision' && typeof match.provider_score === 'number' && match.provider_score >= 0) {
+      return Math.round(match.provider_score);
     }
-    return 231;
+    const score = match.score;
+    const roundScore = match.round_score?.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (typeof score !== 'number' || score < 0 || !roundScore) return null;
+    const rounds = Number(roundScore[1]) + Number(roundScore[2]);
+    return rounds > 0 ? Math.round(score / rounds) : null;
   }
 
+  calculatedAcs(): number | null {
+    const acsValues = this.matches()
+      .map((match) => this.matchAcs(match))
+      .filter((value): value is number => value !== null);
+    if (acsValues.length > 0) {
+      return Math.round(
+        acsValues.reduce((sum, val) => sum + val, 0) / acsValues.length
+      );
+    }
+    return null;
+  }
+
+  readonly economyTrendSummary = computed(() => {
+    const report = this.latestReport();
+    if (report && report.payload) {
+      const flaws = (report.payload['critical_flaws'] as string[]) || [];
+      const econFlaw = flaws.find((f: string) => f.toLowerCase().includes('econom'));
+      if (econFlaw) {
+        return `Diagnóstico del coach: ${econFlaw}`;
+      }
+      const plan = (report.payload['training_plan'] as string[]) || [];
+      const econPlan = plan.find((p: string) => p.toLowerCase().includes('finanzas') || p.toLowerCase().includes('econom'));
+      if (econPlan) {
+        return `Recomendación financiera: ${econPlan}`;
+      }
+    }
+    return 'Sin telemetría económica suficiente. Sincroniza partidas o genera un informe táctico para analizar la disciplina de compra.';
+  });
+
+  readonly economyRoundsSummary = computed(() => {
+    const report = this.latestReport();
+    if (report && report.payload) {
+      const plan = (report.payload['training_plan'] as string[]) || [];
+      const econPlan = plan.find((p: string) => p.toLowerCase().includes('finanzas') || p.toLowerCase().includes('econom'));
+      if (econPlan) {
+        return `Análisis de la última partida: ${econPlan}`;
+      }
+      const summary = report.summary || (report.payload['executive_summary'] as string);
+      if (summary) {
+        return `Resumen táctico de partida: ${summary.slice(0, 140)}...`;
+      }
+    }
+    const m = this.matches();
+    if (m.length > 0) {
+      const last = m[0];
+      return `Última partida registrada en ${last.map_name} con ${last.agent_name} (${last.result}). No hay telemetría económica por ronda disponible aquí.`;
+    }
+    return 'No hay datos de rondas disponibles para la última partida. Juega una partida o sube un marcador para visualizar la evolución económica.';
+  });
+
+  readonly roleCoachSummary = computed(() => {
+    const report = this.latestReport();
+    if (report && report.payload) {
+      const flaws = (report.payload['critical_flaws'] as string[]) || [];
+      const roleFlaw = flaws.find((f: string) => f.toLowerCase().includes('rol'));
+      if (roleFlaw) {
+        return `Diagnóstico de rol: ${roleFlaw}`;
+      }
+    }
+    const m = this.matches();
+    if (m.length > 0) {
+      const agentCounts = new Map<string, number>();
+      for (const match of m) {
+        if (match.agent_name) {
+          agentCounts.set(match.agent_name, (agentCounts.get(match.agent_name) || 0) + 1);
+        }
+      }
+      let topAgent = '';
+      let topCount = 0;
+      for (const [agent, count] of agentCounts.entries()) {
+        if (count > topCount) {
+          topAgent = agent;
+          topCount = count;
+        }
+      }
+      if (topAgent) {
+        return `Agente más jugado recientemente: ${topAgent} (${topCount} partida${topCount > 1 ? 's' : ''}).`;
+      }
+    }
+    return 'Sincroniza tus partidas para obtener un análisis personalizado de tu rol y utilidad en cada mapa.';
+  });
+
   onSearch(): void {
-    const trimmed = this.searchQuery.trim();
-    if (!trimmed || !trimmed.includes('#')) {
+    const id = parseRiotId(this.searchQuery);
+    if (!id) {
       this.errorMessage.set(this.i18n.hero.errorEmpty);
       return;
     }
+    const { gameName, tagLine } = id;
+    const region = this.selectedRegion;
 
+    // Switching player: drop everything that belonged to the previous one.
+    this.activePlayer.set({ gameName, tagLine, region });
+    const version = this.activePlayer.version();
+    this.playerProfile.set(null);
+    this.matches.set([]);
+    this.latestReport.set(null);
+    this.latestPlanItems.set([]);
     this.errorMessage.set(null);
+    this.dataError.set(null);
     this.syncMessage.set(null);
     this.loading.set(true);
 
-    const [gameName, tagLine] = trimmed.split('#');
-    this.api.getPlayer(gameName, tagLine).subscribe({
+    this.api.getPlayer(gameName, tagLine, region).subscribe({
       next: (profile: PlayerProfile) => {
+        if (!this.activePlayer.isCurrent(gameName, tagLine, region, version)) return;
         this.playerProfile.set(profile);
-        this.loadRecentMatches(gameName, tagLine);
-        this.loadStats(gameName, tagLine);
-        this.loadCoachingReport(gameName, tagLine);
+        this.loadRecentMatches(gameName, tagLine, region, version);
+        this.loadCoachingReport(gameName, tagLine, region, version);
       },
       error: () => {
+        if (!this.activePlayer.isCurrent(gameName, tagLine, region, version)) return;
+        this.activePlayer.clear();
         this.loading.set(false);
         this.errorMessage.set(this.i18n.status.notFound);
       },
@@ -618,57 +714,80 @@ export class SummaryComponent {
     const profile = this.playerProfile();
     if (!profile) return;
 
+    const active = this.activePlayer.player();
+    if (!active) return;
+    const version = this.activePlayer.version();
+    ++this.matchRequestVersion;
     this.syncing.set(true);
     this.syncMessage.set(null);
-
-    this.api.syncPlayer(profile.game_name, profile.tag_line).subscribe({
-      next: (_res: { status: string; new_report_generated: boolean; report_id?: string }) => {
+    const { gameName, tagLine, region: effectiveRegion } = active;
+    this.api.syncPlayer(gameName, tagLine, effectiveRegion).subscribe({
+      next: () => {
+        if (!this.activePlayer.isCurrent(gameName, tagLine, effectiveRegion, version)) return;
         this.syncing.set(false);
         this.syncMessage.set('Sincronización completada exitosamente.');
-        this.loadRecentMatches(profile.game_name, profile.tag_line);
-        this.loadStats(profile.game_name, profile.tag_line);
+        this.loadRecentMatches(gameName, tagLine, effectiveRegion, version);
       },
       error: (err: { error?: { detail?: string } }) => {
+        if (!this.activePlayer.isCurrent(gameName, tagLine, effectiveRegion, version)) return;
         this.syncing.set(false);
         this.syncMessage.set(err?.error?.detail || 'Error al sincronizar partidas.');
       },
     });
   }
 
-  private loadRecentMatches(gameName: string, tagLine: string): void {
-    this.api.getPlayerMatches(gameName, tagLine, 5).subscribe({
+  private loadRecentMatches(gameName: string, tagLine: string, region: string, version: number): void {
+    const requestVersion = ++this.matchRequestVersion;
+    this.api.getPlayerMatches(gameName, tagLine, 5, region).subscribe({
       next: (res: { matches: PlayerMatch[]; count: number }) => {
+        if (requestVersion !== this.matchRequestVersion ||
+            !this.activePlayer.isCurrent(gameName, tagLine, region, version)) return;
         this.matches.set(res.matches || []);
         this.loading.set(false);
       },
       error: () => {
+        if (requestVersion !== this.matchRequestVersion ||
+            !this.activePlayer.isCurrent(gameName, tagLine, region, version)) return;
         this.loading.set(false);
+        this.dataError.set(
+          'No se pudieron cargar las partidas recientes. No se muestran datos de ejemplo.'
+        );
       },
     });
   }
 
-  private loadStats(gameName: string, tagLine: string): void {
-    this.api.getPlayerStats(gameName, tagLine).subscribe({
-      next: (st: PlayerStatsOverview) => this.stats.set(st),
-      error: () => {},
-    });
-  }
-
-  private loadCoachingReport(gameName: string, tagLine: string): void {
-    this.api.getCoachingReports(gameName, tagLine, 1).subscribe({
+  private loadCoachingReport(gameName: string, tagLine: string, region: string, version: number): void {
+    this.api.getCoachingReports(gameName, tagLine, 1, region).subscribe({
       next: (res: { reports: CoachingReportSummary[]; count: number }) => {
+        if (!this.activePlayer.isCurrent(gameName, tagLine, region, version)) return;
         if (res.reports && res.reports.length > 0) {
           const report = res.reports[0];
-          if (report.strengths && report.weaknesses) {
-            this.latestPlanItems.set([
-              { title: 'Fortaleza clave', description: report.strengths.slice(0, 80) },
-              { title: 'Área de mejora', description: report.weaknesses.slice(0, 80) },
-              { title: 'Recomendación táctica', description: (report.summary ?? '').slice(0, 80) },
-            ]);
+          this.latestReport.set(report);
+          const payload = report.payload || {};
+          const strengths = report.strengths || (Array.isArray(payload['key_strengths']) ? (payload['key_strengths'] as string[]).join(', ') : '');
+          const weaknesses = report.weaknesses || (Array.isArray(payload['critical_flaws']) ? (payload['critical_flaws'] as string[]).join(', ') : '');
+          const summary = report.summary || (typeof payload['executive_summary'] === 'string' ? payload['executive_summary'] : '');
+
+          const items: { title: string; description: string }[] = [];
+          if (strengths) {
+            items.push({ title: 'Fortaleza clave', description: strengths.slice(0, 120) });
+          }
+          if (weaknesses) {
+            items.push({ title: 'Área de mejora', description: weaknesses.slice(0, 120) });
+          }
+          if (summary) {
+            items.push({ title: 'Recomendación táctica', description: summary.slice(0, 120) });
+          }
+          if (items.length > 0) {
+            this.latestPlanItems.set(items);
           }
         }
       },
-      error: () => {},
+      error: () => {
+        if (this.activePlayer.isCurrent(gameName, tagLine, region, version)) {
+          this.dataError.set('No se pudo cargar el último informe.');
+        }
+      },
     });
   }
 

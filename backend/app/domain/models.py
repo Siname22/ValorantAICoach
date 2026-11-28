@@ -65,6 +65,7 @@ class PlayerMatch(BaseModel):
     deaths: int
     assists: int
     score: int | None = None
+    round_score: str | None = None
     agent_name: str
     provider: Literal["tracker", "henrik", "riot", "vision"] | None = None
     provider_score: int | None = None

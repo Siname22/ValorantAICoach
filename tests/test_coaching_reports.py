@@ -1,16 +1,26 @@
+from datetime import datetime
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from alembic import command
 from alembic.config import Config
 from backend.app.core.config import get_settings
-from backend.app.services.player_service import PlayerMatch, PlayerService
+from backend.app.services.player_service import (
+    PlayerMatch,
+    PlayerNotFoundError,
+    PlayerService,
+    PlayerServiceUnavailableError,
+)
+from backend.app.storage.models import CoachingReportRecord, PlayerRecord
 from backend.app.storage.player_service import PersistentPlayerService
-from backend.app.storage.repository import SQLPlayerStore
+from backend.app.storage.repository import SQLPlayerStore, request_key
 from backend.main import app
+from backend.providers.henrik.models import HenrikPlayer
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 
 @pytest.fixture
@@ -73,6 +83,111 @@ def test_sql_player_store_report_crud(storage_database):
 
         # 4. Non-existent report
         assert store.get_coaching_report("non-existent-id") is None
+
+        # 5. Normalization of created_at: naive, offset (+02:00), and Z suffix
+        naive_payload = {"title": "Naive", "created_at": "2026-10-16T10:00:00"}
+        id_naive = store.save_coaching_report(
+            player_id, naive_payload, [], identity=identity
+        )
+        rec_naive = store.get_coaching_report(id_naive)
+        assert rec_naive is not None
+        assert rec_naive["created_at"] == "2026-10-16T10:00:00+00:00"
+        assert rec_naive["payload"]["created_at"] == "2026-10-16T10:00:00+00:00"
+        assert naive_payload["created_at"] == "2026-10-16T10:00:00+00:00"
+
+        offset_payload = {
+            "title": "Offset",
+            "created_at": "2026-10-16T12:00:00+02:00",
+        }
+        id_offset = store.save_coaching_report(
+            player_id, offset_payload, [], identity=identity
+        )
+        rec_offset = store.get_coaching_report(id_offset)
+        assert rec_offset is not None
+        assert rec_offset["created_at"] == "2026-10-16T10:00:00+00:00"
+        assert rec_offset["payload"]["created_at"] == "2026-10-16T10:00:00+00:00"
+        assert offset_payload["created_at"] == "2026-10-16T10:00:00+00:00"
+
+        zulu_payload = {"title": "Zulu", "created_at": "2026-10-16T10:00:00Z"}
+        id_zulu = store.save_coaching_report(
+            player_id, zulu_payload, [], identity=identity
+        )
+        rec_zulu = store.get_coaching_report(id_zulu)
+        assert rec_zulu is not None
+        assert rec_zulu["created_at"] == "2026-10-16T10:00:00+00:00"
+        assert rec_zulu["payload"]["created_at"] == "2026-10-16T10:00:00+00:00"
+        assert zulu_payload["created_at"] == "2026-10-16T10:00:00+00:00"
+
+        # 6. Transaction rollback: write failure inside transaction leaves no rows
+        rollback_player_id = request_key(
+            "identity", {"game_name": "RollbackPlayer", "tag_line": "TEST"}
+        )
+        rollback_identity = {"game_name": "RollbackPlayer", "tag_line": "TEST"}
+        original_upsert = store._upsert
+
+        def failing_upsert(session, model, values):
+            original_upsert(session, model, values)
+            if model is CoachingReportRecord:
+                raise SQLAlchemyError("Simulated database failure before commit")
+
+        store._upsert = failing_upsert
+        failed_id = "fail-rep-999"
+        try:
+            with pytest.raises(SQLAlchemyError):
+                store.save_coaching_report(
+                    rollback_player_id,
+                    {"title": "Aborted Report"},
+                    [],
+                    report_id=failed_id,
+                    identity=rollback_identity,
+                )
+        finally:
+            store._upsert = original_upsert
+
+        with Session(store.engine) as verify_session:
+            assert verify_session.get(PlayerRecord, rollback_player_id) is None
+            assert verify_session.get(CoachingReportRecord, failed_id) is None
+            reports = verify_session.scalars(
+                select(CoachingReportRecord).where(
+                    CoachingReportRecord.player_id == rollback_player_id
+                )
+            ).all()
+            assert len(reports) == 0
+        assert store.get_coaching_report(failed_id) is None
+    finally:
+        store.close()
+
+
+def test_report_history_filters_region_before_limit(storage_database):
+    url, _ = storage_database
+    store = SQLPlayerStore(url, ttl_seconds=300, test_mode=True)
+    player_id = request_key("identity", {"game_name": "Alpha", "tag_line": "EU1"})
+    identity = {"game_name": "Alpha", "tag_line": "EU1"}
+    try:
+        eu_id = store.save_coaching_report(
+            player_id,
+            {"region": "eu", "title": "EU", "created_at": "2026-01-01T10:00:00Z"},
+            [],
+            identity=identity,
+        )
+        newer_eu_id = store.save_coaching_report(
+            player_id,
+            {"region": "eu", "title": "EU newer", "created_at": "2026-01-01T11:00:00Z"},
+            [],
+            identity=identity,
+        )
+        store.save_coaching_report(
+            player_id, {"region": "na", "title": "NA"}, [], identity=identity
+        )
+        store.save_coaching_report(
+            player_id, {"title": "Legacy"}, [], identity=identity
+        )
+        eu_reports = store.list_coaching_reports(
+            player_id, limit=1, game_name="Alpha", tag_line="EU1", region="eu"
+        )
+        assert [report["id"] for report in eu_reports] == [newer_eu_id]
+        assert eu_id != newer_eu_id
+        assert len(store.list_coaching_reports(player_id, limit=10)) == 4
     finally:
         store.close()
 
@@ -114,15 +229,39 @@ async def test_persistent_player_service_generate_and_list_reports(storage_datab
         assert len(history) == 1
         assert history[0]["id"] == report["id"]
 
-        # Retrieve report by ID
-        found = await mock_service.get_coaching_report(report["id"])
+        regional_report = await mock_service.generate_coaching_report(
+            "Derke", "FNC", region="na"
+        )
+        assert regional_report["payload"]["region"] == "na"
+        regional_history = await mock_service.list_coaching_reports(
+            "Derke", "FNC", region="na"
+        )
+        assert [item["id"] for item in regional_history] == [regional_report["id"]]
+
+        # Retrieve report by ID with correct player
+        found = await mock_service.get_coaching_report(
+            report["id"], game_name="Derke", tag_line="FNC"
+        )
         assert found is not None
         assert found["id"] == report["id"]
+
+        # Retrieving report with different casing succeeds (case-insensitive)
+        case_insensitive = await mock_service.get_coaching_report(
+            report["id"], game_name="derke", tag_line="fnc"
+        )
+        assert case_insensitive is not None
+        assert case_insensitive["id"] == report["id"]
+
+        # Attempting to retrieve report under another player's identity returns None
+        wrong_player = await mock_service.get_coaching_report(
+            report["id"], game_name="Bob", tag_line="NA1"
+        )
+        assert wrong_player is None
     finally:
         await mock_service.close()
 
 
-def test_api_report_endpoints():
+def test_api_report_endpoints(request):
     mock_service = PlayerService()
     mock_matches = [
         PlayerMatch(
@@ -170,6 +309,12 @@ def test_api_report_endpoints():
         app.dependency_overrides.pop(get_current_user, None)
 
     # 3. GET /players/Boaster/FNC/reports (in base service returns empty list)
+    app.dependency_overrides[get_current_user] = lambda: {
+        "id": "mock-user-1",
+        "email": "coach@example.invalid",
+        "is_active": True,
+    }
+    request.addfinalizer(lambda: app.dependency_overrides.pop(get_current_user, None))
     list_resp = client.get("/players/Boaster/FNC/reports")
     assert list_resp.status_code == 200
     list_data = list_resp.json()
@@ -179,3 +324,362 @@ def test_api_report_endpoints():
     # 4. GET /players/Boaster/FNC/reports/unknown-id -> 404
     get_resp = client.get("/players/Boaster/FNC/reports/unknown-id")
     assert get_resp.status_code == 404
+
+    # 5. Report belonging to Alice is not returned under Bob's URL -> 404
+    async def mock_get_report(
+        rep_id, *, game_name=None, tag_line=None, user_id=None, region=None
+    ):
+        if rep_id == "alice-rep-1" and game_name == "Alice" and tag_line == "EU1":
+            return {
+                "id": "alice-rep-1",
+                "player_id": "pid-alice",
+                "schema_version": 1,
+                "provider": "orchestrator",
+                "payload": {"title": "Alice Report"},
+                "evidence": [],
+                "created_at": "2026-10-06T12:00:00Z",
+            }
+        return None
+
+    mock_service.get_coaching_report = mock_get_report
+
+    # Alice URL succeeds
+    alice_resp = client.get("/players/Alice/EU1/reports/alice-rep-1")
+    assert alice_resp.status_code == 200
+    assert alice_resp.json()["id"] == "alice-rep-1"
+
+    # Bob URL for Alice's report returns 404!
+    bob_resp = client.get("/players/Bob/NA1/reports/alice-rep-1")
+    assert bob_resp.status_code == 404
+    assert "not found" in bob_resp.json()["detail"].lower()
+    app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_complete_coaching_report_lifecycle_api(storage_database):
+    url, _ = storage_database
+    store = SQLPlayerStore(url, ttl_seconds=300, test_mode=True)
+    persistent_service = PersistentPlayerService(store=store)
+
+    mock_matches = [
+        PlayerMatch(
+            match_id="match-e2e-1",
+            map_name="Ascent",
+            mode="Competitive",
+            timestamp="2026-10-06T10:00:00Z",
+            result="Victory",
+            kills=20,
+            deaths=10,
+            assists=5,
+            agent_name="Sova",
+            provider="riot",
+        )
+    ]
+    persistent_service.get_recent_matches = AsyncMock(return_value=mock_matches)
+    persistent_service.get_rank = AsyncMock(side_effect=Exception("No rank available"))
+    persistent_service.get_stats_overview = AsyncMock(
+        side_effect=Exception("No stats available")
+    )
+
+    from backend.app.dependencies.auth_deps import get_current_user
+
+    app.state.player_service = persistent_service
+    client = TestClient(app)
+
+    app.dependency_overrides[get_current_user] = lambda: {
+        "id": "e2e-user",
+        "email": "e2e@test.com",
+        "is_active": True,
+        "is_admin": False,
+    }
+
+    try:
+        # 1. Generate report via POST endpoint (orchestrator -> persistent storage)
+        post_resp = client.post("/players/Chronicle/FNC/reports")
+        assert post_resp.status_code == 200
+        report_data = post_resp.json()
+        rep_id = report_data["id"]
+        post_created_at = report_data["created_at"]
+        assert rep_id != ""
+        assert report_data["provider"] == "orchestrator"
+        assert "Chronicle#FNC" in report_data["payload"]["title"]
+        assert post_created_at is not None
+        # Strict validation of ISO format and contemporary generation date
+        parsed_dt = datetime.fromisoformat(post_created_at)
+        assert parsed_dt.year >= 2026
+
+        # 2. List reports via GET endpoint -> finds persisted report
+        list_resp = client.get("/players/Chronicle/FNC/reports")
+        assert list_resp.status_code == 200
+        reports_list = list_resp.json()
+        assert reports_list["count"] == 1
+        assert reports_list["reports"][0]["id"] == rep_id
+        # Strict exact match of created_at between POST generation and list endpoint
+        assert reports_list["reports"][0]["created_at"] == post_created_at
+        assert (
+            reports_list["reports"][0]["payload"]["title"]
+            == report_data["payload"]["title"]
+        )
+
+        regional_post = client.post("/players/Chronicle/FNC/reports?region=eu")
+        assert regional_post.status_code == 200
+        assert regional_post.json()["payload"]["region"] == "eu"
+        regional_list = client.get("/players/Chronicle/FNC/reports?region=eu")
+        assert regional_list.status_code == 200
+        assert [item["id"] for item in regional_list.json()["reports"]] == [
+            regional_post.json()["id"]
+        ]
+        assert (
+            client.get("/players/Chronicle/FNC/reports?region=na").json()["count"] == 0
+        )
+
+        # 3. Get specific report via GET endpoint
+        get_resp = client.get(f"/players/Chronicle/FNC/reports/{rep_id}")
+        assert get_resp.status_code == 200
+        single_rep = get_resp.json()
+        assert single_rep["id"] == rep_id
+        # Strict exact match of created_at between POST, list, and individual endpoint
+        assert single_rep["created_at"] == post_created_at
+        assert single_rep["payload"] == report_data["payload"]
+
+        # 4. Identity isolation: retrieving report under another player's URL -> 404
+        cross_resp = client.get(f"/players/Boaster/FNC/reports/{rep_id}")
+        assert cross_resp.status_code == 404
+
+        # 5. Progression endpoint integrates the persisted report
+        prog_resp = client.get("/players/Chronicle/FNC/progression")
+        assert prog_resp.status_code == 200
+        prog_data = prog_resp.json()
+        assert prog_data["total_reports_generated"] >= 1
+        regional_progression = client.get(
+            "/players/Chronicle/FNC/progression?region=eu"
+        )
+        assert regional_progression.status_code == 200
+        assert regional_progression.json()["total_reports_generated"] == 1
+
+        # 6. Provider failure during generation returns 503
+        persistent_service.get_recent_matches = AsyncMock(
+            side_effect=PlayerServiceUnavailableError("Upstream match provider offline")
+        )
+        fail_resp = client.post("/players/Chronicle/FNC/reports")
+        assert fail_resp.status_code == 503
+        assert "upstream" in fail_resp.json()["detail"].lower()
+
+        # 7. Zero matches scenario (matches=[]) -> generates grounded report cleanly
+        persistent_service.get_recent_matches = AsyncMock(return_value=[])
+        zero_matches_resp = client.post("/players/Chronicle/FNC/reports")
+        assert zero_matches_resp.status_code == 200
+        zero_data = zero_matches_resp.json()
+        assert zero_data["id"] != ""
+        assert "Chronicle#FNC" in zero_data["payload"]["title"]
+
+        # 8. Real write failure inside transaction -> rolls back and leaves 0 rows
+        leo_player_id = request_key("identity", {"game_name": "Leo", "tag_line": "FNC"})
+        original_upsert = store._upsert
+
+        def failing_upsert(session, model, values):
+            original_upsert(session, model, values)
+            if model is CoachingReportRecord:
+                raise SQLAlchemyError("Simulated disk write failure before commit")
+
+        store._upsert = failing_upsert
+        try:
+            save_fail_resp = client.post("/players/Leo/FNC/reports")
+            assert save_fail_resp.status_code == 503
+            assert (
+                "player storage is unavailable"
+                in save_fail_resp.json()["detail"].lower()
+            )
+        finally:
+            store._upsert = original_upsert
+
+        leo_resp = client.get("/players/Leo/FNC/reports")
+        assert leo_resp.status_code == 200
+        assert leo_resp.json()["count"] == 0
+        with Session(store.engine) as verify_session:
+            leo_player = verify_session.get(PlayerRecord, leo_player_id)
+            assert leo_player is None
+            leo_rows = (
+                verify_session.execute(
+                    select(CoachingReportRecord).where(
+                        CoachingReportRecord.player_id == leo_player_id
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert len(leo_rows) == 0
+
+        # 9. Storage failure on read-back -> returns 200 with matching state
+        original_get = store.get_coaching_report
+
+        def failing_get(*args, **kwargs):
+            raise SQLAlchemyError("Transient connection drop during read-back")
+
+        store.get_coaching_report = failing_get
+        try:
+            read_fail_resp = client.post("/players/Chronicle/FNC/reports")
+            assert read_fail_resp.status_code == 200
+            read_fail_data = read_fail_resp.json()
+            fallback_id = read_fail_data["id"]
+            fallback_created_at = read_fail_data["created_at"]
+            assert fallback_id != ""
+            assert fallback_created_at is not None
+        finally:
+            store.get_coaching_report = original_get
+
+        # 10. Consistency between HTTP response and persisted state
+        persisted_report = store.get_coaching_report(fallback_id)
+        assert persisted_report is not None
+        assert persisted_report["id"] == fallback_id
+        assert persisted_report["created_at"] == fallback_created_at
+        assert (
+            persisted_report["payload"]["title"] == read_fail_data["payload"]["title"]
+        )
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+        store.close()
+
+
+def test_report_reads_require_owner_and_selected_region(storage_database):
+    from backend.app.dependencies.auth_deps import get_current_user
+
+    url, _ = storage_database
+    store = SQLPlayerStore(url, ttl_seconds=300, test_mode=True)
+    service = PersistentPlayerService(store=store)
+    service.get_recent_matches = AsyncMock(
+        return_value=[
+            PlayerMatch(
+                match_id="synthetic-match",
+                map_name="Ascent",
+                mode="Competitive",
+                timestamp="2026-10-06T10:00:00Z",
+                result="Victory",
+                kills=2,
+                deaths=1,
+                assists=1,
+                agent_name="Sova",
+                provider="riot",
+            )
+        ]
+    )
+    service.get_rank = AsyncMock(side_effect=Exception("unavailable"))
+    owner = {"id": "owner-a", "email": "a@example.invalid", "is_active": True}
+    other = {"id": "owner-b", "email": "b@example.invalid", "is_active": True}
+    try:
+        with TestClient(app) as client:
+            app.state.player_service = service
+            app.dependency_overrides[get_current_user] = lambda: owner
+            created = client.post("/players/Alpha/TEST/reports?region=eu")
+            assert created.status_code == 200, created.json()
+            report_id = created.json()["id"]
+            legacy_id = store.save_coaching_report(
+                request_key("identity", {"game_name": "Alpha", "tag_line": "TEST"}),
+                {"region": "eu", "title": "Legacy"},
+                [],
+                identity={"game_name": "Alpha", "tag_line": "TEST"},
+            )
+
+            app.dependency_overrides.pop(get_current_user)
+            assert (
+                client.get("/players/Alpha/TEST/reports?region=eu").status_code == 401
+            )
+            assert (
+                client.get("/players/Alpha/TEST/progression?region=eu").status_code
+                == 401
+            )
+            assert (
+                client.get(
+                    f"/players/Alpha/TEST/reports/{report_id}?region=eu"
+                ).status_code
+                == 401
+            )
+
+            app.dependency_overrides[get_current_user] = lambda: other
+            assert (
+                client.get("/players/Alpha/TEST/reports?region=eu").json()["count"] == 0
+            )
+            assert (
+                client.get("/players/Alpha/TEST/progression?region=eu").json()[
+                    "total_reports_generated"
+                ]
+                == 0
+            )
+            assert (
+                client.get(
+                    f"/players/Alpha/TEST/reports/{report_id}?region=eu"
+                ).status_code
+                == 404
+            )
+
+            app.dependency_overrides[get_current_user] = lambda: owner
+            assert (
+                client.get("/players/Alpha/TEST/reports?region=eu").json()["count"] == 1
+            )
+            assert (
+                client.get(
+                    f"/players/Alpha/TEST/reports/{report_id}?region=eu"
+                ).status_code
+                == 200
+            )
+            assert (
+                client.get(
+                    f"/players/Alpha/TEST/reports/{report_id}?region=na"
+                ).status_code
+                == 404
+            )
+            assert (
+                client.get(
+                    f"/players/Alpha/TEST/reports/{legacy_id}?region=eu"
+                ).status_code
+                == 404
+            )
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_legacy_wrong_region_profile_snapshot_is_not_trusted(storage_database):
+    url, _ = storage_database
+    store = SQLPlayerStore(url, ttl_seconds=300, test_mode=True)
+    params = {"game_name": "Alpha", "tag_line": "TEST", "region": "na"}
+    legacy_key = request_key("profile", params)
+    store.put(
+        legacy_key,
+        "profile",
+        params,
+        {"game_name": "Alpha", "tag_line": "TEST", "region": "na", "source": "henrik"},
+        ["henrik"],
+    )
+    for operation, extra, payload in (
+        ("rank", {"puuid": None}, {"tier_name": "Gold", "source": "henrik"}),
+        ("matches", {"puuid": None, "limit": 10}, []),
+    ):
+        old_params = {**params, **extra}
+        store.put(
+            request_key(operation, old_params),
+            operation,
+            old_params,
+            payload,
+            ["henrik"],
+        )
+    henrik = MagicMock()
+    henrik.get_account = AsyncMock(
+        return_value=HenrikPlayer(
+            puuid="synthetic-puuid",
+            name="Alpha",
+            tag="TEST",
+            region="eu",
+            account_level=20,
+        )
+    )
+    service = PersistentPlayerService(store=store, henrik_provider=henrik)
+    try:
+        with pytest.raises(PlayerNotFoundError):
+            await service.get_player("Alpha", "TEST", region="na")
+        with pytest.raises(PlayerNotFoundError):
+            await service.get_rank("Alpha", "TEST", region="na")
+        with pytest.raises(PlayerNotFoundError):
+            await service.get_recent_matches("Alpha", "TEST", region="na")
+    finally:
+        store.close()

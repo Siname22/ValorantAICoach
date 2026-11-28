@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from backend import __version__
 from backend.app.api.auth_router import router as auth_router
+from backend.app.api.chat_router import router as chat_router
 from backend.app.api.match_router import router as match_router
 from backend.app.api.player_router import router as player_router
 from backend.app.api.synergy_router import router as synergy_router
@@ -20,6 +21,7 @@ from backend.app.dependencies.provider_deps import (
     create_player_service,
     get_player_service,
 )
+from backend.app.middleware.rate_limit import RateLimitMiddleware
 from backend.app.middleware.security import (
     ContentLengthLimitMiddleware,
     SecurityHeadersMiddleware,
@@ -163,7 +165,29 @@ app = FastAPI(
     openapi_tags=tags_metadata,
 )
 
-# Production Security & CORS Middleware
+# Middleware stack ordering (outermost middleware added LAST in Starlette):
+# 1. Rate limiting (closest to endpoints)
+app.add_middleware(
+    RateLimitMiddleware,
+    enabled=settings.rate_limit_enabled,
+    requests_per_minute=settings.rate_limit_requests_per_minute,
+    burst=settings.rate_limit_burst,
+)
+
+# 2. Content length limiting
+app.add_middleware(
+    ContentLengthLimitMiddleware,
+    max_content_length=settings.max_request_body_size_bytes,
+)
+
+# 3. Security headers (wraps rate limiting and content length responses)
+if settings.enable_security_headers:
+    app.add_middleware(
+        SecurityHeadersMiddleware,
+        enable_hsts=settings.enable_hsts,
+    )
+
+# 4. CORS (outermost - ensures CORS headers on all responses, including 429 & 413)
 if settings.cors_allowed_origins:
     app.add_middleware(
         CORSMiddleware,
@@ -173,19 +197,9 @@ if settings.cors_allowed_origins:
         allow_headers=["*"],
     )
 
-if settings.enable_security_headers:
-    app.add_middleware(
-        SecurityHeadersMiddleware,
-        enable_hsts=settings.enable_hsts,
-    )
-
-app.add_middleware(
-    ContentLengthLimitMiddleware,
-    max_content_length=settings.max_request_body_size_bytes,
-)
-
 # Register routers
 app.include_router(auth_router)
+app.include_router(chat_router)
 app.include_router(player_router)
 app.include_router(match_router)
 app.include_router(vision_router)
@@ -265,7 +279,7 @@ async def readiness_check(
     tags=["system"],
     summary="Prune expired cache",
     description=(
-        "Deletes expired snapshot cache entries from persistence. " "Requires admin."
+        "Deletes expired snapshot cache entries from persistence. Requires admin."
     ),
 )
 async def prune_cache(
