@@ -133,4 +133,6 @@ jobs:
           test "$health" = healthy
           curl --fail --retry 20 --retry-delay 1 --retry-all-errors --connect-timeout 2 --max-time 5 http://127.0.0.1:8080/health
           curl --fail --retry 20 --retry-delay 1 --retry-all-errors -s http://127.0.0.1:8080/ | grep -q 'Mejora tu próxima partida'
+          curl --fail -sSI http://127.0.0.1:8080/ | grep -iq '^Cache-Control: no-cache'
+          curl --fail -sSI http://127.0.0.1:8080/coach | grep -iq '^Cache-Control: no-cache'
 

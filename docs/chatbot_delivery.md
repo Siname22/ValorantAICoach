@@ -1,5 +1,8 @@
 # Práctica: Crear ChatBot con la app de escritorio de Google AI Studio
 
+> Registro histórico de la entrega en Streamlit. La configuración vigente del
+> chat Angular/FastAPI y sus modelos está en [la guía actual](chatbot_installation.md).
+
 ## Datos de la entrega
 
 | Campo | Valor |

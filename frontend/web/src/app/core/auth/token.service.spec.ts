@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { TokenService } from './token.service';
+import { ActivePlayerService } from '../player/active-player.service';
 
 describe('TokenService', () => {
   let service: TokenService;
@@ -39,10 +40,27 @@ describe('TokenService', () => {
 
   it('should clear token and update state', () => {
     service.setToken('dummy.token.123');
+    const activePlayer = TestBed.inject(ActivePlayerService);
+    activePlayer.set({ gameName: 'Alpha', tagLine: 'TAG', region: 'eu' });
     expect(service.hasToken()).toBeTrue();
 
     service.clearToken();
     expect(service.hasToken()).toBeFalse();
     expect(service.getToken()).toBeNull();
+    expect(activePlayer.player()).toBeNull();
+    expect(new ActivePlayerService().player()).toBeNull();
+  });
+
+  it('discards the selected player when restoring an expired session', () => {
+    const activePlayer = TestBed.inject(ActivePlayerService);
+    activePlayer.set({ gameName: 'Alpha', tagLine: 'TAG', region: 'eu' });
+    const payload = btoa(JSON.stringify({ sub: 'user-a', exp: 1 }));
+    sessionStorage.setItem('val_coach_auth_token', `header.${payload}.signature`);
+
+    const restored = TestBed.runInInjectionContext(() => new TokenService());
+
+    expect(restored.hasToken()).toBeFalse();
+    expect(activePlayer.player()).toBeNull();
+    expect(new ActivePlayerService().player()).toBeNull();
   });
 });

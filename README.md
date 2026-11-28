@@ -123,7 +123,7 @@ Located in `agents/`, the analysis engine operates using dedicated analytical ag
 The AI engine integrates Google Gemini with production-grade fault tolerance:
 - **Automatic Multi-Model Failover Chain**:
   ```text
-  gemini-2.5-flash (Primary) ──[Fail]──> gemini-2.5-flash-lite (Fast) ──[Fail]──> gemini-3.5-flash (Fallback)
+  gemini-3.1-flash-lite (Primary) ──[Fail]──> gemini-3.5-flash-lite ──[Fail]──> gemini-flash-lite-latest (Fallback)
   ```
 - **Exponential Backoff**: Automatic retry schedule (1s, 2s) on transient errors (HTTP 429, 500, 502, 503, 504, connection timeouts).
 - **Graceful Error Masking**: User-friendly messaging without leaking HTTP status codes, tracebacks, or credentials.

@@ -67,8 +67,8 @@ Specialized analytical agents orchestrated to generate structured coaching repor
 - `report_writer`: Formulates natural language summaries, actionable drills, and evidence tables.
 
 ### 3.3 Frontend (`frontend/`)
-- Interactive Streamlit dashboard consuming the headless FastAPI backend.
-- Resilient Gemini AI Coach integration with automatic 3-model failover chain (`gemini-2.5-flash` → `gemini-2.5-flash-lite` → `gemini-3.5-flash`) and exponential backoff.
+- Angular dashboard consuming the headless FastAPI backend.
+- Server-side Gemini AI Coach with automatic 3-model failover chain (`gemini-3.1-flash-lite` → `gemini-3.5-flash-lite` → `gemini-flash-lite-latest`) and exponential backoff.
 - Interactive modules: Player Search, Replay Timeline Explorer, Scoreboard Vision Ingest, Trajectory Evolution, Team Synergy & Counter-Picks, and Resilient Chat.
 
 ---
