@@ -436,6 +436,23 @@ export interface UtilityCoverage {
   entry_duelist: boolean;
 }
 
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface ChatRequest {
+  message: string;
+  history: ChatMessage[];
+  player: { game_name: string; tag_line: string; region: string } | null;
+}
+
+export interface ChatResponse {
+  reply: string;
+  model: string;
+  fallback_used: boolean;
+}
+
 export interface ValidationError {
   loc: string | number[];
   msg: string;

@@ -28,14 +28,15 @@ describe('SidebarComponent', () => {
     expect(nav.getAttribute('aria-label')).toBe(I18N_ES.nav.ariaLabel);
   });
 
-  it('should render all five navigation items as native links', () => {
+  it('should render all six navigation items as native links', () => {
     const links: NodeListOf<HTMLAnchorElement> = fixture.nativeElement.querySelectorAll('nav a');
-    expect(links.length).toBe(5);
+    expect(links.length).toBe(6);
 
     const labels = Array.from(links).map((l) => l.querySelector('.nav-label')?.textContent?.trim());
     expect(labels).toContain(I18N_ES.nav.summary);
     expect(labels).toContain(I18N_ES.nav.matches);
     expect(labels).toContain(I18N_ES.nav.reports);
+    expect(labels).toContain(I18N_ES.nav.coach);
     expect(labels).toContain(I18N_ES.nav.vision);
     expect(labels).toContain(I18N_ES.nav.account);
   });

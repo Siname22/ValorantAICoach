@@ -15,6 +15,10 @@ export class ApiClientService {
   private readonly baseUrl = '/v1';
 
   // 1. Auth endpoints
+  chat(body: Models.ChatRequest): Observable<Models.ChatResponse> {
+    return this.http.post<Models.ChatResponse>(`${this.baseUrl}/coach/chat`, body);
+  }
+
   register(body: Models.RegisterRequest): Observable<Models.UserResponse> {
     return this.http.post<Models.UserResponse>(`${this.baseUrl}/auth/register`, body);
   }

@@ -17,6 +17,7 @@ export const I18N_ES = {
     summary: 'Resumen',
     matches: 'Partidas',
     reports: 'Informes del coach',
+    coach: 'AI Coach',
     vision: 'Marcador por imagen',
     account: 'Cuenta',
   },

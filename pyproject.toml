@@ -73,6 +73,10 @@ select = [
     "SIM", # flake8-simplify
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# Preserve the reviewed coaching instructions from the former Streamlit chat.
+"backend/app/services/chat_persona.py" = ["E501"]
+
 # ------------------------------------------------------------------------------
 # pytest
 # ------------------------------------------------------------------------------

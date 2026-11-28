@@ -33,6 +33,13 @@ export const routes: Routes = [
     title: 'Informes del Coach · Valorant AI Coach',
   },
   {
+    path: 'coach',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/chat/chat.component').then((m) => m.ChatComponent),
+    title: 'AI Coach · Valorant AI Coach',
+  },
+  {
     path: 'marcador',
     canActivate: [authGuard],
     loadComponent: () =>

@@ -52,6 +52,8 @@ class Settings(BaseSettings):
         default="",
         description="Comma-separated e-mails granted the admin role.",
     )
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-flash"
     cors_allowed_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:8501",

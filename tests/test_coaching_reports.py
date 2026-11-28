@@ -165,10 +165,16 @@ def test_report_history_filters_region_before_limit(storage_database):
     identity = {"game_name": "Alpha", "tag_line": "EU1"}
     try:
         eu_id = store.save_coaching_report(
-            player_id, {"region": "eu", "title": "EU"}, [], identity=identity
+            player_id,
+            {"region": "eu", "title": "EU", "created_at": "2026-01-01T10:00:00Z"},
+            [],
+            identity=identity,
         )
         newer_eu_id = store.save_coaching_report(
-            player_id, {"region": "eu", "title": "EU newer"}, [], identity=identity
+            player_id,
+            {"region": "eu", "title": "EU newer", "created_at": "2026-01-01T11:00:00Z"},
+            [],
+            identity=identity,
         )
         store.save_coaching_report(
             player_id, {"region": "na", "title": "NA"}, [], identity=identity
