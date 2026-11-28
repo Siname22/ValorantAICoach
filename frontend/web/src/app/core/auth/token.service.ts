@@ -103,6 +103,7 @@ export class TokenService {
           const payload = JSON.parse(atob(base64)) as JwtPayload;
           if (payload.exp && Date.now() >= payload.exp * 1000) {
             sessionStorage.removeItem(SESSION_TOKEN_KEY);
+            this.activePlayer.clear();
             return null;
           }
         }

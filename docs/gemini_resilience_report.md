@@ -1,5 +1,8 @@
 # Gemini Resilience Report — Valorant AI Coach Assistant
 
+> Historical Streamlit test report. For the current Angular/FastAPI chat model
+> chain and live validation, see [the installation guide](chatbot_installation.md).
+
 | Field | Value |
 | --- | --- |
 | **Component** | `frontend/streamlit_app/utils/gemini_client.py` |

@@ -104,6 +104,7 @@ def test_chat_missing_key_returns_safe_error(client):
 
 def test_default_model_chain_avoids_retired_model_for_new_accounts(monkeypatch):
     monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    monkeypatch.delenv("gemini_model", raising=False)
     settings = Settings(_env_file=None)
     models = ChatService.from_settings(
         "local-placeholder", settings.gemini_model
