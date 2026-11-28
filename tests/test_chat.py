@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from backend.app.core.config import Settings
 from backend.app.dependencies.auth_deps import get_current_user
 from backend.app.dependencies.provider_deps import get_player_service
 from backend.app.services.chat_service import (
@@ -99,6 +100,16 @@ def test_chat_missing_key_returns_safe_error(client):
     response = http.post("/coach/chat", json={"message": "Hola"})
     assert response.status_code == 503
     assert "API_KEY" not in response.text
+
+
+def test_default_model_chain_avoids_retired_model_for_new_accounts(monkeypatch):
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    settings = Settings(_env_file=None)
+    models = ChatService.from_settings(
+        "local-placeholder", settings.gemini_model
+    ).models
+    assert models[0] == "gemini-3.1-flash-lite"
+    assert "gemini-2.5-flash" not in models
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { TokenService } from './token.service';
+import { ActivePlayerService } from '../player/active-player.service';
 
 describe('TokenService', () => {
   let service: TokenService;
@@ -39,10 +40,14 @@ describe('TokenService', () => {
 
   it('should clear token and update state', () => {
     service.setToken('dummy.token.123');
+    const activePlayer = TestBed.inject(ActivePlayerService);
+    activePlayer.set({ gameName: 'Alpha', tagLine: 'TAG', region: 'eu' });
     expect(service.hasToken()).toBeTrue();
 
     service.clearToken();
     expect(service.hasToken()).toBeFalse();
     expect(service.getToken()).toBeNull();
+    expect(activePlayer.player()).toBeNull();
+    expect(new ActivePlayerService().player()).toBeNull();
   });
 });

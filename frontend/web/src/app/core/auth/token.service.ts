@@ -8,7 +8,8 @@
  *   user session across page reloads (F5) without requiring a backend refresh endpoint.
  */
 
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
+import { ActivePlayerService } from '../player/active-player.service';
 
 export interface JwtPayload {
   readonly sub: string;
@@ -22,6 +23,7 @@ const SESSION_TOKEN_KEY = 'val_coach_auth_token';
   providedIn: 'root',
 })
 export class TokenService {
+  private readonly activePlayer = inject(ActivePlayerService);
   private readonly tokenSignal = signal<string | null>(this.readInitialToken());
 
   readonly currentToken = this.tokenSignal.asReadonly();
@@ -56,6 +58,7 @@ export class TokenService {
 
   clearToken(): void {
     this.tokenSignal.set(null);
+    this.activePlayer.clear();
     try {
       sessionStorage.removeItem(SESSION_TOKEN_KEY);
     } catch {
